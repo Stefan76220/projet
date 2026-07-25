@@ -7,9 +7,9 @@ from src.gui.workspace import Workspace
 
 class MainWindow:
 
-    def __init__(self, project_manager):
+    def __init__(self, application):
 
-        self.project_manager = project_manager
+        self.application = application
 
         self.root = ctk.CTk()
 
@@ -20,14 +20,18 @@ class MainWindow:
         self.root.grid_columnconfigure(0, weight=0)
         self.root.grid_columnconfigure(1, weight=1)
 
-        self.menu = MenuBar(
-            self.root,
-            self.project_manager
-        )
-
         self.navigation = Navigation(self.root)
 
-        self.workspace = Workspace(self.root)
+        self.workspace = Workspace(
+            self.root,
+            self.application
+        )
+
+        self.menu = MenuBar(
+            self.root,
+            self.application.project_manager,
+            self.workspace
+        )
 
     def run(self):
 

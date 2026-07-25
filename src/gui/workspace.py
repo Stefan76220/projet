@@ -1,15 +1,16 @@
 import customtkinter as ctk
 
 from src.theme.colors import Colors
-from src.theme.fonts import Fonts
-from src.theme.spacing import Spacing
+from src.gui.views.dashboard_view import DashboardView
+from src.gui.views.document_view import DocumentView
+from src.gui.views.document_editor_view import DocumentEditorView
 
 
 class Workspace:
 
-    def __init__(self, parent):
+    def __init__(self, parent, application):
 
-        print(">>> NOUVEAU WORKSPACE CHARGÉ <<<")
+        self.application = application
 
         self.frame = ctk.CTkFrame(
             parent,
@@ -23,122 +24,52 @@ class Workspace:
             sticky="nsew"
         )
 
-        self.create_dashboard()
+        self.current_project = None
 
-    def create_dashboard(self):
+        self.show_dashboard()
 
-        header = ctk.CTkFrame(
+    def clear(self):
+
+        for widget in self.frame.winfo_children():
+            widget.destroy()
+
+    def show_dashboard(self):
+
+        self.clear()
+
+        DashboardView(
+            self.frame
+        ).show()
+
+    def show_documents(self, project):
+
+        self.current_project = project
+
+        self.clear()
+
+        DocumentView(
             self.frame,
-            fg_color="transparent"
+            project,
+            self.application,
+            on_open_document=self.show_document,
+            on_refresh=self.back_to_documents
+        ).show()
+
+    def show_document(self, document_info):
+
+        self.clear()
+
+        self.application.document_manager.load_document(
+            document_info["nom"]
         )
 
-        header.pack(
-            fill="x",
-            padx=Spacing.XL,
-            pady=(Spacing.XL, Spacing.LG)
-        )
-
-        ctk.CTkLabel(
-            header,
-            text="Bienvenue",
-            font=Fonts.TITLE,
-            text_color=Colors.TEXT
-        ).pack(anchor="w")
-
-        ctk.CTkLabel(
-            header,
-            text="Sélectionnez un module pour commencer votre travail.",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT
-        ).pack(anchor="w", pady=(5, 0))
-
-        grid = ctk.CTkFrame(
+        DocumentEditorView(
             self.frame,
-            fg_color="transparent"
-        )
+            self.application,
+            on_back=self.back_to_documents
+        ).show()
 
-        grid.pack(
-            fill="both",
-            expand=True,
-            padx=Spacing.XL,
-            pady=(0, Spacing.XL)
-        )
+    def back_to_documents(self):
 
-        modules = [
-            ("📁", "Projet", "Créer, ouvrir ou enregistrer un projet"),
-            ("📚", "Documents", "Créer et organiser les documents"),
-            ("🖼️", "Ressources", "Images, illustrations, icônes..."),
-            ("🎨", "Modèles", "Choisir la présentation graphique"),
-            ("📄", "Génération", "Construire les pages"),
-            ("📦", "Export", "PDF, images et impression")
-        ]
-
-        for i, module in enumerate(modules):
-
-            ligne = i // 2
-            colonne = i % 2
-
-            carte = self.create_card(
-                grid,
-                *module
-            )
-
-            carte.grid(
-                row=ligne,
-                column=colonne,
-                padx=15,
-                pady=15,
-                sticky="nsew"
-            )
-
-        grid.grid_columnconfigure(0, weight=1)
-        grid.grid_columnconfigure(1, weight=1)
-
-        grid.grid_rowconfigure(0, weight=1)
-        grid.grid_rowconfigure(1, weight=1)
-        grid.grid_rowconfigure(2, weight=1)
-
-    def create_card(self, parent, icon, title, description):
-
-        card = ctk.CTkFrame(
-            parent,
-            fg_color=Colors.CARD,
-            corner_radius=15,
-            border_width=1,
-            border_color=Colors.BORDER
-        )
-
-        ctk.CTkLabel(
-            card,
-            text=icon,
-            font=("Segoe UI Emoji", 34)
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(20, 5)
-        )
-
-        ctk.CTkLabel(
-            card,
-            text=title,
-            font=Fonts.H2,
-            text_color=Colors.TEXT
-        ).pack(
-            anchor="w",
-            padx=25
-        )
-
-        ctk.CTkLabel(
-            card,
-            text=description,
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT,
-            justify="left",
-            wraplength=260
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(10, 20)
-        )
-
-        return card
+        if self.current_project is not None:
+            self.show_documents(self.current_project)

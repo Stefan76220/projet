@@ -1,0 +1,7 @@
+{
+    "id": "text_page",
+    "name": "Page de texte",
+    "description": "Type de page utilisé pour le texte.",
+    "templates": [],
+    "parameters": {}
+}

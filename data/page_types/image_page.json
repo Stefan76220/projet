@@ -1,0 +1,7 @@
+{
+    "id": "image_page",
+    "name": "Page image",
+    "description": "Page contenant principalement une image.",
+    "templates": [],
+    "parameters": {}
+}

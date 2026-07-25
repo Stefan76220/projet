@@ -1,13 +1,18 @@
 import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox
 
+from src.core.document_manager import DocumentManager
+
 
 class MenuBar:
 
-    def __init__(self, root, project_manager):
+    def __init__(self, root, project_manager, workspace):
 
         self.root = root
         self.project_manager = project_manager
+        self.workspace = workspace
+
+        self.document_manager = DocumentManager(project_manager)
 
         self.menu = tk.Menu(root)
 
@@ -21,6 +26,13 @@ class MenuBar:
         fichier.add_command(
             label="Ouvrir un projet",
             command=self.open_project
+        )
+
+        fichier.add_separator()
+
+        fichier.add_command(
+            label="Nouveau document",
+            command=self.new_document
         )
 
         fichier.add_separator()
@@ -63,6 +75,10 @@ class MenuBar:
             f"Générateur de livres - {self.project_manager.get_project_name()}"
         )
 
+        self.workspace.show_documents(
+            self.project_manager.get_project()
+        )
+
         messagebox.showinfo(
             "Projet créé",
             f"Le projet '{nom}' a été créé."
@@ -85,6 +101,10 @@ class MenuBar:
                 f"Générateur de livres - {self.project_manager.get_project_name()}"
             )
 
+            self.workspace.show_documents(
+                self.project_manager.get_project()
+            )
+
             messagebox.showinfo(
                 "Projet ouvert",
                 f"Le projet '{self.project_manager.get_project_name()}' est ouvert."
@@ -96,3 +116,33 @@ class MenuBar:
                 "Erreur",
                 str(e)
             )
+
+    def new_document(self):
+
+        if not self.project_manager.has_project():
+
+            messagebox.showwarning(
+                "Aucun projet",
+                "Ouvrez ou créez un projet avant de créer un document."
+            )
+
+            return
+
+        nom = simpledialog.askstring(
+            "Nouveau document",
+            "Nom du document :"
+        )
+
+        if not nom:
+            return
+
+        self.document_manager.new_document(nom)
+
+        self.workspace.show_documents(
+            self.project_manager.get_project()
+        )
+
+        messagebox.showinfo(
+            "Document créé",
+            f"Le document '{nom}' a été créé."
+        )
