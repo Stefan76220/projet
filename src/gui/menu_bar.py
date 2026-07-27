@@ -195,12 +195,6 @@ class MenuBar:
                 self.project_manager.project,
             )
 
-            messagebox.showinfo(
-                "Document créé",
-                f"Le document « {nom} » a été créé.",
-                parent=self.root,
-            )
-
         except Exception as exc:
 
             messagebox.showerror(
@@ -237,3 +231,4 @@ class MenuBar:
             f"MenuBar("
             f"project={project_name!r})"
         )
+    
