@@ -1,27 +1,67 @@
-class Colors:
+from __future__ import annotations
 
+
+class Colors:
+    """
+    Palette de couleurs de l'application.
+    """
+
+    # ==========================================================
     # Arrière-plans
+    # ==========================================================
+
     WINDOW = "#F5F5F3"
     SIDEBAR = "#E6E2DA"
     PANEL = "#F0EEE8"
     CARD = "#FCFCFB"
 
-    # Couleurs d'accent
+    # ==========================================================
+    # Couleurs principales
+    # ==========================================================
+
     PRIMARY = "#6B8E6E"
     PRIMARY_HOVER = "#5F8162"
 
-    # Boutons neutres
+    # ==========================================================
+    # Boutons
+    # ==========================================================
+
     BUTTON = "#D8D3CA"
     BUTTON_HOVER = "#C8C2B8"
 
+    # ==========================================================
     # Texte
+    # ==========================================================
+
     TEXT = "#2F312D"
     TEXT_LIGHT = "#666962"
 
-    # Séparateurs
+    # ==========================================================
+    # Bordures
+    # ==========================================================
+
     BORDER = "#D2CDC4"
 
-    # Couleurs d'état
+    # ==========================================================
+    # États
+    # ==========================================================
+
     SUCCESS = "#5D8A5A"
     WARNING = "#C89D49"
     ERROR = "#B85A5A"
+
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
+
+    @classmethod
+    def as_dict(cls) -> dict[str, str]:
+        """
+        Retourne la palette sous forme de dictionnaire.
+        """
+
+        return {
+            name: value
+            for name, value in vars(cls).items()
+            if name.isupper()
+        }

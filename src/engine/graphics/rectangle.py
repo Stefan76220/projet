@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from src.engine.foundation import Rect
-from src.engine.graphics.shape import Shape
+from .shape import Shape
+from src.engine.graphics.styles import ShapeStyle
 
 
 class Rectangle(Shape):
@@ -12,17 +13,32 @@ class Rectangle(Shape):
     def __init__(
         self,
         bounds: Rect,
-        fill_color: str = "#FFFFFF",
-        outline_color: str = "#000000",
-        outline_width: int = 1,
-    ):
+        style: ShapeStyle | None = None,
+    ) -> None:
 
         super().__init__(
             bounds=bounds,
-            fill_color=fill_color,
-            outline_color=outline_color,
-            outline_width=outline_width,
+            style=style,
         )
 
-    def draw(self, renderer) -> None:
+    # ==========================================================
+    # Duplication
+    # ==========================================================
+
+    def clone(self) -> "Rectangle":
+
+        return Rectangle(
+            bounds=self.bounds,
+            style=self.style.copy(),
+        )
+
+    # ==========================================================
+    # Rendu
+    # ==========================================================
+
+    def draw(
+        self,
+        renderer,
+    ) -> None:
+
         renderer.draw_rectangle(self)

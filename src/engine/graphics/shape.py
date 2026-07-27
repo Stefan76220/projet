@@ -3,7 +3,9 @@ from __future__ import annotations
 from abc import ABC
 
 from src.engine.foundation import Rect
-from src.engine.graphics.drawable import Drawable
+
+from .drawable import Drawable
+from .styles import ShapeStyle
 
 
 class Shape(Drawable, ABC):
@@ -14,34 +16,21 @@ class Shape(Drawable, ABC):
     def __init__(
         self,
         bounds: Rect,
-        fill_color: str = "#FFFFFF",
-        outline_color: str = "#000000",
-        outline_width: int = 1,
-    ):
+        style: ShapeStyle | None = None,
+    ) -> None:
 
-        super().__init__(bounds)
-
-        self._fill_color = fill_color
-        self._outline_color = outline_color
-        self._outline_width = outline_width
+        super().__init__(
+            bounds=bounds,
+            style=style or ShapeStyle(),
+        )
 
     @property
-    def fill_color(self) -> str:
-        return self._fill_color
+    def style(self) -> ShapeStyle:
+        return super().style
 
-    @property
-    def outline_color(self) -> str:
-        return self._outline_color
+    def set_style(
+        self,
+        style: ShapeStyle,
+    ) -> None:
 
-    @property
-    def outline_width(self) -> int:
-        return self._outline_width
-
-    def set_fill_color(self, color: str) -> None:
-        self._fill_color = color
-
-    def set_outline_color(self, color: str) -> None:
-        self._outline_color = color
-
-    def set_outline_width(self, width: int) -> None:
-        self._outline_width = max(0, width)
+        super().set_style(style)

@@ -3,8 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from src.engine.foundation import Rect
-from src.engine.graphics.transform import Transform
 from src.engine.utils import IdGenerator
+
+from .constraints import Constraints
+from .interaction_state import InteractionState
+from .selection_state import SelectionState
+from .styles import Style
+from .transform import Transform
 
 
 class Drawable(ABC):
@@ -12,7 +17,11 @@ class Drawable(ABC):
     Classe de base de tous les objets graphiques.
     """
 
-    def __init__(self, bounds: Rect):
+    def __init__(
+        self,
+        bounds: Rect,
+        style: Style | None = None,
+    ) -> None:
 
         self._id = IdGenerator.next()
 
@@ -21,8 +30,14 @@ class Drawable(ABC):
             size=bounds.size,
         )
 
-        self._selected = False
+        self._style = style or Style()
+
+        self._selection = SelectionState()
+        self._interaction = InteractionState()
+        self._constraints = Constraints()
+
         self._visible = True
+        self._locked = False
         self._z_index = 0
 
     @property
@@ -35,41 +50,74 @@ class Drawable(ABC):
 
     @property
     def bounds(self) -> Rect:
-        return Rect(
-            self._transform.position,
-            self._transform.size,
-        )
+        return self._transform.bounds
 
     @property
-    def selected(self) -> bool:
-        return self._selected
+    def style(self) -> Style:
+        return self._style
+
+    def set_style(
+        self,
+        style: Style,
+    ) -> None:
+        self._style = style
+
+    @property
+    def selection(self) -> SelectionState:
+        return self._selection
+
+    @property
+    def interaction(self) -> InteractionState:
+        return self._interaction
+
+    @property
+    def constraints(self) -> Constraints:
+        return self._constraints
 
     @property
     def visible(self) -> bool:
         return self._visible
 
+    def set_visible(
+        self,
+        value: bool,
+    ) -> None:
+        self._visible = value
+
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    def set_locked(
+        self,
+        value: bool,
+    ) -> None:
+        self._locked = value
+
     @property
     def z_index(self) -> int:
         return self._z_index
 
-    def set_visible(self, visible: bool) -> None:
-        self._visible = visible
-
-    def set_z_index(self, value: int) -> None:
+    def set_z_index(
+        self,
+        value: int,
+    ) -> None:
         self._z_index = value
 
-    def select(self) -> None:
-        self._selected = True
-
-    def unselect(self) -> None:
-        self._selected = False
-
-    def move(self, dx: float, dy: float) -> None:
-        self._transform.move(dx, dy)
-
-    def resize(self, width: float, height: float) -> None:
-        self._transform.resize(width, height)
+    @abstractmethod
+    def clone(self):
+        ...
 
     @abstractmethod
-    def draw(self, renderer) -> None:
-        raise NotImplementedError
+    def draw(
+        self,
+        renderer,
+    ) -> None:
+        ...
+
+    @abstractmethod
+    def contains(
+        self,
+        point,
+    ) -> bool:
+        ...

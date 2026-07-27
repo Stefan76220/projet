@@ -1,11 +1,40 @@
+from __future__ import annotations
+
+
 class Fonts:
+    """
+    Polices utilisées dans toute l'application.
+    """
 
-    TITLE = ("Segoe UI", 28, "bold")
+    FAMILY = "Segoe UI"
 
-    H1 = ("Segoe UI", 22, "bold")
+    # ==========================================================
+    # Titres
+    # ==========================================================
 
-    H2 = ("Segoe UI", 18, "bold")
+    TITLE = (FAMILY, 28, "bold")
+    H1 = (FAMILY, 22, "bold")
+    H2 = (FAMILY, 18, "bold")
 
-    NORMAL = ("Segoe UI", 14)
+    # ==========================================================
+    # Texte courant
+    # ==========================================================
 
-    SMALL = ("Segoe UI", 12)
+    NORMAL = (FAMILY, 14)
+    SMALL = (FAMILY, 12)
+
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
+
+    @classmethod
+    def all(cls) -> dict[str, tuple]:
+        """
+        Retourne toutes les polices définies.
+        """
+
+        return {
+            name: value
+            for name, value in vars(cls).items()
+            if name.isupper()
+        }

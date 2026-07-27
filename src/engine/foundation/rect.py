@@ -11,6 +11,10 @@ class Rect:
     origin: Point
     size: Size
 
+    # ==========================================================
+    # Coordonnées
+    # ==========================================================
+
     @property
     def left(self) -> float:
         return self.origin.x
@@ -28,19 +32,39 @@ class Rect:
         return self.origin.y + self.size.height
 
     @property
+    def width(self) -> float:
+        return self.size.width
+
+    @property
+    def height(self) -> float:
+        return self.size.height
+
+    @property
     def center(self) -> Point:
         return Point(
-            self.left + self.size.width / 2,
-            self.top + self.size.height / 2,
+            self.left + self.width / 2,
+            self.top + self.height / 2,
         )
 
-    def contains(self, point: Point) -> bool:
+    # ==========================================================
+    # Géométrie
+    # ==========================================================
+
+    def contains(
+        self,
+        point: Point,
+    ) -> bool:
+
         return (
             self.left <= point.x <= self.right
             and self.top <= point.y <= self.bottom
         )
 
-    def intersects(self, other: "Rect") -> bool:
+    def intersects(
+        self,
+        other: "Rect",
+    ) -> bool:
+
         return not (
             self.right < other.left
             or self.left > other.right
@@ -48,8 +72,22 @@ class Rect:
             or self.top > other.bottom
         )
 
-    def move(self, dx: float, dy: float) -> "Rect":
+    def move(
+        self,
+        dx: float,
+        dy: float,
+    ) -> "Rect":
+
         return Rect(
             self.origin.move(dx, dy),
             self.size,
         )
+
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
+
+    def __iter__(self):
+
+        yield self.origin
+        yield self.size

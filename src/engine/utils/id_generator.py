@@ -12,4 +12,13 @@ class IdGenerator:
 
     @classmethod
     def next(cls) -> int:
+
         return next(cls._counter)
+
+    @classmethod
+    def reset(
+        cls,
+        start: int = 1,
+    ) -> None:
+
+        cls._counter = count(start)

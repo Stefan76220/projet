@@ -1,56 +1,119 @@
 from __future__ import annotations
 
-from src.engine.graphics.drawable import Drawable
+from src.engine.container import Container
+
+from .drawable import Drawable
 
 
-class Layer:
+class Layer(Container[Drawable]):
     """
-    Une couche contient des objets graphiques.
+    Représente un calque d'une page.
+
+    Un calque est un conteneur d'objets graphiques.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
 
-        self._drawables: list[Drawable] = []
+        super().__init__()
 
-    def add(self, drawable: Drawable) -> None:
+        self.name: str = "Calque"
+        self.visible: bool = True
+        self.locked: bool = False
 
-        if drawable in self._drawables:
+    # ==========================================================
+    # Gestion des objets
+    # ==========================================================
+
+    def add(
+        self,
+        drawable: Drawable,
+    ) -> None:
+
+        if drawable in self:
             return
 
-        drawable.set_z_index(len(self._drawables))
-        self._drawables.append(drawable)
+        drawable.set_z_index(self.count)
 
-    def remove(self, drawable: Drawable) -> None:
+        super().add(drawable)
 
-        if drawable not in self._drawables:
+    def remove(
+        self,
+        drawable: Drawable,
+    ) -> None:
+
+        if drawable not in self:
             return
 
-        self._drawables.remove(drawable)
+        super().remove(drawable)
 
-        for index, item in enumerate(self._drawables):
-            item.set_z_index(index)
+        self._update_z_index()
 
     def clear(self) -> None:
 
-        self._drawables.clear()
+        super().clear()
 
-    def get_by_id(self, drawable_id: int) -> Drawable | None:
+    def drawable(
+        self,
+        index: int,
+    ) -> Drawable:
 
-        for drawable in self._drawables:
+        return self[index]
+
+    @property
+    def drawables(self) -> tuple[Drawable, ...]:
+
+        return self.children
+
+    @property
+    def drawable_count(self) -> int:
+
+        return self.count
+
+    @property
+    def has_drawables(self) -> bool:
+
+        return not self.is_empty
+
+    @property
+    def first_drawable(self) -> Drawable | None:
+
+        return self.first
+
+    @property
+    def last_drawable(self) -> Drawable | None:
+
+        return self.last
+
+    # ==========================================================
+    # Recherche
+    # ==========================================================
+
+    def get_by_id(
+        self,
+        drawable_id: int,
+    ) -> Drawable | None:
+
+        for drawable in self:
+
             if drawable.id == drawable_id:
                 return drawable
 
         return None
 
-    def drawables(self) -> list[Drawable]:
+    # ==========================================================
+    # Outils internes
+    # ==========================================================
 
-        return sorted(
-            self._drawables,
-            key=lambda drawable: drawable.z_index,
-        )
+    def _update_z_index(self) -> None:
+
+        for index, drawable in enumerate(self):
+
+            drawable.set_z_index(index)
+
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
 
     def __iter__(self):
-        return iter(self._drawables)
 
-    def __len__(self):
-        return len(self._drawables)
+        return iter(self.children)

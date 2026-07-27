@@ -131,8 +131,11 @@ class PageEditorView:
             sticky="ns"
         )
 
-        # Premier affichage
+        # Synchronisation des règles avec le viewport
+        self.workspace.viewport.add_listener(horizontal_ruler.redraw)
+        self.workspace.viewport.add_listener(vertical_ruler.redraw)
 
+        # Premier affichage
         horizontal_ruler.redraw()
         vertical_ruler.redraw()
 

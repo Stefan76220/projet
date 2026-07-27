@@ -1,16 +1,22 @@
-from pathlib import Path
+from __future__ import annotations
+
 import json
 from datetime import datetime
+from pathlib import Path
 
 
 class Page:
+    """
+    Représentation d'une page.
+    """
 
     VERSION = "1.0"
 
-    def __init__(self):
+    def __init__(self) -> None:
 
         self.number = 1
         self.title = ""
+
         self.page_type = "Page vide"
         self.state = "Brouillon"
 
@@ -20,17 +26,32 @@ class Page:
         self.format = "A5"
         self.orientation = "Portrait"
 
-        self.elements = []
-        self.history = []
+        self.elements: list = []
+        self.history: list = []
 
-        self.created = None
-        self.modified = None
+        self.created = ""
+        self.modified = ""
 
-        self.root = None
+        self.root: Path | None = None
 
-    # ---------------------------------------------------------
+    # ==========================================================
+    # Propriétés
+    # ==========================================================
 
-    def create(self, pages_folder: str | Path, number: int):
+    @property
+    def is_loaded(self) -> bool:
+
+        return self.root is not None
+
+    # ==========================================================
+    # Création / Chargement
+    # ==========================================================
+
+    def create(
+        self,
+        pages_folder: str | Path,
+        number: int,
+    ) -> Path:
 
         self.number = number
 
@@ -39,26 +60,95 @@ class Page:
         self.created = now
         self.modified = now
 
-        folder_name = f"page_{number:04d}"
+        self.root = (
+            Path(pages_folder)
+            / f"page_{number:04d}"
+        )
 
-        self.root = Path(pages_folder) / folder_name
-
-        self.root.mkdir(parents=True, exist_ok=True)
+        self._require_root().mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
         self.save()
 
-        return self.root
+        return self._require_root()
 
-    # ---------------------------------------------------------
+    def load(
+        self,
+        folder: str | Path,
+    ) -> Page:
 
-    def save(self):
+        self.root = Path(folder)
 
-        if self.root is None:
+        page_file = self._require_root() / "page.json"
+
+        with page_file.open(
+            "r",
+            encoding="utf-8",
+        ) as file:
+
+            data = json.load(file)
+
+        identity = data.get("identite", {})
+        metadata = data.get("metadonnees", {})
+        layout = data.get("mise_en_page", {})
+
+        self.number = identity.get("numero", 1)
+        self.title = identity.get("nom", "")
+        self.page_type = identity.get("type", "Page vide")
+        self.state = identity.get("etat", "Brouillon")
+
+        self.author = metadata.get("auteur", "")
+        self.created = metadata.get("creation", "")
+        self.modified = metadata.get("modification", "")
+        self.description = metadata.get("description", "")
+
+        self.format = layout.get("format", "A5")
+        self.orientation = layout.get("orientation", "Portrait")
+
+        self.elements = list(
+            data.get("elements", [])
+        )
+
+        self.history = list(
+            data.get("historique", [])
+        )
+
+        return self
+
+    # ==========================================================
+    # Sauvegarde
+    # ==========================================================
+
+    def save(self) -> None:
+
+        if not self.is_loaded:
             return
 
         self.modified = datetime.now().isoformat()
 
-        page_data = {
+        page_file = self._require_root() / "page.json"
+
+        with page_file.open(
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                self._page_data(),
+                file,
+                indent=4,
+                ensure_ascii=False,
+            )
+
+    # ==========================================================
+    # Construction
+    # ==========================================================
+
+    def _page_data(self) -> dict:
+
+        return {
 
             "identite": {
 
@@ -66,7 +156,7 @@ class Page:
                 "nom": self.title or f"Page {self.number:03d}",
                 "type": self.page_type,
                 "etat": self.state,
-                "version": self.VERSION
+                "version": self.VERSION,
 
             },
 
@@ -75,68 +165,40 @@ class Page:
                 "auteur": self.author,
                 "creation": self.created,
                 "modification": self.modified,
-                "description": self.description
+                "description": self.description,
 
             },
 
             "mise_en_page": {
 
                 "format": self.format,
-                "orientation": self.orientation
+                "orientation": self.orientation,
 
             },
 
             "elements": self.elements,
 
-            "historique": self.history
+            "historique": self.history,
 
         }
 
-        with open(
-            self.root / "page.json",
-            "w",
-            encoding="utf-8"
-        ) as f:
+    def _require_root(self) -> Path:
 
-            json.dump(
-                page_data,
-                f,
-                indent=4,
-                ensure_ascii=False
+        if self.root is None:
+            raise RuntimeError(
+                "La page n'a pas encore de dossier."
             )
 
-    # ---------------------------------------------------------
+        return self.root
 
-    def load(self, folder: str | Path):
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
 
-        self.root = Path(folder)
+    def __repr__(self) -> str:
 
-        with open(
-            self.root / "page.json",
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            data = json.load(f)
-
-        identite = data.get("identite", {})
-        meta = data.get("metadonnees", {})
-        mise_en_page = data.get("mise_en_page", {})
-
-        self.number = identite.get("numero", 1)
-        self.title = identite.get("nom", "")
-        self.page_type = identite.get("type", "Page vide")
-        self.state = identite.get("etat", "Brouillon")
-
-        self.author = meta.get("auteur", "")
-        self.created = meta.get("creation")
-        self.modified = meta.get("modification")
-        self.description = meta.get("description", "")
-
-        self.format = mise_en_page.get("format", "A5")
-        self.orientation = mise_en_page.get("orientation", "Portrait")
-
-        self.elements = data.get("elements", [])
-        self.history = data.get("historique", [])
-
-        return self
+        return (
+            f"{self.__class__.__name__}("
+            f"number={self.number}, "
+            f"type={self.page_type!r})"
+        )

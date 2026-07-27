@@ -1,21 +1,29 @@
 from __future__ import annotations
 
 from src.engine.foundation import Point
-from src.engine.graphics import Drawable, Layer, Page
+
+from .drawable import Drawable
+from .page import Page
 
 
 class HitTest:
     """
-    Recherche l'objet situé sous un point.
+    Recherche l'objet graphique situé sous un point.
     """
 
     @staticmethod
-    def drawable_at(page: Page, point: Point) -> Drawable | None:
+    def drawable_at(
+        page: Page,
+        point: Point,
+    ) -> Drawable | None:
 
         for layer in reversed(page.layers):
 
+            if not layer.visible:
+                continue
+
             drawables = sorted(
-                layer.drawables(),
+                layer,
                 key=lambda drawable: drawable.z_index,
                 reverse=True,
             )
@@ -25,7 +33,7 @@ class HitTest:
                 if not drawable.visible:
                     continue
 
-                if drawable.bounds.contains(point):
+                if drawable.contains(point):
                     return drawable
 
         return None

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class PageFormat:
     """
     Décrit un format de page en millimètres.
@@ -12,17 +14,36 @@ class PageFormat:
     height_mm: float
 
     @property
-    def portrait(self):
+    def portrait(self) -> bool:
+
         return self.width_mm <= self.height_mm
 
     @property
-    def landscape(self):
+    def landscape(self) -> bool:
+
         return self.width_mm > self.height_mm
 
+    @property
+    def size(self) -> tuple[float, float]:
 
-# ------------------------------------------------------------------
+        return (
+            self.width_mm,
+            self.height_mm,
+        )
+
+    def __repr__(self) -> str:
+
+        return (
+            f"PageFormat("
+            f"name={self.name!r}, "
+            f"width_mm={self.width_mm}, "
+            f"height_mm={self.height_mm})"
+        )
+
+
+# ==========================================================
 # Formats standards
-# ------------------------------------------------------------------
+# ==========================================================
 
 A5 = PageFormat(
     name="A5",
@@ -47,3 +68,11 @@ BOOK_17X24 = PageFormat(
     width_mm=170.0,
     height_mm=240.0,
 )
+
+__all__ = [
+    "PageFormat",
+    "A5",
+    "A4",
+    "BOOK_16X24",
+    "BOOK_17X24",
+]

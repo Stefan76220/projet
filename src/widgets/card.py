@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import customtkinter as ctk
 
 from src.theme.colors import Colors
@@ -5,69 +7,101 @@ from src.theme.fonts import Fonts
 
 
 class Card(ctk.CTkFrame):
+    """
+    Carte générique utilisée dans l'interface.
+    """
 
     def __init__(
         self,
         parent,
-        icon="",
-        title="",
-        subtitle="",
+        icon: str = "",
+        title: str = "",
+        subtitle: str = "",
         infos=None,
-        action_text="Ouvrir",
-        action_command=None
-    ):
+        action_text: str = "Ouvrir",
+        action_command=None,
+    ) -> None:
 
         super().__init__(
             parent,
             fg_color=Colors.CARD,
             border_width=1,
             border_color=Colors.BORDER,
-            corner_radius=12
+            corner_radius=12,
         )
 
-        if infos is None:
-            infos = []
+        self.grid_columnconfigure(
+            0,
+            weight=1,
+        )
 
-        self.grid_columnconfigure(0, weight=1)
+        infos = infos or []
 
-        # ------------------------------
-        # Titre
-        # ------------------------------
+        self._create_title(
+            icon,
+            title,
+        )
+
+        self._create_subtitle(
+            subtitle,
+        )
+
+        self._create_infos(
+            infos,
+        )
+
+        self._create_button(
+            action_text,
+            action_command,
+            len(infos),
+        )
+
+    # ==========================================================
+    # Construction
+    # ==========================================================
+
+    def _create_title(
+        self,
+        icon: str,
+        title: str,
+    ) -> None:
 
         ctk.CTkLabel(
             self,
             text=f"{icon} {title}",
             font=Fonts.H2,
-            text_color=Colors.TEXT
+            text_color=Colors.TEXT,
         ).grid(
             row=0,
             column=0,
             sticky="w",
             padx=20,
-            pady=(15, 5)
+            pady=(15, 5),
         )
 
-        # ------------------------------
-        # Sous-titre
-        # ------------------------------
+    def _create_subtitle(
+        self,
+        subtitle: str,
+    ) -> None:
 
         ctk.CTkLabel(
             self,
             text=subtitle,
             font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT
+            text_color=Colors.TEXT_LIGHT,
         ).grid(
             row=1,
             column=0,
             sticky="w",
-            padx=20
+            padx=20,
         )
 
-        # ------------------------------
-        # Informations
-        # ------------------------------
+    def _create_infos(
+        self,
+        infos: list[str],
+    ) -> None:
 
-        ligne = 2
+        row = 2
 
         for info in infos:
 
@@ -75,29 +109,40 @@ class Card(ctk.CTkFrame):
                 self,
                 text=info,
                 font=Fonts.NORMAL,
-                text_color=Colors.TEXT_LIGHT
+                text_color=Colors.TEXT_LIGHT,
             ).grid(
-                row=ligne,
+                row=row,
                 column=0,
                 sticky="w",
-                padx=20
+                padx=20,
             )
 
-            ligne += 1
+            row += 1
 
-        # ------------------------------
-        # Bouton
-        # ------------------------------
+    def _create_button(
+        self,
+        text: str,
+        command,
+        info_count: int,
+    ) -> None:
 
         ctk.CTkButton(
             self,
-            text=action_text,
+            text=text,
             width=120,
-            command=action_command
+            command=command,
         ).grid(
             row=0,
             column=1,
-            rowspan=max(3, ligne),
+            rowspan=max(3, info_count + 2),
             padx=20,
-            pady=20
+            pady=20,
         )
+
+    # ==========================================================
+    # Utilitaires
+    # ==========================================================
+
+    def __repr__(self) -> str:
+
+        return f"{self.__class__.__name__}()"
