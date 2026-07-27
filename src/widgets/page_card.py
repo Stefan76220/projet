@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tkinter as tk
 import traceback
 from datetime import datetime
 
@@ -19,6 +20,7 @@ class PageCard(ctk.CTkFrame):
         parent,
         page: dict,
         on_open=None,
+        on_rename=None,
     ) -> None:
 
         super().__init__(
@@ -31,6 +33,9 @@ class PageCard(ctk.CTkFrame):
 
         self.page = page
         self.on_open = on_open
+        self.on_rename = on_rename
+
+        self.actions_menu: tk.Menu | None = None
 
         self.grid_columnconfigure(1, weight=1)
 
@@ -278,11 +283,86 @@ class PageCard(ctk.CTkFrame):
             fg_color=Colors.BUTTON,
             hover_color=Colors.BUTTON_HOVER,
             text_color=Colors.TEXT,
-            command=self._future_actions,
+            command=self.show_actions_menu,
         ).grid(
             row=1,
             column=0,
         )
+
+    # ==========================================================
+    # Menu d’actions
+    # ==========================================================
+
+    def show_actions_menu(self) -> None:
+
+        if self.actions_menu is not None:
+            self.actions_menu.destroy()
+
+        self.actions_menu = tk.Menu(
+            self,
+            tearoff=False,
+            font=Fonts.NORMAL,
+            background=Colors.CARD,
+            foreground=Colors.TEXT,
+            activebackground=Colors.BUTTON_HOVER,
+            activeforeground=Colors.TEXT,
+            borderwidth=1,
+            relief="solid",
+        )
+
+        self.actions_menu.add_command(
+            label="📄  Renommer...",
+            command=self.rename_page,
+        )
+
+        self.actions_menu.add_separator()
+
+        self.actions_menu.add_command(
+            label="📋  Dupliquer",
+            state="disabled",
+        )
+
+        self.actions_menu.add_command(
+            label="📌  Changer le type",
+            state="disabled",
+        )
+
+        self.actions_menu.add_command(
+            label="🎨  Couleur éditoriale",
+            state="disabled",
+        )
+
+        lock_label = (
+            "🔓  Déverrouiller"
+            if self.page.get("verrouillee", False)
+            else "🔒  Verrouiller"
+        )
+
+        self.actions_menu.add_command(
+            label=lock_label,
+            state="disabled",
+        )
+
+        self.actions_menu.add_separator()
+
+        self.actions_menu.add_command(
+            label="📤  Exporter la page",
+            state="disabled",
+        )
+
+        self.actions_menu.add_command(
+            label="🗑  Supprimer",
+            state="disabled",
+        )
+
+        try:
+            self.actions_menu.tk_popup(
+                self.winfo_pointerx(),
+                self.winfo_pointery(),
+            )
+
+        finally:
+            self.actions_menu.grab_release()
 
     # ==========================================================
     # Actions
@@ -301,13 +381,18 @@ class PageCard(ctk.CTkFrame):
         except Exception:
             traceback.print_exc()
 
-    def _future_actions(self) -> None:
-        """
-        Emplacement réservé aux futures actions :
-        renommer, dupliquer, verrouiller et supprimer.
-        """
+    def rename_page(self) -> None:
 
-        return
+        if self.on_rename is None:
+            return
+
+        try:
+            self.on_rename(
+                self.page,
+            )
+
+        except Exception:
+            traceback.print_exc()
 
     # ==========================================================
     # Utilitaires
