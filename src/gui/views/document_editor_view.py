@@ -5,9 +5,30 @@ import traceback
 import customtkinter as ctk
 
 from src.gui.views.page_editor_view import PageEditorView
+from src.library.page_types.page_type_library import PageTypeLibrary
 from src.theme.colors import Colors
 from src.theme.fonts import Fonts
 from src.widgets.page_card import PageCard
+
+
+PAGE_TYPE_APPEARANCES = {
+    "Page vide": {
+        "icone": "📄",
+        "couleur": "#D9D4C7",
+    },
+    "Page de texte": {
+        "icone": "📝",
+        "couleur": "#B8C8D8",
+    },
+    "Page image": {
+        "icone": "🖼️",
+        "couleur": "#C8B8D8",
+    },
+    "Page de chapitre": {
+        "icone": "📖",
+        "couleur": "#D8C3A5",
+    },
+}
 
 
 class RenamePageDialog(ctk.CTkToplevel):
@@ -194,6 +215,299 @@ class RenamePageDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+class ChangePageTypeDialog(ctk.CTkToplevel):
+    """
+    Fenêtre permettant de choisir le type d'une page.
+    """
+
+    def __init__(
+        self,
+        parent,
+        current_type: str,
+        page_types: list,
+        on_validate,
+    ) -> None:
+
+        super().__init__(parent)
+
+        self.on_validate = on_validate
+        self.page_types = page_types
+
+        self.type_names = [
+            page_type.name
+            for page_type in self.page_types
+        ]
+
+        if "Page vide" not in self.type_names:
+            self.type_names.insert(
+                0,
+                "Page vide",
+            )
+
+        selected_type = (
+            current_type
+            if current_type in self.type_names
+            else self.type_names[0]
+        )
+
+        self.selected_type = ctk.StringVar(
+            value=selected_type,
+        )
+
+        self.title("Changer le type de page")
+        self.geometry("500x330")
+        self.resizable(False, False)
+
+        self.transient(
+            parent.winfo_toplevel(),
+        )
+
+        self.grab_set()
+
+        self.configure(
+            fg_color=Colors.WINDOW,
+        )
+
+        self.protocol(
+            "WM_DELETE_WINDOW",
+            self.cancel,
+        )
+
+        self._create_content()
+
+        self.after(
+            50,
+            self._center_window,
+        )
+
+    # ==========================================================
+    # Construction
+    # ==========================================================
+
+    def _create_content(self) -> None:
+
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=22,
+        )
+
+        ctk.CTkLabel(
+            container,
+            text="Changer le type de page",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).pack(
+            fill="x",
+            pady=(0, 8),
+        )
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                "Choisis la fonction éditoriale "
+                "de cette page."
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).pack(
+            fill="x",
+            pady=(0, 16),
+        )
+
+        self.type_menu = ctk.CTkOptionMenu(
+            container,
+            values=self.type_names,
+            variable=self.selected_type,
+            height=40,
+            font=Fonts.NORMAL,
+            dropdown_font=Fonts.NORMAL,
+            fg_color=Colors.BUTTON,
+            button_color=Colors.PRIMARY,
+            button_hover_color=Colors.PRIMARY_HOVER,
+            text_color=Colors.TEXT,
+            command=self._update_description,
+        )
+
+        self.type_menu.pack(
+            fill="x",
+        )
+
+        self.description_frame = ctk.CTkFrame(
+            container,
+            fg_color=Colors.CARD,
+            border_width=1,
+            border_color=Colors.BORDER,
+            corner_radius=10,
+        )
+
+        self.description_frame.pack(
+            fill="x",
+            pady=(16, 0),
+        )
+
+        self.description_label = ctk.CTkLabel(
+            self.description_frame,
+            text="",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+            justify="left",
+            wraplength=410,
+        )
+
+        self.description_label.pack(
+            fill="x",
+            padx=16,
+            pady=14,
+        )
+
+        self._update_description(
+            self.selected_type.get(),
+        )
+
+        buttons = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+
+        buttons.pack(
+            fill="x",
+            side="bottom",
+            pady=(18, 0),
+        )
+
+        ctk.CTkButton(
+            buttons,
+            text="Annuler",
+            width=110,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.cancel,
+        ).pack(
+            side="right",
+            padx=(8, 0),
+        )
+
+        ctk.CTkButton(
+            buttons,
+            text="Valider",
+            width=110,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self.validate,
+        ).pack(
+            side="right",
+        )
+
+    # ==========================================================
+    # Informations
+    # ==========================================================
+
+    def _update_description(
+        self,
+        selected_name: str,
+    ) -> None:
+
+        if selected_name == "Page vide":
+
+            description = (
+                "Page libre sans structure éditoriale imposée."
+            )
+
+        else:
+
+            description = (
+                "Aucune description disponible."
+            )
+
+            for page_type in self.page_types:
+
+                if page_type.name == selected_name:
+
+                    description = (
+                        page_type.description
+                        or description
+                    )
+
+                    break
+
+        appearance = PAGE_TYPE_APPEARANCES.get(
+            selected_name,
+            PAGE_TYPE_APPEARANCES["Page vide"],
+        )
+
+        icon = appearance["icone"]
+
+        self.description_label.configure(
+            text=f"{icon}  {description}",
+        )
+
+    # ==========================================================
+    # Actions
+    # ==========================================================
+
+    def validate(self) -> None:
+
+        selected_name = self.selected_type.get().strip()
+
+        if not selected_name:
+            return
+
+        try:
+            self.on_validate(
+                selected_name,
+            )
+
+        finally:
+            self.destroy()
+
+    def cancel(self) -> None:
+
+        self.destroy()
+
+    # ==========================================================
+    # Position
+    # ==========================================================
+
+    def _center_window(self) -> None:
+
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+
+        width = self.winfo_width()
+        height = self.winfo_height()
+
+        x = parent_x + max(
+            0,
+            (parent_width - width) // 2,
+        )
+
+        y = parent_y + max(
+            0,
+            (parent_height - height) // 2,
+        )
+
+        self.geometry(
+            f"+{x}+{y}",
+        )
+
+
 class DocumentEditorView:
     """
     Vue d'édition d'un document.
@@ -215,6 +529,13 @@ class DocumentEditorView:
         )
 
         self.rename_dialog: RenamePageDialog | None = None
+
+        self.change_type_dialog: (
+            ChangePageTypeDialog | None
+        ) = None
+
+        self.page_type_library = PageTypeLibrary()
+        self.page_type_library.load()
 
     # ==========================================================
     # Affichage
@@ -290,6 +611,7 @@ class DocumentEditorView:
                 on_open=self.open_page,
                 on_rename=self.rename_page,
                 on_duplicate=self.duplicate_page,
+                on_change_type=self.change_page_type,
             ).pack(
                 fill="x",
                 pady=(0, 10),
@@ -416,9 +738,11 @@ class DocumentEditorView:
             self.rename_dialog = RenamePageDialog(
                 parent=self.parent,
                 current_name=current_name,
-                on_validate=lambda new_name: self._apply_page_name(
-                    page,
-                    new_name,
+                on_validate=lambda new_name: (
+                    self._apply_page_name(
+                        page,
+                        new_name,
+                    )
                 ),
             )
 
@@ -450,6 +774,42 @@ class DocumentEditorView:
         except Exception:
             traceback.print_exc()
 
+    def change_page_type(
+        self,
+        page_info: dict,
+    ) -> None:
+
+        if self.document is None:
+            return
+
+        try:
+            page = self.document.get_page(
+                page_info["numero"],
+            )
+
+            if page is None:
+                return
+
+            if page.locked:
+                return
+
+            self.page_type_library.load()
+
+            self.change_type_dialog = ChangePageTypeDialog(
+                parent=self.parent,
+                current_type=page.page_type,
+                page_types=self.page_type_library.all(),
+                on_validate=lambda page_type: (
+                    self._apply_page_type(
+                        page,
+                        page_type,
+                    )
+                ),
+            )
+
+        except Exception:
+            traceback.print_exc()
+
     def _apply_page_name(
         self,
         page,
@@ -459,6 +819,38 @@ class DocumentEditorView:
         try:
             page.rename(
                 new_name,
+            )
+
+            self.document.update_page_summary(
+                page,
+            )
+
+            self.show()
+
+        except Exception:
+            traceback.print_exc()
+
+    def _apply_page_type(
+        self,
+        page,
+        page_type: str,
+    ) -> None:
+
+        try:
+            appearance = PAGE_TYPE_APPEARANCES.get(
+                page_type,
+                PAGE_TYPE_APPEARANCES["Page vide"],
+            )
+
+            page.set_type(
+                page_type,
+            )
+
+            page.icon = appearance["icone"]
+            page.color = appearance["couleur"]
+
+            page.save(
+                update_history=False,
             )
 
             self.document.update_page_summary(

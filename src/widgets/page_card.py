@@ -22,6 +22,8 @@ class PageCard(ctk.CTkFrame):
         on_open=None,
         on_rename=None,
         on_duplicate=None,
+        on_change_type=None,
+        on_change_color=None,
     ) -> None:
 
         super().__init__(
@@ -36,6 +38,8 @@ class PageCard(ctk.CTkFrame):
         self.on_open = on_open
         self.on_rename = on_rename
         self.on_duplicate = on_duplicate
+        self.on_change_type = on_change_type
+        self.on_change_color = on_change_color
 
         self.actions_menu: tk.Menu | None = None
 
@@ -326,12 +330,12 @@ class PageCard(ctk.CTkFrame):
 
         self.actions_menu.add_command(
             label="📌  Changer le type",
-            state="disabled",
+            command=self.change_page_type,
         )
 
         self.actions_menu.add_command(
             label="🎨  Couleur éditoriale",
-            state="disabled",
+            command=self.change_page_color,
         )
 
         lock_label = (
@@ -403,6 +407,32 @@ class PageCard(ctk.CTkFrame):
 
         try:
             self.on_duplicate(
+                self.page,
+            )
+
+        except Exception:
+            traceback.print_exc()
+
+    def change_page_type(self) -> None:
+
+        if self.on_change_type is None:
+            return
+
+        try:
+            self.on_change_type(
+                self.page,
+            )
+
+        except Exception:
+            traceback.print_exc()
+
+    def change_page_color(self) -> None:
+
+        if self.on_change_color is None:
+            return
+
+        try:
+            self.on_change_color(
                 self.page,
             )
 
