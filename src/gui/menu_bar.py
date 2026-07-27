@@ -3,8 +3,6 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 
-from src.core.document_manager import DocumentManager
-
 
 class MenuBar:
     """
@@ -21,13 +19,12 @@ class MenuBar:
         self.root = root
         self.project_manager = project_manager
         self.workspace = workspace
-
-        self.document_manager = DocumentManager(project_manager)
+        self.application = workspace.application
+        self.document_manager = self.application.document_manager
 
         self.menu = tk.Menu(root)
 
         self._build_file_menu()
-
         self.root.config(menu=self.menu)
 
     # ==========================================================
@@ -77,7 +74,7 @@ class MenuBar:
     def new_project(self) -> None:
 
         dossier = filedialog.askdirectory(
-            title="Choisir le dossier du projet",
+            title="Choisir le dossier dans lequel créer le projet",
         )
 
         if not dossier:
@@ -86,22 +83,39 @@ class MenuBar:
         nom = simpledialog.askstring(
             "Nouveau projet",
             "Nom du projet :",
+            parent=self.root,
         )
 
         if not nom:
             return
 
-        self.project_manager.new_project(
-            dossier,
-            nom,
-        )
+        nom = nom.strip()
 
-        self._refresh_workspace()
+        if not nom:
+            return
 
-        messagebox.showinfo(
-            "Projet créé",
-            f"Le projet '{nom}' a été créé.",
-        )
+        try:
+
+            self.project_manager.new_project(
+                dossier,
+                nom,
+            )
+
+            self._refresh_workspace()
+
+            messagebox.showinfo(
+                "Projet créé",
+                f"Le projet « {nom} » a été créé.",
+                parent=self.root,
+            )
+
+        except Exception as exc:
+
+            messagebox.showerror(
+                "Erreur lors de la création",
+                str(exc),
+                parent=self.root,
+            )
 
     def open_project(self) -> None:
 
@@ -123,17 +137,19 @@ class MenuBar:
             messagebox.showinfo(
                 "Projet ouvert",
                 (
-                    f"Le projet "
-                    f"'{self.project_manager.get_project_name()}' "
-                    f"est ouvert."
+                    f"Le projet « "
+                    f"{self.project_manager.get_project_name()} "
+                    f"» est ouvert."
                 ),
+                parent=self.root,
             )
 
         except Exception as exc:
 
             messagebox.showerror(
-                "Erreur",
+                "Erreur lors de l'ouverture",
                 str(exc),
+                parent=self.root,
             )
 
     # ==========================================================
@@ -142,7 +158,7 @@ class MenuBar:
 
     def new_document(self) -> None:
 
-        if not self.project_manager.has_project():
+        if not self.project_manager.has_project:
 
             messagebox.showwarning(
                 "Aucun projet",
@@ -150,6 +166,7 @@ class MenuBar:
                     "Ouvrez ou créez un projet "
                     "avant de créer un document."
                 ),
+                parent=self.root,
             )
 
             return
@@ -157,23 +174,40 @@ class MenuBar:
         nom = simpledialog.askstring(
             "Nouveau document",
             "Nom du document :",
+            parent=self.root,
         )
 
         if not nom:
             return
 
-        self.document_manager.new_document(
-            nom,
-        )
+        nom = nom.strip()
 
-        self.workspace.show_documents(
-            self.project_manager.get_project(),
-        )
+        if not nom:
+            return
 
-        messagebox.showinfo(
-            "Document créé",
-            f"Le document '{nom}' a été créé.",
-        )
+        try:
+
+            self.application.controller.create_document(
+                nom,
+            )
+
+            self.workspace.show_documents(
+                self.project_manager.project,
+            )
+
+            messagebox.showinfo(
+                "Document créé",
+                f"Le document « {nom} » a été créé.",
+                parent=self.root,
+            )
+
+        except Exception as exc:
+
+            messagebox.showerror(
+                "Erreur lors de la création",
+                str(exc),
+                parent=self.root,
+            )
 
     # ==========================================================
     # Utilitaires
@@ -181,18 +215,25 @@ class MenuBar:
 
     def _refresh_workspace(self) -> None:
 
+        project = self.project_manager.project
+
         self.root.title(
             "Générateur de livres - "
-            f"{self.project_manager.get_project_name()}"
+            f"{project.name}"
         )
 
         self.workspace.show_documents(
-            self.project_manager.get_project(),
+            project,
         )
 
     def __repr__(self) -> str:
 
+        project_name = None
+
+        if self.project_manager.has_project:
+            project_name = self.project_manager.get_project_name()
+
         return (
             f"MenuBar("
-            f"project={self.project_manager.get_project_name() if self.project_manager.has_project() else None!r})"
+            f"project={project_name!r})"
         )
