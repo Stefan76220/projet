@@ -3,7 +3,7 @@ from __future__ import annotations
 from customtkinter import CTkCanvas
 
 from src.engine.camera.viewport import Viewport
-from src.engine.graphics.workspace import Workspace
+from src.engine.workspace import Workspace
 from src.engine.page_format import A5
 from src.gui.renderer.canvas_renderer import CanvasRenderer
 
