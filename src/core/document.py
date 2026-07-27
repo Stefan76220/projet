@@ -9,10 +9,10 @@ from src.core.page import Page
 
 class Document:
     """
-    Représentation d'un document.
+    Représentation d'un document et de ses pages éditoriales.
     """
 
-    VERSION = "1.0"
+    VERSION = "2.0"
 
     def __init__(self) -> None:
 
@@ -23,8 +23,8 @@ class Document:
 
         self.pages: list[dict] = []
 
-        self.creation_date: str = ""
-        self.modification_date: str = ""
+        self.creation_date = ""
+        self.modification_date = ""
 
     # ==========================================================
     # Propriétés
@@ -32,16 +32,14 @@ class Document:
 
     @property
     def is_loaded(self) -> bool:
-
         return self.root is not None
 
     @property
     def page_count(self) -> int:
-
         return len(self.pages)
 
     # ==========================================================
-    # Création / Chargement
+    # Création
     # ==========================================================
 
     def create(
@@ -51,7 +49,6 @@ class Document:
     ) -> Document:
 
         self.name = name
-
         self.root = Path(documents_folder) / name
 
         root = self._require_root()
@@ -76,6 +73,10 @@ class Document:
 
         return self
 
+    # ==========================================================
+    # Chargement
+    # ==========================================================
+
     def load(
         self,
         folder: str | Path,
@@ -89,7 +90,6 @@ class Document:
             "r",
             encoding="utf-8",
         ) as file:
-
             data = json.load(file)
 
         self.name = data.get(
@@ -113,8 +113,13 @@ class Document:
         )
 
         self.pages = list(
-            data.get("pages", [])
+            data.get(
+                "pages",
+                [],
+            )
         )
+
+        self._refresh_page_summaries()
 
         return self
 
@@ -152,23 +157,19 @@ class Document:
         page_type: str | None = None,
     ) -> Page:
 
-        page_type = page_type or "Page vide"
-
-        number = self.page_count + 1
+        page_type = page_type or Page.DEFAULT_TYPE
+        number = self._next_page_number()
 
         page = Page()
-        page.page_type = page_type
 
         page.create(
-            self._require_root() / "pages",
-            number,
+            pages_folder=self._require_root() / "pages",
+            number=number,
+            page_type=page_type,
         )
 
         self.pages.append(
-            {
-                "numero": number,
-                "dossier": f"page_{number:04d}",
-            }
+            page.to_summary()
         )
 
         self.save()
@@ -180,22 +181,138 @@ class Document:
         numero: int,
     ) -> Page | None:
 
+        page_info = self._find_page_info(
+            numero,
+        )
+
+        if page_info is None:
+            return None
+
+        folder_name = page_info.get(
+            "dossier",
+            f"page_{numero:04d}",
+        )
+
         folder = (
             self._require_root()
             / "pages"
-            / f"page_{numero:04d}"
+            / folder_name
         )
 
         if not folder.exists():
             return None
 
         page = Page()
-
-        page.load(
-            folder,
-        )
+        page.load(folder)
 
         return page
+
+    def update_page_summary(
+        self,
+        page: Page,
+    ) -> None:
+
+        for index, page_info in enumerate(self.pages):
+
+            same_identifier = (
+                page_info.get("identifiant")
+                and page_info.get("identifiant") == page.identifier
+            )
+
+            same_number = (
+                page_info.get("numero") == page.number
+            )
+
+            if same_identifier or same_number:
+
+                self.pages[index] = page.to_summary()
+                self.save()
+                return
+
+        self.pages.append(
+            page.to_summary()
+        )
+
+        self.save()
+
+    # ==========================================================
+    # Synchronisation
+    # ==========================================================
+
+    def _refresh_page_summaries(self) -> None:
+        """
+        Met à niveau automatiquement les anciens documents.
+        """
+
+        refreshed_pages: list[dict] = []
+
+        for page_info in self.pages:
+
+            number = page_info.get(
+                "numero",
+                0,
+            )
+
+            folder_name = page_info.get(
+                "dossier",
+                f"page_{number:04d}",
+            )
+
+            folder = (
+                self._require_root()
+                / "pages"
+                / folder_name
+            )
+
+            page_file = folder / "page.json"
+
+            if not page_file.exists():
+                refreshed_pages.append(page_info)
+                continue
+
+            try:
+
+                page = Page()
+                page.load(folder)
+
+                refreshed_pages.append(
+                    page.to_summary()
+                )
+
+            except Exception:
+
+                refreshed_pages.append(page_info)
+
+        self.pages = refreshed_pages
+        self.save()
+
+    # ==========================================================
+    # Recherche
+    # ==========================================================
+
+    def _find_page_info(
+        self,
+        numero: int,
+    ) -> dict | None:
+
+        for page_info in self.pages:
+
+            if page_info.get("numero") == numero:
+                return page_info
+
+        return None
+
+    def _next_page_number(self) -> int:
+
+        if not self.pages:
+            return 1
+
+        numbers = [
+            page.get("numero", 0)
+            for page in self.pages
+        ]
+
+        return max(numbers) + 1
 
     # ==========================================================
     # Construction
