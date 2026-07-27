@@ -161,6 +161,7 @@ class RenamePageDialog(ctk.CTkToplevel):
     def _prepare_entry(self) -> None:
 
         self.name_entry.focus_set()
+
         self.name_entry.select_range(
             0,
             "end",
@@ -288,6 +289,7 @@ class DocumentEditorView:
                 page,
                 on_open=self.open_page,
                 on_rename=self.rename_page,
+                on_duplicate=self.duplicate_page,
             ).pack(
                 fill="x",
                 pady=(0, 10),
@@ -419,6 +421,31 @@ class DocumentEditorView:
                     new_name,
                 ),
             )
+
+        except Exception:
+            traceback.print_exc()
+
+    def duplicate_page(
+        self,
+        page_info: dict,
+    ) -> None:
+
+        if self.document is None:
+            return
+
+        try:
+            duplicated_page = self.document.duplicate_page(
+                page_info["numero"],
+            )
+
+            if duplicated_page is None:
+                return
+
+            self.document = (
+                self.application.document_manager.get_document()
+            )
+
+            self.show()
 
         except Exception:
             traceback.print_exc()

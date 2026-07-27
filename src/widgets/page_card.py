@@ -21,6 +21,7 @@ class PageCard(ctk.CTkFrame):
         page: dict,
         on_open=None,
         on_rename=None,
+        on_duplicate=None,
     ) -> None:
 
         super().__init__(
@@ -34,6 +35,7 @@ class PageCard(ctk.CTkFrame):
         self.page = page
         self.on_open = on_open
         self.on_rename = on_rename
+        self.on_duplicate = on_duplicate
 
         self.actions_menu: tk.Menu | None = None
 
@@ -319,7 +321,7 @@ class PageCard(ctk.CTkFrame):
 
         self.actions_menu.add_command(
             label="📋  Dupliquer",
-            state="disabled",
+            command=self.duplicate_page,
         )
 
         self.actions_menu.add_command(
@@ -388,6 +390,19 @@ class PageCard(ctk.CTkFrame):
 
         try:
             self.on_rename(
+                self.page,
+            )
+
+        except Exception:
+            traceback.print_exc()
+
+    def duplicate_page(self) -> None:
+
+        if self.on_duplicate is None:
+            return
+
+        try:
+            self.on_duplicate(
                 self.page,
             )
 

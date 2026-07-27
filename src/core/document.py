@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from src.core.page import Page
 
@@ -207,6 +210,106 @@ class Document:
 
         return page
 
+    def duplicate_page(
+        self,
+        numero: int,
+    ) -> Page | None:
+        """
+        Duplique intégralement une page.
+
+        La copie reçoit :
+        - un nouveau numéro ;
+        - un nouvel identifiant ;
+        - un nouveau dossier ;
+        - de nouvelles dates ;
+        - un nom de copie unique.
+
+        Les fichiers éventuellement présents dans le dossier de la page
+        sont également copiés.
+        """
+
+        source_page = self.get_page(
+            numero,
+        )
+
+        if source_page is None:
+            return None
+
+        source_root = source_page.root
+
+        if source_root is None or not source_root.exists():
+            return None
+
+        new_number = self._next_page_number()
+        new_title = self._next_copy_title(
+            source_page.display_title,
+        )
+
+        pages_folder = self._require_root() / "pages"
+        destination_root = pages_folder / f"page_{new_number:04d}"
+
+        if destination_root.exists():
+            raise FileExistsError(
+                f"Le dossier {destination_root.name} existe déjà."
+            )
+
+        shutil.copytree(
+            source_root,
+            destination_root,
+        )
+
+        duplicated_page = Page()
+        duplicated_page.load(
+            destination_root,
+        )
+
+        now = datetime.now().isoformat()
+
+        duplicated_page.identifier = str(uuid4())
+        duplicated_page.number = new_number
+        duplicated_page.title = new_title
+
+        duplicated_page.created = now
+        duplicated_page.modified = now
+
+        # Une copie doit pouvoir être modifiée immédiatement.
+        duplicated_page.locked = False
+
+        duplicated_page.history = []
+
+        duplicated_page._add_history(
+            action="duplication",
+            description=(
+                f"Page créée par duplication de "
+                f"« {source_page.display_title} »."
+            ),
+        )
+
+        duplicated_page.save(
+            update_history=False,
+        )
+
+        source_index = self._find_page_index(
+            numero,
+        )
+
+        duplicated_summary = duplicated_page.to_summary()
+
+        if source_index is None:
+            self.pages.append(
+                duplicated_summary,
+            )
+
+        else:
+            self.pages.insert(
+                source_index + 1,
+                duplicated_summary,
+            )
+
+        self.save()
+
+        return duplicated_page
+
     def update_page_summary(
         self,
         page: Page,
@@ -234,6 +337,62 @@ class Document:
         )
 
         self.save()
+
+    # ==========================================================
+    # Noms des copies
+    # ==========================================================
+
+    def _next_copy_title(
+        self,
+        original_title: str,
+    ) -> str:
+
+        base_title = self._copy_base_title(
+            original_title,
+        )
+
+        existing_titles = {
+            str(page.get("nom", "")).strip().casefold()
+            for page in self.pages
+        }
+
+        first_copy = f"{base_title} (copie)"
+
+        if first_copy.casefold() not in existing_titles:
+            return first_copy
+
+        copy_number = 2
+
+        while True:
+
+            candidate = (
+                f"{base_title} "
+                f"(copie {copy_number})"
+            )
+
+            if candidate.casefold() not in existing_titles:
+                return candidate
+
+            copy_number += 1
+
+    @staticmethod
+    def _copy_base_title(
+        title: str,
+    ) -> str:
+
+        clean_title = title.strip()
+
+        copy_pattern = re.compile(
+            r"\s+\(copie(?:\s+\d+)?\)$",
+            flags=re.IGNORECASE,
+        )
+
+        base_title = copy_pattern.sub(
+            "",
+            clean_title,
+        ).strip()
+
+        return base_title or "Page"
 
     # ==========================================================
     # Synchronisation
@@ -267,13 +426,17 @@ class Document:
             page_file = folder / "page.json"
 
             if not page_file.exists():
-                refreshed_pages.append(page_info)
+                refreshed_pages.append(
+                    page_info,
+                )
                 continue
 
             try:
 
                 page = Page()
-                page.load(folder)
+                page.load(
+                    folder,
+                )
 
                 refreshed_pages.append(
                     page.to_summary()
@@ -281,7 +444,9 @@ class Document:
 
             except Exception:
 
-                refreshed_pages.append(page_info)
+                refreshed_pages.append(
+                    page_info,
+                )
 
         self.pages = refreshed_pages
         self.save()
@@ -299,6 +464,18 @@ class Document:
 
             if page_info.get("numero") == numero:
                 return page_info
+
+        return None
+
+    def _find_page_index(
+        self,
+        numero: int,
+    ) -> int | None:
+
+        for index, page_info in enumerate(self.pages):
+
+            if page_info.get("numero") == numero:
+                return index
 
         return None
 
