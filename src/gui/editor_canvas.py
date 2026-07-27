@@ -3,7 +3,7 @@ from __future__ import annotations
 from customtkinter import CTkCanvas
 
 from src.engine.camera.viewport import Viewport
-from src.engine.workspace import Workspace
+from src.engine.document import Document
 from src.engine.page_format import A5
 from src.gui.renderer.canvas_renderer import CanvasRenderer
 
@@ -28,7 +28,13 @@ class EditorCanvas(CTkCanvas):
             **kwargs,
         )
 
-        self.workspace = Workspace()
+        self.document = Document(
+            "Page en cours",
+        )
+
+        self.document.create_page()
+
+        self.workspace = self.document.workspace
 
         self.viewport = Viewport(
             self.workspace.camera,
@@ -68,19 +74,42 @@ class EditorCanvas(CTkCanvas):
 
     def _bind_events(self) -> None:
 
-        self.bind("<Configure>", self._on_resize)
+        self.bind(
+            "<Configure>",
+            self._on_resize,
+        )
 
-        self.bind("<Motion>", self._mouse_move)
+        self.bind(
+            "<Motion>",
+            self._mouse_move,
+        )
 
-        self.bind("<ButtonPress-2>", self._start_pan)
-        self.bind("<B2-Motion>", self._pan)
-        self.bind("<ButtonRelease-2>", self._stop_pan)
+        self.bind(
+            "<ButtonPress-2>",
+            self._start_pan,
+        )
 
-        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind(
+            "<B2-Motion>",
+            self._pan,
+        )
+
+        self.bind(
+            "<ButtonRelease-2>",
+            self._stop_pan,
+        )
+
+        self.bind(
+            "<MouseWheel>",
+            self._on_mousewheel,
+        )
 
         self.focus_set()
 
-        self.bind("<Control-0>", self._fit_page)
+        self.bind(
+            "<Control-0>",
+            self._fit_page,
+        )
 
     # ==========================================================
     # Observateurs
@@ -92,7 +121,9 @@ class EditorCanvas(CTkCanvas):
     ) -> None:
 
         if callback not in self._mouse_listeners:
-            self._mouse_listeners.append(callback)
+            self._mouse_listeners.append(
+                callback,
+            )
 
     def _notify_mouse(self) -> None:
 
@@ -117,14 +148,16 @@ class EditorCanvas(CTkCanvas):
 
     def redraw(self) -> None:
 
-        self.delete("all")
+        self.delete(
+            "all",
+        )
 
         page_width = self.viewport.mm_to_px(
-            self.page_format.width_mm
+            self.page_format.width_mm,
         )
 
         page_height = self.viewport.mm_to_px(
-            self.page_format.height_mm
+            self.page_format.height_mm,
         )
 
         canvas_width = self.winfo_width()
@@ -189,9 +222,11 @@ class EditorCanvas(CTkCanvas):
 
     def _draw_workspace(self) -> None:
 
-        for page in self.workspace:
+        for page in self.workspace.document:
 
-            self.renderer.draw_page(page)
+            self.renderer.draw_page(
+                page,
+            )
 
             for layer in page:
 
@@ -202,14 +237,20 @@ class EditorCanvas(CTkCanvas):
                     )
 
     # ==========================================================
-    # Evènements
+    # Évènements
     # ==========================================================
 
-    def _on_resize(self, event) -> None:
+    def _on_resize(
+        self,
+        event,
+    ) -> None:
 
         self.redraw()
 
-    def _mouse_move(self, event) -> None:
+    def _mouse_move(
+        self,
+        event,
+    ) -> None:
 
         self.mouse_x_px = event.x
         self.mouse_y_px = event.y
@@ -224,14 +265,20 @@ class EditorCanvas(CTkCanvas):
 
         self._notify_mouse()
 
-    def _start_pan(self, event) -> None:
+    def _start_pan(
+        self,
+        event,
+    ) -> None:
 
         self._dragging = True
 
         self._last_x = event.x
         self._last_y = event.y
 
-    def _pan(self, event) -> None:
+    def _pan(
+        self,
+        event,
+    ) -> None:
 
         if not self._dragging:
             return
@@ -247,11 +294,17 @@ class EditorCanvas(CTkCanvas):
         self._last_x = event.x
         self._last_y = event.y
 
-    def _stop_pan(self, event) -> None:
+    def _stop_pan(
+        self,
+        event,
+    ) -> None:
 
         self._dragging = False
 
-    def _on_mousewheel(self, event) -> None:
+    def _on_mousewheel(
+        self,
+        event,
+    ) -> None:
 
         factor = 1.1 if event.delta > 0 else 0.9
 
@@ -269,12 +322,16 @@ class EditorCanvas(CTkCanvas):
 
         new_page_x = (
             event.x
-            - self.viewport.mm_to_px(old_x)
+            - self.viewport.mm_to_px(
+                old_x,
+            )
         )
 
         new_page_y = (
             event.y
-            - self.viewport.mm_to_px(old_y)
+            - self.viewport.mm_to_px(
+                old_y,
+            )
         )
 
         canvas_width = self.winfo_width()
@@ -289,11 +346,16 @@ class EditorCanvas(CTkCanvas):
         )
 
         self.viewport.set_offset(
-            new_page_x - (canvas_width - page_width) / 2,
-            new_page_y - (canvas_height - page_height) / 2,
+            new_page_x
+            - (canvas_width - page_width) / 2,
+            new_page_y
+            - (canvas_height - page_height) / 2,
         )
 
-    def _fit_page(self, event=None) -> None:
+    def _fit_page(
+        self,
+        event=None,
+    ) -> None:
 
         width = self.winfo_width()
         height = self.winfo_height()
