@@ -17,6 +17,8 @@ class EditorCanvas(CTkCanvas):
 
     SHADOW_OFFSET = 8
     MIN_OBJECT_SIZE_MM = 1.0
+    HANDLE_SIZE_PX = 8
+    HANDLE_HIT_MARGIN_PX = 6
 
     def __init__(
         self,
@@ -72,6 +74,12 @@ class EditorCanvas(CTkCanvas):
         self._active_tool = "selection"
         self._page_selected = False
         self._created_rectangles: list[Rect] = []
+
+        self._selected_rectangle_index: int | None = None
+        self._interaction_mode: str | None = None
+        self._interaction_handle: str | None = None
+        self._interaction_start_mm: Point | None = None
+        self._interaction_original_bounds: Rect | None = None
 
         self._drawing = False
         self._drawing_start_mm: Point | None = None
@@ -311,7 +319,9 @@ class EditorCanvas(CTkCanvas):
 
     def _draw_created_rectangles(self) -> None:
 
-        for bounds in self._created_rectangles:
+        for index, bounds in enumerate(self._created_rectangles):
+
+            selected = index == self._selected_rectangle_index
 
             self.create_rectangle(
                 self.page_left + self.viewport.mm_to_px(bounds.left),
@@ -319,9 +329,52 @@ class EditorCanvas(CTkCanvas):
                 self.page_left + self.viewport.mm_to_px(bounds.right),
                 self.page_top + self.viewport.mm_to_px(bounds.bottom),
                 fill="#F4F4F4",
-                outline="#222222",
+                outline="#3874CB" if selected else "#222222",
                 width=2,
             )
+
+            if selected:
+                self._draw_selection_handles(bounds)
+
+    def _draw_selection_handles(self, bounds: Rect) -> None:
+
+        for x_px, y_px in self._selection_handle_positions(bounds).values():
+
+            half = self.HANDLE_SIZE_PX / 2
+
+            self.create_rectangle(
+                x_px - half,
+                y_px - half,
+                x_px + half,
+                y_px + half,
+                fill="white",
+                outline="#3874CB",
+                width=2,
+            )
+
+    def _selection_handle_positions(
+        self,
+        bounds: Rect,
+    ) -> dict[str, tuple[float, float]]:
+
+        left = self.page_left + self.viewport.mm_to_px(bounds.left)
+        top = self.page_top + self.viewport.mm_to_px(bounds.top)
+        right = self.page_left + self.viewport.mm_to_px(bounds.right)
+        bottom = self.page_top + self.viewport.mm_to_px(bounds.bottom)
+
+        center_x = (left + right) / 2
+        center_y = (top + bottom) / 2
+
+        return {
+            "nw": (left, top),
+            "n": (center_x, top),
+            "ne": (right, top),
+            "e": (right, center_y),
+            "se": (right, bottom),
+            "s": (center_x, bottom),
+            "sw": (left, bottom),
+            "w": (left, center_y),
+        }
 
     # ==========================================================
     # Outils graphiques
@@ -347,6 +400,8 @@ class EditorCanvas(CTkCanvas):
             "selection",
         )
 
+        self.redraw()
+
         return "break"
 
     def _on_left_press(
@@ -362,38 +417,131 @@ class EditorCanvas(CTkCanvas):
 
         self._page_selected = start is not None
 
-        if self._active_tool != "rectangle":
-            self.redraw()
+        if self._active_tool == "rectangle":
+
+            if start is None:
+                return
+
+            self._selected_rectangle_index = None
+            self._drawing = True
+            self._drawing_start_mm = start
+
+            self._preview_rectangle_id = self.create_rectangle(
+                event.x,
+                event.y,
+                event.x,
+                event.y,
+                outline="#3874CB",
+                width=2,
+                dash=(5, 3),
+            )
             return
 
-        if start is None:
-            return
-
-        self._drawing = True
-        self._drawing_start_mm = start
-
-        self._preview_rectangle_id = self.create_rectangle(
+        handle = self._hit_test_handle(
             event.x,
             event.y,
-            event.x,
-            event.y,
-            outline="#3874CB",
-            width=2,
-            dash=(5, 3),
         )
+
+        if handle is not None and self._selected_rectangle_index is not None:
+
+            self._interaction_mode = "resize"
+            self._interaction_handle = handle
+            self._interaction_start_mm = self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
+            self._interaction_original_bounds = self._created_rectangles[
+                self._selected_rectangle_index
+            ]
+            return
+
+        rectangle_index = self._hit_test_rectangle(
+            start,
+        )
+
+        self._selected_rectangle_index = rectangle_index
+
+        if rectangle_index is not None and start is not None:
+
+            self._interaction_mode = "move"
+            self._interaction_start_mm = start
+            self._interaction_original_bounds = self._created_rectangles[
+                rectangle_index
+            ]
+
+        else:
+
+            self._interaction_mode = None
+            self._interaction_start_mm = None
+            self._interaction_original_bounds = None
+
+        self.redraw()
 
     def _on_left_drag(
         self,
         event,
     ) -> None:
 
-        if not self._drawing:
+        if self._drawing:
+
+            if self._preview_rectangle_id is None:
+                return
+
+            if self._drawing_start_mm is None:
+                return
+
+            current = self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
+
+            if current is None:
+                return
+
+            start_x = (
+                self.page_left
+                + self.viewport.mm_to_px(
+                    self._drawing_start_mm.x,
+                )
+            )
+
+            start_y = (
+                self.page_top
+                + self.viewport.mm_to_px(
+                    self._drawing_start_mm.y,
+                )
+            )
+
+            current_x = (
+                self.page_left
+                + self.viewport.mm_to_px(
+                    current.x,
+                )
+            )
+
+            current_y = (
+                self.page_top
+                + self.viewport.mm_to_px(
+                    current.y,
+                )
+            )
+
+            self.coords(
+                self._preview_rectangle_id,
+                start_x,
+                start_y,
+                current_x,
+                current_y,
+            )
             return
 
-        if self._preview_rectangle_id is None:
+        if self._selected_rectangle_index is None:
             return
 
-        if self._drawing_start_mm is None:
+        if self._interaction_start_mm is None:
+            return
+
+        if self._interaction_original_bounds is None:
             return
 
         current = self._event_to_page_mm(
@@ -404,104 +552,263 @@ class EditorCanvas(CTkCanvas):
         if current is None:
             return
 
-        start_x = (
-            self.page_left
-            + self.viewport.mm_to_px(
-                self._drawing_start_mm.x,
-            )
-        )
+        if self._interaction_mode == "move":
+            self._move_selected_rectangle(current)
 
-        start_y = (
-            self.page_top
-            + self.viewport.mm_to_px(
-                self._drawing_start_mm.y,
-            )
-        )
-
-        current_x = (
-            self.page_left
-            + self.viewport.mm_to_px(
-                current.x,
-            )
-        )
-
-        current_y = (
-            self.page_top
-            + self.viewport.mm_to_px(
-                current.y,
-            )
-        )
-
-        self.coords(
-            self._preview_rectangle_id,
-            start_x,
-            start_y,
-            current_x,
-            current_y,
-        )
+        elif self._interaction_mode == "resize":
+            self._resize_selected_rectangle(current)
 
     def _on_left_release(
         self,
         event,
     ) -> None:
 
-        if not self._drawing:
-            return
+        if self._drawing:
 
-        start = self._drawing_start_mm
+            start = self._drawing_start_mm
 
-        current = self._event_to_page_mm(
-            event,
-            clamp_to_page=True,
-        )
+            current = self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
 
-        self._cancel_preview()
+            self._cancel_preview()
 
-        if start is None or current is None:
+            if start is None or current is None:
+                self._finish_drawing()
+                return
+
+            left = min(
+                start.x,
+                current.x,
+            )
+
+            top = min(
+                start.y,
+                current.y,
+            )
+
+            width = abs(
+                current.x - start.x,
+            )
+
+            height = abs(
+                current.y - start.y,
+            )
+
+            if (
+                width < self.MIN_OBJECT_SIZE_MM
+                or height < self.MIN_OBJECT_SIZE_MM
+            ):
+                self._finish_drawing()
+                return
+
+            bounds = Rect(
+                Point(
+                    left,
+                    top,
+                ),
+                Size(
+                    width,
+                    height,
+                ),
+            )
+
+            self._created_rectangles.append(
+                bounds,
+            )
+
+            self._selected_rectangle_index = (
+                len(self._created_rectangles) - 1
+            )
+
             self._finish_drawing()
+            self.set_tool(
+                "selection",
+            )
+            self.redraw()
             return
 
-        left = min(
-            start.x,
-            current.x,
-        )
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
 
-        top = min(
-            start.y,
-            current.y,
-        )
+    def _hit_test_rectangle(
+        self,
+        point: Point | None,
+    ) -> int | None:
 
-        width = abs(
-            current.x - start.x,
-        )
+        if point is None:
+            return None
 
-        height = abs(
-            current.y - start.y,
-        )
-
-        if (
-            width < self.MIN_OBJECT_SIZE_MM
-            or height < self.MIN_OBJECT_SIZE_MM
+        for index in range(
+            len(self._created_rectangles) - 1,
+            -1,
+            -1,
         ):
-            self._finish_drawing()
+
+            if self._created_rectangles[index].contains(point):
+                return index
+
+        return None
+
+    def _hit_test_handle(
+        self,
+        x_px: float,
+        y_px: float,
+    ) -> str | None:
+
+        if self._selected_rectangle_index is None:
+            return None
+
+        bounds = self._created_rectangles[
+            self._selected_rectangle_index
+        ]
+
+        margin = (
+            self.HANDLE_SIZE_PX / 2
+            + self.HANDLE_HIT_MARGIN_PX
+        )
+
+        for name, (handle_x, handle_y) in (
+            self._selection_handle_positions(bounds).items()
+        ):
+
+            if (
+                abs(x_px - handle_x) <= margin
+                and abs(y_px - handle_y) <= margin
+            ):
+                return name
+
+        return None
+
+    def _move_selected_rectangle(
+        self,
+        current: Point,
+    ) -> None:
+
+        if self._selected_rectangle_index is None:
             return
 
-        bounds = Rect(
+        if self._interaction_start_mm is None:
+            return
+
+        if self._interaction_original_bounds is None:
+            return
+
+        original = self._interaction_original_bounds
+
+        dx = current.x - self._interaction_start_mm.x
+        dy = current.y - self._interaction_start_mm.y
+
+        new_left = min(
+            max(
+                original.left + dx,
+                0.0,
+            ),
+            self.page_format.width_mm - original.width,
+        )
+
+        new_top = min(
+            max(
+                original.top + dy,
+                0.0,
+            ),
+            self.page_format.height_mm - original.height,
+        )
+
+        self._created_rectangles[
+            self._selected_rectangle_index
+        ] = Rect(
+            Point(
+                new_left,
+                new_top,
+            ),
+            original.size,
+        )
+
+        self.redraw()
+
+    def _resize_selected_rectangle(
+        self,
+        current: Point,
+    ) -> None:
+
+        if self._selected_rectangle_index is None:
+            return
+
+        if self._interaction_original_bounds is None:
+            return
+
+        if self._interaction_handle is None:
+            return
+
+        original = self._interaction_original_bounds
+        handle = self._interaction_handle
+
+        left = original.left
+        top = original.top
+        right = original.right
+        bottom = original.bottom
+
+        if "w" in handle:
+            left = min(
+                current.x,
+                right - self.MIN_OBJECT_SIZE_MM,
+            )
+
+        if "e" in handle:
+            right = max(
+                current.x,
+                left + self.MIN_OBJECT_SIZE_MM,
+            )
+
+        if "n" in handle:
+            top = min(
+                current.y,
+                bottom - self.MIN_OBJECT_SIZE_MM,
+            )
+
+        if "s" in handle:
+            bottom = max(
+                current.y,
+                top + self.MIN_OBJECT_SIZE_MM,
+            )
+
+        left = max(
+            0.0,
+            left,
+        )
+
+        top = max(
+            0.0,
+            top,
+        )
+
+        right = min(
+            self.page_format.width_mm,
+            right,
+        )
+
+        bottom = min(
+            self.page_format.height_mm,
+            bottom,
+        )
+
+        self._created_rectangles[
+            self._selected_rectangle_index
+        ] = Rect(
             Point(
                 left,
                 top,
             ),
             Size(
-                width,
-                height,
+                right - left,
+                bottom - top,
             ),
         )
 
-        self._created_rectangles.append(
-            bounds,
-        )
-
-        self._finish_drawing()
         self.redraw()
 
     def _event_to_page_mm(
