@@ -13,6 +13,9 @@ from src.theme.colors import Colors
 from src.theme.fonts import Fonts
 
 
+PAGE_OBJECTS_CACHE: dict[str, list] = {}
+
+
 PAGE_FORMATS = {
     "A4": A4,
     "A5": A5,
@@ -165,6 +168,12 @@ class PageEditorView:
             self._resolve_page_format(),
         )
 
+        page_key = self._page_cache_key()
+        saved_objects = PAGE_OBJECTS_CACHE.get(page_key)
+
+        if saved_objects is not None:
+            self.workspace._objects = list(saved_objects)
+
     def _create_rulers(self, parent) -> None:
 
         if self.workspace is None:
@@ -193,6 +202,7 @@ class PageEditorView:
         self.workspace.viewport.add_listener(
             horizontal_ruler.redraw,
         )
+
         self.workspace.viewport.add_listener(
             vertical_ruler.redraw,
         )
@@ -275,7 +285,48 @@ class PageEditorView:
 
         return page_format
 
+    def _page_cache_key(self) -> str:
+
+        page_id = getattr(
+            self.page,
+            "id",
+            None,
+        )
+
+        if page_id is not None:
+            return str(page_id)
+
+        page_number = getattr(
+            self.page,
+            "number",
+            None,
+        )
+
+        if page_number is not None:
+            return f"page-{page_number}"
+
+        return str(
+            getattr(
+                self.page,
+                "display_title",
+                repr(self.page),
+            )
+        )
+
+    def _save_page_objects(self) -> None:
+
+        if self.workspace is None:
+            return
+
+        PAGE_OBJECTS_CACHE[
+            self._page_cache_key()
+        ] = list(
+            self.workspace._objects,
+        )
+
     def back(self) -> None:
+
+        self._save_page_objects()
 
         self.workspace = None
         self.status_bar = None

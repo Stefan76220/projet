@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+
 from customtkinter import CTkCanvas
 
 from src.engine.camera.viewport import Viewport
@@ -8,6 +10,17 @@ from src.engine.foundation import Point, Rect, Size
 from src.engine.graphics import Rectangle
 from src.engine.page_format import A5
 from src.gui.renderer.canvas_renderer import CanvasRenderer
+
+
+@dataclass(frozen=True, slots=True)
+class CanvasObject:
+    """Objet graphique manipulable par le canvas."""
+
+    kind: str
+    bounds: Rect
+    fill: str = "#F4F4F4"
+    outline: str = "#222222"
+    line_width: int = 2
 
 
 class EditorCanvas(CTkCanvas):
@@ -73,9 +86,9 @@ class EditorCanvas(CTkCanvas):
 
         self._active_tool = "selection"
         self._page_selected = False
-        self._created_rectangles: list[Rect] = []
+        self._objects: list[CanvasObject] = []
 
-        self._selected_rectangle_index: int | None = None
+        self._selected_object_index: int | None = None
         self._interaction_mode: str | None = None
         self._interaction_handle: str | None = None
         self._interaction_start_mm: Point | None = None
@@ -156,6 +169,16 @@ class EditorCanvas(CTkCanvas):
         )
 
         self.bind(
+            "<Key-e>",
+            self._activate_ellipse_tool,
+        )
+
+        self.bind(
+            "<Key-E>",
+            self._activate_ellipse_tool,
+        )
+
+        self.bind(
             "<Escape>",
             self._activate_selection_tool,
         )
@@ -201,6 +224,7 @@ class EditorCanvas(CTkCanvas):
         if normalized_name not in {
             "selection",
             "rectangle",
+            "ellipse",
         }:
             normalized_name = "selection"
 
@@ -209,7 +233,7 @@ class EditorCanvas(CTkCanvas):
 
         cursor = (
             "crosshair"
-            if self._active_tool == "rectangle"
+            if self._active_tool in {"rectangle", "ellipse"}
             else "arrow"
         )
 
@@ -268,7 +292,7 @@ class EditorCanvas(CTkCanvas):
         )
 
         self._draw_workspace()
-        self._draw_created_rectangles()
+        self._draw_objects()
 
     def _draw_shadow(
         self,
@@ -317,21 +341,36 @@ class EditorCanvas(CTkCanvas):
                         drawable,
                     )
 
-    def _draw_created_rectangles(self) -> None:
+    def _draw_objects(self) -> None:
 
-        for index, bounds in enumerate(self._created_rectangles):
+        for index, graphic_object in enumerate(self._objects):
 
-            selected = index == self._selected_rectangle_index
+            bounds = graphic_object.bounds
+            selected = index == self._selected_object_index
 
-            self.create_rectangle(
+            coordinates = (
                 self.page_left + self.viewport.mm_to_px(bounds.left),
                 self.page_top + self.viewport.mm_to_px(bounds.top),
                 self.page_left + self.viewport.mm_to_px(bounds.right),
                 self.page_top + self.viewport.mm_to_px(bounds.bottom),
-                fill="#F4F4F4",
-                outline="#3874CB" if selected else "#222222",
-                width=2,
             )
+
+            options = {
+                "fill": graphic_object.fill,
+                "outline": "#3874CB" if selected else graphic_object.outline,
+                "width": graphic_object.line_width,
+            }
+
+            if graphic_object.kind == "ellipse":
+                self.create_oval(
+                    *coordinates,
+                    **options,
+                )
+            else:
+                self.create_rectangle(
+                    *coordinates,
+                    **options,
+                )
 
             if selected:
                 self._draw_selection_handles(bounds)
@@ -391,6 +430,17 @@ class EditorCanvas(CTkCanvas):
 
         return "break"
 
+    def _activate_ellipse_tool(
+        self,
+        event=None,
+    ) -> str:
+
+        self.set_tool(
+            "ellipse",
+        )
+
+        return "break"
+
     def _activate_selection_tool(
         self,
         event=None,
@@ -417,16 +467,22 @@ class EditorCanvas(CTkCanvas):
 
         self._page_selected = start is not None
 
-        if self._active_tool == "rectangle":
+        if self._active_tool in {"rectangle", "ellipse"}:
 
             if start is None:
                 return
 
-            self._selected_rectangle_index = None
+            self._selected_object_index = None
             self._drawing = True
             self._drawing_start_mm = start
 
-            self._preview_rectangle_id = self.create_rectangle(
+            preview_method = (
+                self.create_oval
+                if self._active_tool == "ellipse"
+                else self.create_rectangle
+            )
+
+            self._preview_rectangle_id = preview_method(
                 event.x,
                 event.y,
                 event.x,
@@ -442,7 +498,7 @@ class EditorCanvas(CTkCanvas):
             event.y,
         )
 
-        if handle is not None and self._selected_rectangle_index is not None:
+        if handle is not None and self._selected_object_index is not None:
 
             self._interaction_mode = "resize"
             self._interaction_handle = handle
@@ -450,24 +506,24 @@ class EditorCanvas(CTkCanvas):
                 event,
                 clamp_to_page=True,
             )
-            self._interaction_original_bounds = self._created_rectangles[
-                self._selected_rectangle_index
-            ]
+            self._interaction_original_bounds = self._objects[
+                self._selected_object_index
+            ].bounds
             return
 
-        rectangle_index = self._hit_test_rectangle(
+        object_index = self._hit_test_object(
             start,
         )
 
-        self._selected_rectangle_index = rectangle_index
+        self._selected_object_index = object_index
 
-        if rectangle_index is not None and start is not None:
+        if object_index is not None and start is not None:
 
             self._interaction_mode = "move"
             self._interaction_start_mm = start
-            self._interaction_original_bounds = self._created_rectangles[
-                rectangle_index
-            ]
+            self._interaction_original_bounds = self._objects[
+                object_index
+            ].bounds
 
         else:
 
@@ -535,7 +591,7 @@ class EditorCanvas(CTkCanvas):
             )
             return
 
-        if self._selected_rectangle_index is None:
+        if self._selected_object_index is None:
             return
 
         if self._interaction_start_mm is None:
@@ -553,10 +609,10 @@ class EditorCanvas(CTkCanvas):
             return
 
         if self._interaction_mode == "move":
-            self._move_selected_rectangle(current)
+            self._move_selected_object(current)
 
         elif self._interaction_mode == "resize":
-            self._resize_selected_rectangle(current)
+            self._resize_selected_object(current)
 
     def _on_left_release(
         self,
@@ -614,12 +670,17 @@ class EditorCanvas(CTkCanvas):
                 ),
             )
 
-            self._created_rectangles.append(
-                bounds,
+            graphic_object = CanvasObject(
+                kind=self._active_tool,
+                bounds=bounds,
             )
 
-            self._selected_rectangle_index = (
-                len(self._created_rectangles) - 1
+            self._objects.append(
+                graphic_object,
+            )
+
+            self._selected_object_index = (
+                len(self._objects) - 1
             )
 
             self._finish_drawing()
@@ -634,7 +695,7 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
 
-    def _hit_test_rectangle(
+    def _hit_test_object(
         self,
         point: Point | None,
     ) -> int | None:
@@ -643,12 +704,12 @@ class EditorCanvas(CTkCanvas):
             return None
 
         for index in range(
-            len(self._created_rectangles) - 1,
+            len(self._objects) - 1,
             -1,
             -1,
         ):
 
-            if self._created_rectangles[index].contains(point):
+            if self._objects[index].bounds.contains(point):
                 return index
 
         return None
@@ -659,12 +720,12 @@ class EditorCanvas(CTkCanvas):
         y_px: float,
     ) -> str | None:
 
-        if self._selected_rectangle_index is None:
+        if self._selected_object_index is None:
             return None
 
-        bounds = self._created_rectangles[
-            self._selected_rectangle_index
-        ]
+        bounds = self._objects[
+            self._selected_object_index
+        ].bounds
 
         margin = (
             self.HANDLE_SIZE_PX / 2
@@ -683,12 +744,12 @@ class EditorCanvas(CTkCanvas):
 
         return None
 
-    def _move_selected_rectangle(
+    def _move_selected_object(
         self,
         current: Point,
     ) -> None:
 
-        if self._selected_rectangle_index is None:
+        if self._selected_object_index is None:
             return
 
         if self._interaction_start_mm is None:
@@ -718,24 +779,31 @@ class EditorCanvas(CTkCanvas):
             self.page_format.height_mm - original.height,
         )
 
-        self._created_rectangles[
-            self._selected_rectangle_index
-        ] = Rect(
-            Point(
-                new_left,
-                new_top,
+        selected_object = self._objects[
+            self._selected_object_index
+        ]
+
+        self._objects[
+            self._selected_object_index
+        ] = replace(
+            selected_object,
+            bounds=Rect(
+                Point(
+                    new_left,
+                    new_top,
+                ),
+                original.size,
             ),
-            original.size,
         )
 
         self.redraw()
 
-    def _resize_selected_rectangle(
+    def _resize_selected_object(
         self,
         current: Point,
     ) -> None:
 
-        if self._selected_rectangle_index is None:
+        if self._selected_object_index is None:
             return
 
         if self._interaction_original_bounds is None:
@@ -796,16 +864,23 @@ class EditorCanvas(CTkCanvas):
             bottom,
         )
 
-        self._created_rectangles[
-            self._selected_rectangle_index
-        ] = Rect(
-            Point(
-                left,
-                top,
-            ),
-            Size(
-                right - left,
-                bottom - top,
+        selected_object = self._objects[
+            self._selected_object_index
+        ]
+
+        self._objects[
+            self._selected_object_index
+        ] = replace(
+            selected_object,
+            bounds=Rect(
+                Point(
+                    left,
+                    top,
+                ),
+                Size(
+                    right - left,
+                    bottom - top,
+                ),
             ),
         )
 
