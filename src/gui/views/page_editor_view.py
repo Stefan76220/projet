@@ -4,16 +4,14 @@ import tkinter as tk
 
 import customtkinter as ctk
 
+from src.engine.foundation import Point, Rect, Size
 from src.engine.page_format import A4, A5, BOOK_16X24, BOOK_17X24
-from src.gui.editor_canvas import EditorCanvas
+from src.gui.editor_canvas import CanvasObject, EditorCanvas
 from src.gui.rulers.horizontal_ruler import HorizontalRuler
 from src.gui.rulers.vertical_ruler import VerticalRuler
 from src.gui.status_bar import StatusBar
 from src.theme.colors import Colors
 from src.theme.fonts import Fonts
-
-
-PAGE_OBJECTS_CACHE: dict[str, list] = {}
 
 
 PAGE_FORMATS = {
@@ -168,11 +166,10 @@ class PageEditorView:
             self._resolve_page_format(),
         )
 
-        page_key = self._page_cache_key()
-        saved_objects = PAGE_OBJECTS_CACHE.get(page_key)
+        saved_objects = self._load_page_objects()
 
-        if saved_objects is not None:
-            self.workspace._objects = list(saved_objects)
+        if saved_objects:
+            self.workspace._objects = saved_objects
 
     def _create_rulers(self, parent) -> None:
 
@@ -285,44 +282,89 @@ class PageEditorView:
 
         return page_format
 
-    def _page_cache_key(self) -> str:
+    def _load_page_objects(self) -> list[CanvasObject]:
 
-        page_id = getattr(
+        objects: list[CanvasObject] = []
+
+        for element in getattr(self.page, "elements", []):
+            if element.get("type") != "canvas_object":
+                continue
+
+            bounds = element.get("bounds", {})
+
+            try:
+                objects.append(
+                    CanvasObject(
+                        kind=str(element.get("kind", "rectangle")),
+                        bounds=Rect(
+                            Point(
+                                float(bounds.get("x", 0.0)),
+                                float(bounds.get("y", 0.0)),
+                            ),
+                            Size(
+                                float(bounds.get("width", 0.0)),
+                                float(bounds.get("height", 0.0)),
+                            ),
+                        ),
+                        fill=str(element.get("fill", "#F4F4F4")),
+                        outline=str(element.get("outline", "#222222")),
+                        line_width=int(element.get("line_width", 2)),
+                    )
+                )
+            except (TypeError, ValueError):
+                continue
+
+        if objects:
+            return objects
+
+        saved_objects = getattr(
             self.page,
-            "id",
+            "_editor_objects",
             None,
         )
 
-        if page_id is not None:
-            return str(page_id)
+        return list(saved_objects or [])
 
-        page_number = getattr(
-            self.page,
-            "number",
-            None,
-        )
+    @staticmethod
+    def _serialize_object(canvas_object: CanvasObject) -> dict:
 
-        if page_number is not None:
-            return f"page-{page_number}"
-
-        return str(
-            getattr(
-                self.page,
-                "display_title",
-                repr(self.page),
-            )
-        )
+        return {
+            "type": "canvas_object",
+            "kind": canvas_object.kind,
+            "bounds": {
+                "x": canvas_object.bounds.left,
+                "y": canvas_object.bounds.top,
+                "width": canvas_object.bounds.width,
+                "height": canvas_object.bounds.height,
+            },
+            "fill": canvas_object.fill,
+            "outline": canvas_object.outline,
+            "line_width": canvas_object.line_width,
+        }
 
     def _save_page_objects(self) -> None:
 
         if self.workspace is None:
             return
 
-        PAGE_OBJECTS_CACHE[
-            self._page_cache_key()
-        ] = list(
-            self.workspace._objects,
-        )
+        current_objects = list(self.workspace._objects)
+        self.page._editor_objects = current_objects
+
+        preserved_elements = [
+            element
+            for element in getattr(self.page, "elements", [])
+            if element.get("type") != "canvas_object"
+        ]
+
+        self.page.elements = preserved_elements + [
+            self._serialize_object(canvas_object)
+            for canvas_object in current_objects
+        ]
+
+        save_page = getattr(self.page, "save", None)
+
+        if callable(save_page):
+            save_page(update_history=False)
 
     def back(self) -> None:
 

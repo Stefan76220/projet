@@ -407,6 +407,51 @@ class Page:
             update_history=False,
         )
 
+    def get_elements_by_type(
+        self,
+        element_type: str,
+    ) -> list[dict]:
+        """Retourne une copie des éléments correspondant au type demandé."""
+
+        return [
+            dict(element)
+            for element in self.elements
+            if element.get("type") == element_type
+        ]
+
+    def replace_elements_by_type(
+        self,
+        element_type: str,
+        elements: list[dict],
+        save: bool = True,
+    ) -> None:
+        """
+        Remplace tous les éléments d'un type sans toucher aux autres.
+
+        Cette méthode centralise la persistance des objets éditoriaux
+        dans le modèle Page plutôt que dans l'interface graphique.
+        """
+
+        self._ensure_editable()
+
+        preserved_elements = [
+            element
+            for element in self.elements
+            if element.get("type") != element_type
+        ]
+
+        normalized_elements = []
+
+        for element in elements:
+            normalized_element = dict(element)
+            normalized_element["type"] = element_type
+            normalized_elements.append(normalized_element)
+
+        self.elements = preserved_elements + normalized_elements
+
+        if save:
+            self.save(update_history=False)
+
     # ==========================================================
     # Sauvegarde
     # ==========================================================
