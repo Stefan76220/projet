@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+from tkinter import colorchooser
 
 import customtkinter as ctk
 
@@ -32,9 +33,7 @@ PAGE_TYPE_APPEARANCES = {
 
 
 class RenamePageDialog(ctk.CTkToplevel):
-    """
-    Fenêtre permettant de renommer une page.
-    """
+    """Fenêtre permettant de renommer une page."""
 
     def __init__(
         self,
@@ -42,7 +41,6 @@ class RenamePageDialog(ctk.CTkToplevel):
         current_name: str,
         on_validate,
     ) -> None:
-
         super().__init__(parent)
 
         self.on_validate = on_validate
@@ -50,42 +48,19 @@ class RenamePageDialog(ctk.CTkToplevel):
         self.title("Renommer la page")
         self.geometry("440x210")
         self.resizable(False, False)
-
         self.transient(parent.winfo_toplevel())
         self.grab_set()
+        self.configure(fg_color=Colors.WINDOW)
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
-        self.configure(
-            fg_color=Colors.WINDOW,
-        )
+        self._create_content(current_name)
+        self.after(50, self._prepare_entry)
 
-        self.protocol(
-            "WM_DELETE_WINDOW",
-            self.cancel,
-        )
-
-        self._create_content(
-            current_name,
-        )
-
-        self.after(
-            50,
-            self._prepare_entry,
-        )
-
-    # ==========================================================
-    # Construction
-    # ==========================================================
-
-    def _create_content(
-        self,
-        current_name: str,
-    ) -> None:
-
+    def _create_content(self, current_name: str) -> None:
         container = ctk.CTkFrame(
             self,
             fg_color="transparent",
         )
-
         container.pack(
             fill="both",
             expand=True,
@@ -121,31 +96,15 @@ class RenamePageDialog(ctk.CTkToplevel):
             font=Fonts.NORMAL,
             border_color=Colors.BORDER,
         )
-
-        self.name_entry.pack(
-            fill="x",
-        )
-
-        self.name_entry.insert(
-            0,
-            current_name,
-        )
-
-        self.name_entry.bind(
-            "<Return>",
-            self.validate,
-        )
-
-        self.name_entry.bind(
-            "<Escape>",
-            self.cancel,
-        )
+        self.name_entry.pack(fill="x")
+        self.name_entry.insert(0, current_name)
+        self.name_entry.bind("<Return>", self.validate)
+        self.name_entry.bind("<Escape>", self.cancel)
 
         buttons = ctk.CTkFrame(
             container,
             fg_color="transparent",
         )
-
         buttons.pack(
             fill="x",
             pady=(18, 0),
@@ -171,28 +130,13 @@ class RenamePageDialog(ctk.CTkToplevel):
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
             command=self.validate,
-        ).pack(
-            side="right",
-        )
-
-    # ==========================================================
-    # Actions
-    # ==========================================================
+        ).pack(side="right")
 
     def _prepare_entry(self) -> None:
-
         self.name_entry.focus_set()
+        self.name_entry.select_range(0, "end")
 
-        self.name_entry.select_range(
-            0,
-            "end",
-        )
-
-    def validate(
-        self,
-        event=None,
-    ) -> None:
-
+    def validate(self, event=None) -> None:
         new_name = self.name_entry.get().strip()
 
         if not new_name:
@@ -200,25 +144,16 @@ class RenamePageDialog(ctk.CTkToplevel):
             return
 
         try:
-            self.on_validate(
-                new_name,
-            )
-
+            self.on_validate(new_name)
         finally:
             self.destroy()
 
-    def cancel(
-        self,
-        event=None,
-    ) -> None:
-
+    def cancel(self, event=None) -> None:
         self.destroy()
 
 
 class ChangePageTypeDialog(ctk.CTkToplevel):
-    """
-    Fenêtre permettant de choisir le type d'une page.
-    """
+    """Fenêtre permettant de choisir le type d'une page."""
 
     def __init__(
         self,
@@ -227,22 +162,17 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
         page_types: list,
         on_validate,
     ) -> None:
-
         super().__init__(parent)
 
         self.on_validate = on_validate
         self.page_types = page_types
-
         self.type_names = [
             page_type.name
-            for page_type in self.page_types
+            for page_type in page_types
         ]
 
         if "Page vide" not in self.type_names:
-            self.type_names.insert(
-                0,
-                "Page vide",
-            )
+            self.type_names.insert(0, "Page vide")
 
         selected_type = (
             current_type
@@ -257,40 +187,19 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
         self.title("Changer le type de page")
         self.geometry("500x330")
         self.resizable(False, False)
-
-        self.transient(
-            parent.winfo_toplevel(),
-        )
-
+        self.transient(parent.winfo_toplevel())
         self.grab_set()
-
-        self.configure(
-            fg_color=Colors.WINDOW,
-        )
-
-        self.protocol(
-            "WM_DELETE_WINDOW",
-            self.cancel,
-        )
+        self.configure(fg_color=Colors.WINDOW)
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
 
         self._create_content()
-
-        self.after(
-            50,
-            self._center_window,
-        )
-
-    # ==========================================================
-    # Construction
-    # ==========================================================
+        self.after(50, self._center_window)
 
     def _create_content(self) -> None:
-
         container = ctk.CTkFrame(
             self,
             fg_color="transparent",
         )
-
         container.pack(
             fill="both",
             expand=True,
@@ -311,10 +220,7 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             container,
-            text=(
-                "Choisis la fonction éditoriale "
-                "de cette page."
-            ),
+            text="Choisis la fonction éditoriale de cette page.",
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
             anchor="w",
@@ -323,7 +229,7 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
             pady=(0, 16),
         )
 
-        self.type_menu = ctk.CTkOptionMenu(
+        ctk.CTkOptionMenu(
             container,
             values=self.type_names,
             variable=self.selected_type,
@@ -335,39 +241,24 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
             button_hover_color=Colors.PRIMARY_HOVER,
             text_color=Colors.TEXT,
             command=self._update_description,
-        )
-
-        self.type_menu.pack(
-            fill="x",
-        )
-
-        self.description_frame = ctk.CTkFrame(
-            container,
-            fg_color=Colors.CARD,
-            border_width=1,
-            border_color=Colors.BORDER,
-            corner_radius=10,
-        )
-
-        self.description_frame.pack(
-            fill="x",
-            pady=(16, 0),
-        )
+        ).pack(fill="x")
 
         self.description_label = ctk.CTkLabel(
-            self.description_frame,
+            container,
             text="",
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
             anchor="w",
             justify="left",
             wraplength=410,
+            fg_color=Colors.CARD,
+            corner_radius=10,
         )
-
         self.description_label.pack(
             fill="x",
-            padx=16,
-            pady=14,
+            pady=(16, 0),
+            ipady=14,
+            padx=1,
         )
 
         self._update_description(
@@ -378,7 +269,6 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
             container,
             fg_color="transparent",
         )
-
         buttons.pack(
             fill="x",
             side="bottom",
@@ -405,40 +295,17 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
             command=self.validate,
-        ).pack(
-            side="right",
-        )
+        ).pack(side="right")
 
-    # ==========================================================
-    # Informations
-    # ==========================================================
-
-    def _update_description(
-        self,
-        selected_name: str,
-    ) -> None:
-
+    def _update_description(self, selected_name: str) -> None:
         if selected_name == "Page vide":
-
-            description = (
-                "Page libre sans structure éditoriale imposée."
-            )
-
+            description = "Page libre sans structure éditoriale imposée."
         else:
-
-            description = (
-                "Aucune description disponible."
-            )
+            description = "Aucune description disponible."
 
             for page_type in self.page_types:
-
                 if page_type.name == selected_name:
-
-                    description = (
-                        page_type.description
-                        or description
-                    )
-
+                    description = page_type.description or description
                     break
 
         appearance = PAGE_TYPE_APPEARANCES.get(
@@ -446,72 +313,43 @@ class ChangePageTypeDialog(ctk.CTkToplevel):
             PAGE_TYPE_APPEARANCES["Page vide"],
         )
 
-        icon = appearance["icone"]
-
         self.description_label.configure(
-            text=f"{icon}  {description}",
+            text=f"{appearance['icone']}  {description}",
         )
 
-    # ==========================================================
-    # Actions
-    # ==========================================================
-
     def validate(self) -> None:
-
         selected_name = self.selected_type.get().strip()
 
         if not selected_name:
             return
 
         try:
-            self.on_validate(
-                selected_name,
-            )
-
+            self.on_validate(selected_name)
         finally:
             self.destroy()
 
     def cancel(self) -> None:
-
         self.destroy()
 
-    # ==========================================================
-    # Position
-    # ==========================================================
-
     def _center_window(self) -> None:
-
         self.update_idletasks()
 
         parent = self.master.winfo_toplevel()
 
-        parent_x = parent.winfo_x()
-        parent_y = parent.winfo_y()
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
-
-        width = self.winfo_width()
-        height = self.winfo_height()
-
-        x = parent_x + max(
+        x = parent.winfo_x() + max(
             0,
-            (parent_width - width) // 2,
+            (parent.winfo_width() - self.winfo_width()) // 2,
         )
-
-        y = parent_y + max(
+        y = parent.winfo_y() + max(
             0,
-            (parent_height - height) // 2,
+            (parent.winfo_height() - self.winfo_height()) // 2,
         )
 
-        self.geometry(
-            f"+{x}+{y}",
-        )
+        self.geometry(f"+{x}+{y}")
 
 
 class DocumentEditorView:
-    """
-    Vue d'édition d'un document.
-    """
+    """Vue d'édition d'un document."""
 
     def __init__(
         self,
@@ -519,7 +357,6 @@ class DocumentEditorView:
         application,
         on_back=None,
     ) -> None:
-
         self.parent = parent
         self.application = application
         self.on_back = on_back
@@ -529,20 +366,12 @@ class DocumentEditorView:
         )
 
         self.rename_dialog: RenamePageDialog | None = None
-
-        self.change_type_dialog: (
-            ChangePageTypeDialog | None
-        ) = None
+        self.change_type_dialog: ChangePageTypeDialog | None = None
 
         self.page_type_library = PageTypeLibrary()
         self.page_type_library.load()
 
-    # ==========================================================
-    # Affichage
-    # ==========================================================
-
     def show(self) -> None:
-
         self.document = (
             self.application.document_manager.get_document()
         )
@@ -553,17 +382,12 @@ class DocumentEditorView:
             self.parent,
             fg_color="transparent",
         )
-
         root.pack(
             fill="both",
             expand=True,
         )
 
-        header = self._create_header(
-            root,
-        )
-
-        header.pack(
+        self._create_header(root).pack(
             fill="x",
             padx=20,
             pady=20,
@@ -573,7 +397,6 @@ class DocumentEditorView:
             root,
             fg_color="transparent",
         )
-
         content.pack(
             fill="both",
             expand=True,
@@ -582,29 +405,20 @@ class DocumentEditorView:
         )
 
         if self.document is None:
-
             ctk.CTkLabel(
                 content,
                 text="Aucun document chargé.",
-            ).pack(
-                anchor="w",
-            )
-
+            ).pack(anchor="w")
             return
 
         if not self.document.pages:
-
             ctk.CTkLabel(
                 content,
                 text="Ce document ne contient encore aucune page.",
-            ).pack(
-                anchor="w",
-            )
-
+            ).pack(anchor="w")
             return
 
         for page in self.document.pages:
-
             PageCard(
                 content,
                 page,
@@ -612,20 +426,13 @@ class DocumentEditorView:
                 on_rename=self.rename_page,
                 on_duplicate=self.duplicate_page,
                 on_change_type=self.change_page_type,
+                on_change_color=self.change_page_color,
             ).pack(
                 fill="x",
                 pady=(0, 10),
             )
 
-    # ==========================================================
-    # Construction
-    # ==========================================================
-
-    def _create_header(
-        self,
-        parent,
-    ) -> ctk.CTkFrame:
-
+    def _create_header(self, parent) -> ctk.CTkFrame:
         header = ctk.CTkFrame(
             parent,
             fg_color="transparent",
@@ -636,9 +443,7 @@ class DocumentEditorView:
             text="← Retour",
             width=120,
             command=self.back,
-        ).pack(
-            side="left",
-        )
+        ).pack(side="left")
 
         title = (
             self.document.name
@@ -663,39 +468,27 @@ class DocumentEditorView:
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
             command=self.new_page,
-        ).pack(
-            side="right",
-        )
+        ).pack(side="right")
 
         return header
 
     def _clear_parent(self) -> None:
-
         for widget in self.parent.winfo_children():
             widget.destroy()
 
-    # ==========================================================
-    # Actions
-    # ==========================================================
-
     def new_page(self) -> None:
-
         try:
             self.application.document_manager.add_page()
-
             self.document = (
                 self.application.document_manager.get_document()
             )
-
             self.show()
-
         except Exception:
             traceback.print_exc()
 
-    def open_page(
-        self,
-        page_info,
-    ) -> None:
+    def open_page(self, page_info) -> None:
+        if self.document is None:
+            return
 
         try:
             page = self.document.get_page(
@@ -714,46 +507,25 @@ class DocumentEditorView:
         except Exception:
             traceback.print_exc()
 
-    def rename_page(
-        self,
-        page_info: dict,
-    ) -> None:
+    def rename_page(self, page_info: dict) -> None:
+        page = self._get_editable_page(page_info)
 
-        if self.document is None:
+        if page is None:
             return
 
         try:
-            page = self.document.get_page(
-                page_info["numero"],
-            )
-
-            if page is None:
-                return
-
-            if page.locked:
-                return
-
-            current_name = page.display_title
-
             self.rename_dialog = RenamePageDialog(
                 parent=self.parent,
-                current_name=current_name,
-                on_validate=lambda new_name: (
-                    self._apply_page_name(
-                        page,
-                        new_name,
-                    )
+                current_name=page.display_title,
+                on_validate=lambda new_name: self._apply_page_name(
+                    page,
+                    new_name,
                 ),
             )
-
         except Exception:
             traceback.print_exc()
 
-    def duplicate_page(
-        self,
-        page_info: dict,
-    ) -> None:
-
+    def duplicate_page(self, page_info: dict) -> None:
         if self.document is None:
             return
 
@@ -768,65 +540,89 @@ class DocumentEditorView:
             self.document = (
                 self.application.document_manager.get_document()
             )
-
             self.show()
 
         except Exception:
             traceback.print_exc()
 
-    def change_page_type(
-        self,
-        page_info: dict,
-    ) -> None:
+    def change_page_type(self, page_info: dict) -> None:
+        page = self._get_editable_page(page_info)
 
-        if self.document is None:
+        if page is None:
             return
 
         try:
-            page = self.document.get_page(
-                page_info["numero"],
-            )
-
-            if page is None:
-                return
-
-            if page.locked:
-                return
-
             self.page_type_library.load()
 
             self.change_type_dialog = ChangePageTypeDialog(
                 parent=self.parent,
                 current_type=page.page_type,
                 page_types=self.page_type_library.all(),
-                on_validate=lambda page_type: (
-                    self._apply_page_type(
-                        page,
-                        page_type,
-                    )
+                on_validate=lambda page_type: self._apply_page_type(
+                    page,
+                    page_type,
                 ),
+            )
+        except Exception:
+            traceback.print_exc()
+
+    def change_page_color(self, page_info: dict) -> None:
+        page = self._get_editable_page(page_info)
+
+        if page is None:
+            return
+
+        current_color = getattr(
+            page,
+            "color",
+            "#D9D4C7",
+        )
+
+        try:
+            selected = colorchooser.askcolor(
+                color=current_color,
+                title="Choisir la couleur éditoriale",
+                parent=self.parent.winfo_toplevel(),
+            )
+
+            selected_color = selected[1]
+
+            if not selected_color:
+                return
+
+            self._apply_page_color(
+                page,
+                selected_color.upper(),
             )
 
         except Exception:
             traceback.print_exc()
+
+    def _get_editable_page(self, page_info: dict):
+        if self.document is None:
+            return None
+
+        try:
+            page = self.document.get_page(
+                page_info["numero"],
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        if page is None or page.locked:
+            return None
+
+        return page
 
     def _apply_page_name(
         self,
         page,
         new_name: str,
     ) -> None:
-
         try:
-            page.rename(
-                new_name,
-            )
-
-            self.document.update_page_summary(
-                page,
-            )
-
+            page.rename(new_name)
+            self.document.update_page_summary(page)
             self.show()
-
         except Exception:
             traceback.print_exc()
 
@@ -835,51 +631,47 @@ class DocumentEditorView:
         page,
         page_type: str,
     ) -> None:
-
         try:
             appearance = PAGE_TYPE_APPEARANCES.get(
                 page_type,
                 PAGE_TYPE_APPEARANCES["Page vide"],
             )
 
-            page.set_type(
-                page_type,
-            )
-
+            page.set_type(page_type)
             page.icon = appearance["icone"]
             page.color = appearance["couleur"]
+            page.save(update_history=False)
 
-            page.save(
-                update_history=False,
-            )
+            self.document.update_page_summary(page)
+            self.show()
 
-            self.document.update_page_summary(
-                page,
-            )
+        except Exception:
+            traceback.print_exc()
 
+    def _apply_page_color(
+        self,
+        page,
+        color: str,
+    ) -> None:
+        try:
+            page.color = color
+            page.save(update_history=False)
+
+            self.document.update_page_summary(page)
             self.show()
 
         except Exception:
             traceback.print_exc()
 
     def back(self) -> None:
-
         if self.on_back is not None:
             self.on_back()
 
-    # ==========================================================
-    # Utilitaires
-    # ==========================================================
-
     def __repr__(self) -> str:
-
         count = (
             0
             if self.document is None
             else len(self.document.pages)
         )
 
-        return (
-            f"DocumentEditorView("
-            f"pages={count})"
-        )
+        return f"DocumentEditorView(pages={count})"
