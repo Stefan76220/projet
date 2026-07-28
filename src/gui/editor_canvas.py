@@ -21,6 +21,7 @@ class CanvasObject:
     fill: str = "#F4F4F4"
     outline: str = "#222222"
     line_width: int = 2
+    text: str = "Bloc de texte"
 
 
 class EditorCanvas(CTkCanvas):
@@ -179,6 +180,16 @@ class EditorCanvas(CTkCanvas):
         )
 
         self.bind(
+            "<Key-t>",
+            self._activate_text_tool,
+        )
+
+        self.bind(
+            "<Key-T>",
+            self._activate_text_tool,
+        )
+
+        self.bind(
             "<Escape>",
             self._activate_selection_tool,
         )
@@ -225,6 +236,7 @@ class EditorCanvas(CTkCanvas):
             "selection",
             "rectangle",
             "ellipse",
+            "text",
         }:
             normalized_name = "selection"
 
@@ -233,7 +245,7 @@ class EditorCanvas(CTkCanvas):
 
         cursor = (
             "crosshair"
-            if self._active_tool in {"rectangle", "ellipse"}
+            if self._active_tool in {"rectangle", "ellipse", "text"}
             else "arrow"
         )
 
@@ -372,6 +384,19 @@ class EditorCanvas(CTkCanvas):
                     **options,
                 )
 
+            if graphic_object.kind == "text":
+                padding = 6
+                text_width = max(1, coordinates[2] - coordinates[0] - (padding * 2))
+                self.create_text(
+                    coordinates[0] + padding,
+                    coordinates[1] + padding,
+                    anchor="nw",
+                    text=graphic_object.text,
+                    width=text_width,
+                    fill="#222222",
+                    font=("Arial", 12),
+                )
+
             if selected:
                 self._draw_selection_handles(bounds)
 
@@ -441,6 +466,17 @@ class EditorCanvas(CTkCanvas):
 
         return "break"
 
+    def _activate_text_tool(
+        self,
+        event=None,
+    ) -> str:
+
+        self.set_tool(
+            "text",
+        )
+
+        return "break"
+
     def _activate_selection_tool(
         self,
         event=None,
@@ -467,7 +503,7 @@ class EditorCanvas(CTkCanvas):
 
         self._page_selected = start is not None
 
-        if self._active_tool in {"rectangle", "ellipse"}:
+        if self._active_tool in {"rectangle", "ellipse", "text"}:
 
             if start is None:
                 return
