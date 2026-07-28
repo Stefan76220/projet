@@ -29,6 +29,9 @@ class PageEditorView:
     """
 
     RULER_SIZE = 30
+    MIN_READY_SIZE = 100
+    DISPLAY_RETRY_DELAY_MS = 50
+    MAX_DISPLAY_RETRIES = 20
 
     def __init__(
         self,
@@ -44,10 +47,7 @@ class PageEditorView:
         self.root = None
         self.workspace: EditorCanvas | None = None
         self.status_bar: StatusBar | None = None
-
-    # ==========================================================
-    # Affichage
-    # ==========================================================
+        self._display_retry_count = 0
 
     def show(self) -> None:
 
@@ -62,9 +62,7 @@ class PageEditorView:
             expand=True,
         )
 
-        self._create_header(
-            self.root,
-        )
+        self._create_header(self.root)
 
         editor_area = tk.Frame(
             self.root,
@@ -75,43 +73,18 @@ class PageEditorView:
             expand=True,
         )
 
-        editor_area.grid_rowconfigure(
-            1,
-            weight=1,
-        )
-        editor_area.grid_columnconfigure(
-            1,
-            weight=1,
-        )
+        editor_area.grid_rowconfigure(1, weight=1)
+        editor_area.grid_columnconfigure(1, weight=1)
 
-        self._create_corner(
-            editor_area,
-        )
+        self._create_corner(editor_area)
+        self._create_canvas(editor_area)
+        self._create_rulers(editor_area)
+        self._create_status_bar(self.root)
 
-        self._create_canvas(
-            editor_area,
-        )
+        self._display_retry_count = 0
+        self.parent.after_idle(self._prepare_first_display)
 
-        self._create_rulers(
-            editor_area,
-        )
-
-        self._create_status_bar(
-            self.root,
-        )
-
-        self.parent.after_idle(
-            self._prepare_first_display,
-        )
-
-    # ==========================================================
-    # Construction
-    # ==========================================================
-
-    def _create_header(
-        self,
-        parent,
-    ) -> None:
+    def _create_header(self, parent) -> None:
 
         header = ctk.CTkFrame(
             parent,
@@ -123,24 +96,18 @@ class PageEditorView:
             padx=20,
             pady=(20, 10),
         )
-        header.pack_propagate(
-            False,
-        )
+        header.pack_propagate(False)
 
         ctk.CTkButton(
             header,
             text="← Retour",
             width=120,
             command=self.back,
-        ).pack(
-            side="left",
-        )
-
-        title = self.page.display_title
+        ).pack(side="left")
 
         ctk.CTkLabel(
             header,
-            text=title,
+            text=self.page.display_title,
             font=Fonts.H1,
             text_color=Colors.TEXT,
         ).pack(
@@ -159,14 +126,9 @@ class PageEditorView:
             text=page_type,
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
-        ).pack(
-            side="right",
-        )
+        ).pack(side="right")
 
-    def _create_corner(
-        self,
-        parent,
-    ) -> None:
+    def _create_corner(self, parent) -> None:
 
         corner = tk.Frame(
             parent,
@@ -179,14 +141,9 @@ class PageEditorView:
             column=0,
             sticky="nsew",
         )
-        corner.grid_propagate(
-            False,
-        )
+        corner.grid_propagate(False)
 
-    def _create_canvas(
-        self,
-        parent,
-    ) -> None:
+    def _create_canvas(self, parent) -> None:
 
         canvas_container = tk.Frame(
             parent,
@@ -198,9 +155,7 @@ class PageEditorView:
             sticky="nsew",
         )
 
-        self.workspace = EditorCanvas(
-            canvas_container,
-        )
+        self.workspace = EditorCanvas(canvas_container)
         self.workspace.pack(
             fill="both",
             expand=True,
@@ -210,10 +165,7 @@ class PageEditorView:
             self._resolve_page_format(),
         )
 
-    def _create_rulers(
-        self,
-        parent,
-    ) -> None:
+    def _create_rulers(self, parent) -> None:
 
         if self.workspace is None:
             return
@@ -245,33 +197,22 @@ class PageEditorView:
             vertical_ruler.redraw,
         )
 
-    def _create_status_bar(
-        self,
-        parent,
-    ) -> None:
+    def _create_status_bar(self, parent) -> None:
 
         if self.workspace is None:
             return
 
-        self.status_bar = StatusBar(
-            parent,
-        )
+        self.status_bar = StatusBar(parent)
         self.status_bar.pack(
             fill="x",
             side="bottom",
         )
 
-        self.status_bar.attach(
-            self.workspace,
-        )
+        self.status_bar.attach(self.workspace)
 
         self.workspace.add_mouse_listener(
             self.status_bar.refresh,
         )
-
-    # ==========================================================
-    # Préparation
-    # ==========================================================
 
     def _prepare_first_display(self) -> None:
 
@@ -279,6 +220,24 @@ class PageEditorView:
             return
 
         if not self.workspace.winfo_exists():
+            return
+
+        self.workspace.update_idletasks()
+
+        width = self.workspace.winfo_width()
+        height = self.workspace.winfo_height()
+
+        if (
+            width < self.MIN_READY_SIZE
+            or height < self.MIN_READY_SIZE
+        ):
+            self._display_retry_count += 1
+
+            if self._display_retry_count <= self.MAX_DISPLAY_RETRIES:
+                self.parent.after(
+                    self.DISPLAY_RETRY_DELAY_MS,
+                    self._prepare_first_display,
+                )
             return
 
         self.workspace._fit_page()
@@ -316,10 +275,6 @@ class PageEditorView:
 
         return page_format
 
-    # ==========================================================
-    # Actions
-    # ==========================================================
-
     def back(self) -> None:
 
         self.workspace = None
@@ -328,10 +283,6 @@ class PageEditorView:
 
         if self.on_back is not None:
             self.on_back()
-
-    # ==========================================================
-    # Utilitaires
-    # ==========================================================
 
     def _clear_parent(self) -> None:
 
