@@ -23,6 +23,12 @@ class CanvasObject:
     outline: str = "#222222"
     line_width: int = 2
     text: str = "Bloc de texte"
+    text_color: str = "#222222"
+    font_family: str = "Arial"
+    font_size: int = 12
+    bold: bool = False
+    italic: bool = False
+    align: str = "left"
 
 
 class EditorCanvas(CTkCanvas):
@@ -81,6 +87,7 @@ class EditorCanvas(CTkCanvas):
         self.mouse_y_mm = 0.0
 
         self._mouse_listeners: list = []
+        self._selection_listeners: list = []
 
         self._dragging = False
         self._last_x = 0
@@ -223,6 +230,66 @@ class EditorCanvas(CTkCanvas):
 
         for callback in self._mouse_listeners:
             callback()
+
+    def add_selection_listener(self, callback) -> None:
+
+        if callback not in self._selection_listeners:
+            self._selection_listeners.append(callback)
+
+    def _notify_selection(self) -> None:
+
+        selected = self.get_selected_object()
+
+        for callback in tuple(self._selection_listeners):
+            callback(selected)
+
+        # Événement Tk standard : les vues sont averties après que le canvas
+        # a réellement terminé la modification de sa sélection.
+        self.event_generate(
+            "<<SelectionChanged>>",
+            when="tail",
+        )
+
+    def get_selected_object(self) -> CanvasObject | None:
+
+        if self._selected_object_index is None:
+            return None
+        if not 0 <= self._selected_object_index < len(self._objects):
+            return None
+        return self._objects[self._selected_object_index]
+
+    def update_selected_object(self, **changes) -> None:
+
+        if self._selected_object_index is None:
+            return
+        if not 0 <= self._selected_object_index < len(self._objects):
+            return
+
+        current = self._objects[self._selected_object_index]
+        self._objects[self._selected_object_index] = replace(current, **changes)
+        self.redraw()
+        self._notify_selection()
+
+    def update_selected_bounds(
+        self,
+        *,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+    ) -> None:
+
+        if self._selected_object_index is None:
+            return
+
+        width = max(self.MIN_OBJECT_SIZE_MM, min(width, self.page_format.width_mm))
+        height = max(self.MIN_OBJECT_SIZE_MM, min(height, self.page_format.height_mm))
+        x = max(0.0, min(x, self.page_format.width_mm - width))
+        y = max(0.0, min(y, self.page_format.height_mm - height))
+
+        self.update_selected_object(
+            bounds=Rect(Point(x, y), Size(width, height)),
+        )
 
     # ==========================================================
     # Configuration
@@ -399,14 +466,34 @@ class EditorCanvas(CTkCanvas):
             if graphic_object.kind == "text":
                 padding = 6
                 text_width = max(1, coordinates[2] - coordinates[0] - (padding * 2))
+                font_style = []
+                if graphic_object.bold:
+                    font_style.append("bold")
+                if graphic_object.italic:
+                    font_style.append("italic")
+                anchor_by_align = {
+                    "left": "nw",
+                    "center": "n",
+                    "right": "ne",
+                }
+                x_by_align = {
+                    "left": coordinates[0] + padding,
+                    "center": (coordinates[0] + coordinates[2]) / 2,
+                    "right": coordinates[2] - padding,
+                }
                 self.create_text(
-                    coordinates[0] + padding,
+                    x_by_align.get(graphic_object.align, coordinates[0] + padding),
                     coordinates[1] + padding,
-                    anchor="nw",
+                    anchor=anchor_by_align.get(graphic_object.align, "nw"),
+                    justify=graphic_object.align if graphic_object.align in {"left", "center", "right"} else "left",
                     text=graphic_object.text,
                     width=text_width,
-                    fill="#222222",
-                    font=("Arial", 12),
+                    fill=graphic_object.text_color,
+                    font=(
+                        graphic_object.font_family,
+                        graphic_object.font_size,
+                        " ".join(font_style),
+                    ),
                 )
 
             if selected:
@@ -554,9 +641,20 @@ class EditorCanvas(CTkCanvas):
             highlightbackground="#3874CB",
             highlightcolor="#3874CB",
             background=graphic_object.fill,
-            foreground="#222222",
-            insertbackground="#222222",
-            font=("Arial", 12),
+            foreground=graphic_object.text_color,
+            insertbackground=graphic_object.text_color,
+            font=(
+                graphic_object.font_family,
+                graphic_object.font_size,
+                " ".join(
+                    style
+                    for style, enabled in (
+                        ("bold", graphic_object.bold),
+                        ("italic", graphic_object.italic),
+                    )
+                    if enabled
+                ),
+            ),
             padx=5,
             pady=4,
         )
@@ -666,6 +764,7 @@ class EditorCanvas(CTkCanvas):
                 self._objects[object_index],
                 text=edited_text,
             )
+            self._notify_selection()
 
         if self._text_editor_window_id is not None:
             self.delete(
@@ -767,6 +866,7 @@ class EditorCanvas(CTkCanvas):
             self._interaction_original_bounds = None
 
         self.redraw()
+        self._notify_selection()
 
     def _on_left_drag(
         self,
@@ -923,6 +1023,7 @@ class EditorCanvas(CTkCanvas):
                 "selection",
             )
             self.redraw()
+            self._notify_selection()
             return
 
         self._interaction_mode = None
@@ -1032,6 +1133,7 @@ class EditorCanvas(CTkCanvas):
         )
 
         self.redraw()
+        self._notify_selection()
 
     def _resize_selected_object(
         self,
@@ -1120,6 +1222,7 @@ class EditorCanvas(CTkCanvas):
         )
 
         self.redraw()
+        self._notify_selection()
 
     def _event_to_page_mm(
         self,
