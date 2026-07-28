@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import tkinter as tk
 
 from customtkinter import CTkCanvas
 
@@ -99,6 +100,11 @@ class EditorCanvas(CTkCanvas):
         self._drawing_start_mm: Point | None = None
         self._preview_rectangle_id: int | None = None
 
+        self._text_editor: tk.Text | None = None
+        self._text_editor_window_id: int | None = None
+        self._text_edit_object_index: int | None = None
+        self._text_edit_closing = False
+
         self._bind_events()
 
     # ==========================================================
@@ -130,6 +136,11 @@ class EditorCanvas(CTkCanvas):
         self.bind(
             "<ButtonRelease-1>",
             self._on_left_release,
+        )
+
+        self.bind(
+            "<Double-Button-1>",
+            self._on_text_double_click,
         )
 
         self.bind(
@@ -305,6 +316,7 @@ class EditorCanvas(CTkCanvas):
 
         self._draw_workspace()
         self._draw_objects()
+        self._position_text_editor()
 
     def _draw_shadow(
         self,
@@ -489,6 +501,193 @@ class EditorCanvas(CTkCanvas):
         self.redraw()
 
         return "break"
+
+    def _on_text_double_click(
+        self,
+        event,
+    ) -> str | None:
+
+        point = self._event_to_page_mm(
+            event,
+        )
+
+        object_index = self._hit_test_object(
+            point,
+        )
+
+        if object_index is None:
+            return None
+
+        if self._objects[object_index].kind != "text":
+            return None
+
+        self._selected_object_index = object_index
+        self._start_text_editing(
+            object_index,
+        )
+
+        return "break"
+
+    def _start_text_editing(
+        self,
+        object_index: int,
+    ) -> None:
+
+        self.commit_active_text_edit()
+
+        if not 0 <= object_index < len(self._objects):
+            return
+
+        graphic_object = self._objects[object_index]
+
+        if graphic_object.kind != "text":
+            return
+
+        self._text_edit_object_index = object_index
+        self._text_editor = tk.Text(
+            self,
+            wrap="word",
+            undo=True,
+            relief="solid",
+            borderwidth=1,
+            highlightthickness=1,
+            highlightbackground="#3874CB",
+            highlightcolor="#3874CB",
+            background=graphic_object.fill,
+            foreground="#222222",
+            insertbackground="#222222",
+            font=("Arial", 12),
+            padx=5,
+            pady=4,
+        )
+
+        self._text_editor.insert(
+            "1.0",
+            graphic_object.text,
+        )
+
+        self._text_editor.bind(
+            "<Return>",
+            self._validate_text_edit,
+        )
+        self._text_editor.bind(
+            "<Escape>",
+            self._cancel_text_edit,
+        )
+        self._text_editor.bind(
+            "<FocusOut>",
+            self._validate_text_edit,
+        )
+
+        self.redraw()
+        self._text_editor.focus_set()
+        self._text_editor.tag_add(
+            "sel",
+            "1.0",
+            "end-1c",
+        )
+
+    def _position_text_editor(self) -> None:
+
+        if self._text_editor is None:
+            return
+
+        object_index = self._text_edit_object_index
+
+        if object_index is None or not 0 <= object_index < len(self._objects):
+            self._finish_text_editing(
+                commit=False,
+                redraw=False,
+            )
+            return
+
+        bounds = self._objects[object_index].bounds
+        left = self.page_left + self.viewport.mm_to_px(bounds.left)
+        top = self.page_top + self.viewport.mm_to_px(bounds.top)
+        width = max(30, self.viewport.mm_to_px(bounds.width))
+        height = max(24, self.viewport.mm_to_px(bounds.height))
+
+        self._text_editor_window_id = self.create_window(
+            left,
+            top,
+            anchor="nw",
+            window=self._text_editor,
+            width=width,
+            height=height,
+        )
+
+    def _validate_text_edit(
+        self,
+        event=None,
+    ) -> str:
+
+        self._finish_text_editing(
+            commit=True,
+        )
+        return "break"
+
+    def _cancel_text_edit(
+        self,
+        event=None,
+    ) -> str:
+
+        self._finish_text_editing(
+            commit=False,
+        )
+        return "break"
+
+    def _finish_text_editing(
+        self,
+        commit: bool,
+        redraw: bool = True,
+    ) -> None:
+
+        if self._text_edit_closing:
+            return
+
+        if self._text_editor is None:
+            return
+
+        self._text_edit_closing = True
+
+        editor = self._text_editor
+        object_index = self._text_edit_object_index
+
+        if (
+            commit
+            and object_index is not None
+            and 0 <= object_index < len(self._objects)
+        ):
+            edited_text = editor.get(
+                "1.0",
+                "end-1c",
+            )
+            self._objects[object_index] = replace(
+                self._objects[object_index],
+                text=edited_text,
+            )
+
+        if self._text_editor_window_id is not None:
+            self.delete(
+                self._text_editor_window_id,
+            )
+
+        editor.destroy()
+        self._text_editor = None
+        self._text_editor_window_id = None
+        self._text_edit_object_index = None
+        self._text_edit_closing = False
+
+        self.focus_set()
+
+        if redraw:
+            self.redraw()
+
+    def commit_active_text_edit(self) -> None:
+
+        self._finish_text_editing(
+            commit=True,
+        )
 
     def _on_left_press(
         self,

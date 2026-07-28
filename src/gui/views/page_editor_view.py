@@ -309,6 +309,7 @@ class PageEditorView:
                         fill=str(element.get("fill", "#F4F4F4")),
                         outline=str(element.get("outline", "#222222")),
                         line_width=int(element.get("line_width", 2)),
+                        text=str(element.get("text", "Bloc de texte")),
                     )
                 )
             except (TypeError, ValueError):
@@ -340,6 +341,7 @@ class PageEditorView:
             "fill": canvas_object.fill,
             "outline": canvas_object.outline,
             "line_width": canvas_object.line_width,
+            "text": canvas_object.text,
         }
 
     def _save_page_objects(self) -> None:
