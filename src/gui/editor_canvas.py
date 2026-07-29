@@ -98,19 +98,29 @@ class EditorCanvas(CTkCanvas):
         self._objects: list[CanvasObject] = []
 
         self._selected_object_index: int | None = None
+        self._selected_object_indices: set[int] = set()
         self._interaction_mode: str | None = None
         self._interaction_handle: str | None = None
         self._interaction_start_mm: Point | None = None
         self._interaction_original_bounds: Rect | None = None
+        self._interaction_original_bounds_by_index: dict[int, Rect] = {}
 
         self._drawing = False
         self._drawing_start_mm: Point | None = None
         self._preview_rectangle_id: int | None = None
 
+        self._marquee_start_mm: Point | None = None
+        self._marquee_rectangle_id: int | None = None
+
         self._text_editor: tk.Text | None = None
         self._text_editor_window_id: int | None = None
         self._text_edit_object_index: int | None = None
         self._text_edit_closing = False
+
+        # Historique local du canvas. Il reste indépendant des liaisons
+        # clavier existantes afin de ne jamais les neutraliser.
+        self._undo_history: list[tuple[list[CanvasObject], int | None, set[int]]] = []
+        self._redo_history: list[tuple[list[CanvasObject], int | None, set[int]]] = []
 
         self._bind_events()
 
@@ -212,6 +222,269 @@ class EditorCanvas(CTkCanvas):
             self._activate_selection_tool,
         )
 
+        self.bind(
+            "<Left>",
+            self._move_selection_with_keyboard,
+        )
+        self.bind(
+            "<Right>",
+            self._move_selection_with_keyboard,
+        )
+        self.bind(
+            "<Up>",
+            self._move_selection_with_keyboard,
+        )
+        self.bind(
+            "<Down>",
+            self._move_selection_with_keyboard,
+        )
+
+        self.bind(
+            "<Control-d>",
+            self._duplicate_selection,
+        )
+        self.bind(
+            "<Control-D>",
+            self._duplicate_selection,
+        )
+        self.bind(
+            "<Delete>",
+            self._delete_selection,
+        )
+        self.bind(
+            "<BackSpace>",
+            self._delete_selection,
+        )
+        self.bind(
+            "<Control-z>",
+            self._undo_last_action,
+        )
+        self.bind(
+            "<Control-Z>",
+            self._undo_last_action,
+        )
+        self.bind(
+            "<Control-y>",
+            self._redo_last_action,
+        )
+        self.bind(
+            "<Control-Y>",
+            self._redo_last_action,
+        )
+
+        self.bind_all(
+            "<Control-a>",
+            self._select_all_objects,
+            add="+",
+        )
+        self.bind_all(
+            "<Control-A>",
+            self._select_all_objects,
+            add="+",
+        )
+
+    def _snapshot_state(
+        self,
+    ) -> tuple[list[CanvasObject], int | None, set[int]]:
+
+        return (
+            list(self._objects),
+            self._selected_object_index,
+            set(self._selected_object_indices),
+        )
+
+    def _restore_state(
+        self,
+        state: tuple[list[CanvasObject], int | None, set[int]],
+    ) -> None:
+
+        objects, selected_index, selected_indices = state
+        self._objects = list(objects)
+        self._selected_object_index = selected_index
+        self._selected_object_indices = {
+            index
+            for index in selected_indices
+            if 0 <= index < len(self._objects)
+        }
+        if self._selected_object_index not in self._selected_object_indices:
+            self._selected_object_index = (
+                max(self._selected_object_indices)
+                if self._selected_object_indices
+                else None
+            )
+        self.redraw()
+        self._notify_selection()
+
+    def _remember_current_state(self) -> None:
+
+        self._undo_history.append(
+            self._snapshot_state(),
+        )
+        self._redo_history.clear()
+
+    def _undo_last_action(
+        self,
+        event=None,
+    ) -> str:
+
+        if self._undo_history:
+            self._redo_history.append(
+                self._snapshot_state(),
+            )
+            self._restore_state(
+                self._undo_history.pop(),
+            )
+
+        return "break"
+
+    def _redo_last_action(
+        self,
+        event=None,
+    ) -> str:
+
+        if self._redo_history:
+            self._undo_history.append(
+                self._snapshot_state(),
+            )
+            self._restore_state(
+                self._redo_history.pop(),
+            )
+
+        return "break"
+
+    def _duplicate_selection(
+        self,
+        event=None,
+    ) -> str | None:
+
+        selected_object = self.get_selected_object()
+
+        if selected_object is None:
+            return None
+
+        offset = 5.0
+        bounds = selected_object.bounds
+        new_x = min(
+            bounds.left + offset,
+            self.page_format.width_mm - bounds.width,
+        )
+        new_y = min(
+            bounds.top + offset,
+            self.page_format.height_mm - bounds.height,
+        )
+
+        duplicate = replace(
+            selected_object,
+            bounds=Rect(
+                Point(new_x, new_y),
+                bounds.size,
+            ),
+        )
+
+        self._remember_current_state()
+        self._objects.append(duplicate)
+        self._selected_object_index = len(self._objects) - 1
+        self._selected_object_indices = {self._selected_object_index}
+        self.redraw()
+        self._notify_selection()
+
+        return "break"
+
+    def _delete_selection(
+        self,
+        event=None,
+    ) -> str | None:
+
+        if self._selected_object_index is None:
+            return None
+
+        if not 0 <= self._selected_object_index < len(self._objects):
+            return None
+
+        self._remember_current_state()
+        deleted_index = self._selected_object_index
+        del self._objects[deleted_index]
+        self._selected_object_indices = {
+            index - 1 if index > deleted_index else index
+            for index in self._selected_object_indices
+            if index != deleted_index
+        }
+        self._selected_object_index = (
+            max(self._selected_object_indices)
+            if self._selected_object_indices
+            else None
+        )
+        self.redraw()
+        self._notify_selection()
+
+        return "break"
+
+    def _move_selection_with_keyboard(
+        self,
+        event,
+    ) -> str | None:
+
+        selected_indices = sorted(self._selected_object_indices)
+
+        if not selected_indices:
+            return None
+
+        step = 10.0 if event.state & 0x0001 else 1.0
+        dx = 0.0
+        dy = 0.0
+
+        if event.keysym == "Left":
+            dx = -step
+        elif event.keysym == "Right":
+            dx = step
+        elif event.keysym == "Up":
+            dy = -step
+        elif event.keysym == "Down":
+            dy = step
+        else:
+            return None
+
+        selected_bounds = [
+            self._objects[index].bounds
+            for index in selected_indices
+            if 0 <= index < len(self._objects)
+        ]
+
+        if not selected_bounds:
+            return None
+
+        min_left = min(bounds.left for bounds in selected_bounds)
+        min_top = min(bounds.top for bounds in selected_bounds)
+        max_right = max(bounds.right for bounds in selected_bounds)
+        max_bottom = max(bounds.bottom for bounds in selected_bounds)
+
+        dx = min(max(dx, -min_left), self.page_format.width_mm - max_right)
+        dy = min(max(dy, -min_top), self.page_format.height_mm - max_bottom)
+
+        if dx == 0.0 and dy == 0.0:
+            return "break"
+
+        self._remember_current_state()
+
+        for index in selected_indices:
+            if not 0 <= index < len(self._objects):
+                continue
+
+            graphic_object = self._objects[index]
+            bounds = graphic_object.bounds
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(bounds.left + dx, bounds.top + dy),
+                    bounds.size,
+                ),
+            )
+
+        self.redraw()
+        self._notify_selection()
+
+        return "break"
+
     # ==========================================================
     # Observateurs
     # ==========================================================
@@ -238,13 +511,18 @@ class EditorCanvas(CTkCanvas):
 
     def _notify_selection(self) -> None:
 
+        # La notification est exécutée après la fin complète de l'événement
+        # souris. Cela évite de rafraîchir le panneau pendant que Tk traite
+        # encore le clic sur le canvas.
+        self.after_idle(self._dispatch_selection_changed)
+
+    def _dispatch_selection_changed(self) -> None:
+
         selected = self.get_selected_object()
 
         for callback in tuple(self._selection_listeners):
             callback(selected)
 
-        # Événement Tk standard : les vues sont averties après que le canvas
-        # a réellement terminé la modification de sa sélection.
         self.event_generate(
             "<<SelectionChanged>>",
             when="tail",
@@ -257,6 +535,14 @@ class EditorCanvas(CTkCanvas):
         if not 0 <= self._selected_object_index < len(self._objects):
             return None
         return self._objects[self._selected_object_index]
+
+    def get_selected_objects(self) -> list[CanvasObject]:
+
+        return [
+            self._objects[index]
+            for index in sorted(self._selected_object_indices)
+            if 0 <= index < len(self._objects)
+        ]
 
     def update_selected_object(self, **changes) -> None:
 
@@ -437,7 +723,7 @@ class EditorCanvas(CTkCanvas):
         for index, graphic_object in enumerate(self._objects):
 
             bounds = graphic_object.bounds
-            selected = index == self._selected_object_index
+            selected = index in self._selected_object_indices
 
             coordinates = (
                 self.page_left + self.viewport.mm_to_px(bounds.left),
@@ -496,7 +782,7 @@ class EditorCanvas(CTkCanvas):
                     ),
                 )
 
-            if selected:
+            if selected and index == self._selected_object_index:
                 self._draw_selection_handles(bounds)
 
     def _draw_selection_handles(self, bounds: Rect) -> None:
@@ -565,6 +851,36 @@ class EditorCanvas(CTkCanvas):
 
         return "break"
 
+    def _select_all_objects(
+        self,
+        event=None,
+    ) -> str:
+
+        if self._text_editor is not None:
+            return ""
+
+        if not self._objects:
+            return "break"
+
+        self.set_tool(
+            "selection",
+        )
+
+        self._selected_object_indices = set(range(len(self._objects)))
+        self._selected_object_index = len(self._objects) - 1
+        self._page_selected = False
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
+
+        self._notify_selection()
+        self.redraw()
+        self.focus_set()
+
+        return "break"
+
     def _activate_text_tool(
         self,
         event=None,
@@ -585,6 +901,15 @@ class EditorCanvas(CTkCanvas):
             "selection",
         )
 
+        self._selected_object_index = None
+        self._selected_object_indices.clear()
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
+
+        self._notify_selection()
         self.redraw()
 
         return "break"
@@ -609,6 +934,7 @@ class EditorCanvas(CTkCanvas):
             return None
 
         self._selected_object_index = object_index
+        self._selected_object_indices = {object_index}
         self._start_text_editing(
             object_index,
         )
@@ -807,6 +1133,7 @@ class EditorCanvas(CTkCanvas):
                 return
 
             self._selected_object_index = None
+            self._selected_object_indices.clear()
             self._drawing = True
             self._drawing_start_mm = start
 
@@ -849,23 +1176,86 @@ class EditorCanvas(CTkCanvas):
             start,
         )
 
-        self._selected_object_index = object_index
+        control_pressed = bool(event.state & 0x0004)
 
-        if object_index is not None and start is not None:
-
-            self._interaction_mode = "move"
-            self._interaction_start_mm = start
-            self._interaction_original_bounds = self._objects[
-                object_index
-            ].bounds
-
-        else:
+        if control_pressed:
+            if object_index is not None:
+                if object_index in self._selected_object_indices:
+                    self._selected_object_indices.remove(object_index)
+                    if self._selected_object_index == object_index:
+                        self._selected_object_index = (
+                            max(self._selected_object_indices)
+                            if self._selected_object_indices
+                            else None
+                        )
+                else:
+                    self._selected_object_indices.add(object_index)
+                    self._selected_object_index = object_index
 
             self._interaction_mode = None
             self._interaction_start_mm = None
             self._interaction_original_bounds = None
 
+        else:
+            if (
+                object_index is not None
+                and object_index in self._selected_object_indices
+                and len(self._selected_object_indices) > 1
+            ):
+                self._selected_object_index = object_index
+            else:
+                self._selected_object_index = object_index
+                self._selected_object_indices = (
+                    {object_index}
+                    if object_index is not None
+                    else set()
+                )
+
+            if object_index is not None and start is not None:
+
+                self._interaction_mode = "move"
+                self._interaction_start_mm = start
+                self._interaction_original_bounds = self._objects[
+                    object_index
+                ].bounds
+                self._interaction_original_bounds_by_index = {
+                    index: self._objects[index].bounds
+                    for index in self._selected_object_indices
+                    if 0 <= index < len(self._objects)
+                }
+
+            else:
+
+                self._interaction_mode = "marquee"
+                self._interaction_start_mm = start
+                self._interaction_original_bounds = None
+                self._interaction_original_bounds_by_index = {}
+                self._marquee_start_mm = start
+                self._marquee_rectangle_id = self.create_rectangle(
+                    event.x,
+                    event.y,
+                    event.x,
+                    event.y,
+                    outline="#3874CB",
+                    width=1,
+                    dash=(4, 3),
+                    fill="",
+                )
+
         self.redraw()
+        if self._interaction_mode == "marquee" and self._marquee_start_mm is not None:
+            start_x = self.page_left + self.viewport.mm_to_px(self._marquee_start_mm.x)
+            start_y = self.page_top + self.viewport.mm_to_px(self._marquee_start_mm.y)
+            self._marquee_rectangle_id = self.create_rectangle(
+                start_x,
+                start_y,
+                start_x,
+                start_y,
+                outline="#3874CB",
+                width=1,
+                dash=(4, 3),
+                fill="",
+            )
         self._notify_selection()
 
     def _on_left_drag(
@@ -919,6 +1309,30 @@ class EditorCanvas(CTkCanvas):
 
             self.coords(
                 self._preview_rectangle_id,
+                start_x,
+                start_y,
+                current_x,
+                current_y,
+            )
+            return
+
+        if self._interaction_mode == "marquee":
+            if self._marquee_start_mm is None or self._marquee_rectangle_id is None:
+                return
+
+            current = self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
+            if current is None:
+                return
+
+            start_x = self.page_left + self.viewport.mm_to_px(self._marquee_start_mm.x)
+            start_y = self.page_top + self.viewport.mm_to_px(self._marquee_start_mm.y)
+            current_x = self.page_left + self.viewport.mm_to_px(current.x)
+            current_y = self.page_top + self.viewport.mm_to_px(current.y)
+            self.coords(
+                self._marquee_rectangle_id,
                 start_x,
                 start_y,
                 current_x,
@@ -1017,6 +1431,7 @@ class EditorCanvas(CTkCanvas):
             self._selected_object_index = (
                 len(self._objects) - 1
             )
+            self._selected_object_indices = {self._selected_object_index}
 
             self._finish_drawing()
             self.set_tool(
@@ -1026,10 +1441,47 @@ class EditorCanvas(CTkCanvas):
             self._notify_selection()
             return
 
+        if self._interaction_mode == "marquee":
+            start = self._marquee_start_mm
+            current = self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
+
+            if self._marquee_rectangle_id is not None:
+                self.delete(self._marquee_rectangle_id)
+
+            self._marquee_rectangle_id = None
+            self._marquee_start_mm = None
+
+            if start is not None and current is not None:
+                left = min(start.x, current.x)
+                top = min(start.y, current.y)
+                right = max(start.x, current.x)
+                bottom = max(start.y, current.y)
+
+                if abs(right - left) >= 0.5 or abs(bottom - top) >= 0.5:
+                    selected = {
+                        index
+                        for index, graphic_object in enumerate(self._objects)
+                        if not (
+                            graphic_object.bounds.right < left
+                            or graphic_object.bounds.left > right
+                            or graphic_object.bounds.bottom < top
+                            or graphic_object.bounds.top > bottom
+                        )
+                    }
+                    self._selected_object_indices = selected
+                    self._selected_object_index = max(selected) if selected else None
+
+            self.redraw()
+            self._notify_selection()
+
         self._interaction_mode = None
         self._interaction_handle = None
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
 
     def _hit_test_object(
         self,
@@ -1091,46 +1543,34 @@ class EditorCanvas(CTkCanvas):
         if self._interaction_start_mm is None:
             return
 
-        if self._interaction_original_bounds is None:
-            return
+        original_bounds = self._interaction_original_bounds_by_index
 
-        original = self._interaction_original_bounds
+        if not original_bounds:
+            return
 
         dx = current.x - self._interaction_start_mm.x
         dy = current.y - self._interaction_start_mm.y
 
-        new_left = min(
-            max(
-                original.left + dx,
-                0.0,
-            ),
-            self.page_format.width_mm - original.width,
-        )
+        min_left = min(bounds.left for bounds in original_bounds.values())
+        min_top = min(bounds.top for bounds in original_bounds.values())
+        max_right = max(bounds.right for bounds in original_bounds.values())
+        max_bottom = max(bounds.bottom for bounds in original_bounds.values())
 
-        new_top = min(
-            max(
-                original.top + dy,
-                0.0,
-            ),
-            self.page_format.height_mm - original.height,
-        )
+        dx = min(max(dx, -min_left), self.page_format.width_mm - max_right)
+        dy = min(max(dy, -min_top), self.page_format.height_mm - max_bottom)
 
-        selected_object = self._objects[
-            self._selected_object_index
-        ]
+        for index, original in original_bounds.items():
+            if not 0 <= index < len(self._objects):
+                continue
 
-        self._objects[
-            self._selected_object_index
-        ] = replace(
-            selected_object,
-            bounds=Rect(
-                Point(
-                    new_left,
-                    new_top,
+            graphic_object = self._objects[index]
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(original.left + dx, original.top + dy),
+                    original.size,
                 ),
-                original.size,
-            ),
-        )
+            )
 
         self.redraw()
         self._notify_selection()

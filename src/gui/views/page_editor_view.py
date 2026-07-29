@@ -49,6 +49,9 @@ class PageEditorView:
         self.workspace: EditorCanvas | None = None
         self.status_bar: StatusBar | None = None
         self._display_retry_count = 0
+        self._save_status_text = tk.StringVar(
+            value="",
+        )
 
     def show(self) -> None:
 
@@ -116,6 +119,16 @@ class PageEditorView:
             padx=20,
         )
 
+        ctk.CTkLabel(
+            header,
+            textvariable=self._save_status_text,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(
+            side="left",
+            padx=(0, 20),
+        )
+
         page_type = getattr(
             self.page,
             "page_type",
@@ -170,6 +183,29 @@ class PageEditorView:
 
         if saved_objects:
             self.workspace._objects = saved_objects
+
+        self.workspace.add_selection_listener(
+            self._refresh_selection_label,
+        )
+
+        window = self.parent.winfo_toplevel()
+        window.bind(
+            "<Control-s>",
+            self._save_shortcut,
+            add="+",
+        )
+        window.bind(
+            "<Control-S>",
+            self._save_shortcut,
+            add="+",
+        )
+
+    def _refresh_selection_label(
+        self,
+        selected_object: CanvasObject | None,
+    ) -> None:
+
+        self._save_page_objects(show_status=False)
 
     def _create_rulers(self, parent) -> None:
 
@@ -310,6 +346,12 @@ class PageEditorView:
                         outline=str(element.get("outline", "#222222")),
                         line_width=int(element.get("line_width", 2)),
                         text=str(element.get("text", "Bloc de texte")),
+                        text_color=str(element.get("text_color", "#222222")),
+                        font_family=str(element.get("font_family", "Arial")),
+                        font_size=int(element.get("font_size", 12)),
+                        bold=bool(element.get("bold", False)),
+                        italic=bool(element.get("italic", False)),
+                        align=str(element.get("align", "left")),
                     )
                 )
             except (TypeError, ValueError):
@@ -342,9 +384,23 @@ class PageEditorView:
             "outline": canvas_object.outline,
             "line_width": canvas_object.line_width,
             "text": canvas_object.text,
+            "text_color": canvas_object.text_color,
+            "font_family": canvas_object.font_family,
+            "font_size": canvas_object.font_size,
+            "bold": canvas_object.bold,
+            "italic": canvas_object.italic,
+            "align": canvas_object.align,
         }
 
-    def _save_page_objects(self) -> None:
+    def _save_shortcut(self, event=None) -> str:
+
+        self._save_page_objects(show_status=True)
+        return "break"
+
+    def _save_page_objects(
+        self,
+        show_status: bool = False,
+    ) -> None:
 
         if self.workspace is None:
             return
@@ -367,6 +423,14 @@ class PageEditorView:
 
         if callable(save_page):
             save_page(update_history=False)
+
+        if show_status:
+            self._save_status_text.set("Enregistré")
+            if self.root is not None:
+                self.root.after(
+                    1500,
+                    lambda: self._save_status_text.set(""),
+                )
 
     def back(self) -> None:
 
