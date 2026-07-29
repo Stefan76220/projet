@@ -577,6 +577,77 @@ class EditorCanvas(CTkCanvas):
             bounds=Rect(Point(x, y), Size(width, height)),
         )
 
+    def align_selection(self, mode: str) -> bool:
+        """Aligne la sélection multiple sur l'objet actif."""
+
+        selected_indices = [
+            index
+            for index in sorted(self._selected_object_indices)
+            if 0 <= index < len(self._objects)
+        ]
+
+        if len(selected_indices) < 2:
+            return False
+
+        reference_index = self._selected_object_index
+        if reference_index not in selected_indices:
+            reference_index = selected_indices[-1]
+
+        reference_bounds = self._objects[reference_index].bounds
+        valid_modes = {
+            "left",
+            "center_x",
+            "right",
+            "top",
+            "center_y",
+            "bottom",
+        }
+
+        if mode not in valid_modes:
+            return False
+
+        self._remember_current_state()
+
+        for index in selected_indices:
+            if index == reference_index:
+                continue
+
+            graphic_object = self._objects[index]
+            bounds = graphic_object.bounds
+            new_x = bounds.left
+            new_y = bounds.top
+
+            if mode == "left":
+                new_x = reference_bounds.left
+            elif mode == "center_x":
+                new_x = (
+                    reference_bounds.left
+                    + (reference_bounds.width - bounds.width) / 2
+                )
+            elif mode == "right":
+                new_x = reference_bounds.right - bounds.width
+            elif mode == "top":
+                new_y = reference_bounds.top
+            elif mode == "center_y":
+                new_y = (
+                    reference_bounds.top
+                    + (reference_bounds.height - bounds.height) / 2
+                )
+            elif mode == "bottom":
+                new_y = reference_bounds.bottom - bounds.height
+
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(new_x, new_y),
+                    bounds.size,
+                ),
+            )
+
+        self.redraw()
+        self._notify_selection()
+        return True
+
     # ==========================================================
     # Configuration
     # ==========================================================

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import tkinter as tk
 
 import customtkinter as ctk
@@ -52,6 +53,12 @@ class PageEditorView:
         self._save_status_text = tk.StringVar(
             value="",
         )
+        self._selection_x_text = tk.StringVar(
+            value="X : — mm",
+        )
+        self._selection_y_text = tk.StringVar(
+            value="Y : — mm",
+        )
 
     def show(self) -> None:
 
@@ -67,6 +74,7 @@ class PageEditorView:
         )
 
         self._create_header(self.root)
+        self._create_alignment_toolbar(self.root)
 
         editor_area = tk.Frame(
             self.root,
@@ -119,6 +127,33 @@ class PageEditorView:
             padx=20,
         )
 
+        coordinates = ctk.CTkFrame(
+            header,
+            fg_color="transparent",
+        )
+        coordinates.pack(
+            side="left",
+            padx=(0, 20),
+        )
+
+        ctk.CTkLabel(
+            coordinates,
+            textvariable=self._selection_x_text,
+            width=92,
+            anchor="w",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            coordinates,
+            textvariable=self._selection_y_text,
+            width=92,
+            anchor="w",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+        ).pack(side="left")
+
         ctk.CTkLabel(
             header,
             textvariable=self._save_status_text,
@@ -141,6 +176,117 @@ class PageEditorView:
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
         ).pack(side="right")
+
+    def _create_alignment_toolbar(self, parent) -> None:
+
+        toolbar = ctk.CTkFrame(
+            parent,
+            fg_color="#D9D9D9",
+            height=48,
+            corner_radius=0,
+        )
+        toolbar.pack(
+            fill="x",
+            padx=20,
+            pady=(0, 10),
+        )
+        toolbar.pack_propagate(False)
+
+        ctk.CTkLabel(
+            toolbar,
+            text="Alignement",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+        ).pack(side="left", padx=(12, 8))
+
+        buttons = (
+            ("Gauche", "left"),
+            ("Centre H", "center_horizontal"),
+            ("Droite", "right"),
+            ("Haut", "top"),
+            ("Centre V", "center_vertical"),
+            ("Bas", "bottom"),
+        )
+
+        for label, alignment in buttons:
+            ctk.CTkButton(
+                toolbar,
+                text=label,
+                width=88,
+                height=30,
+                command=lambda value=alignment: self._align_selection(value),
+            ).pack(side="left", padx=3, pady=9)
+
+    def _align_selection(self, alignment: str) -> None:
+        """Aligne la sélection sur la page en conservant les écarts entre objets."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if not selected_indices:
+            return
+
+        selected_objects = [
+            self.workspace._objects[index]
+            for index in selected_indices
+        ]
+
+        group_left = min(obj.bounds.left for obj in selected_objects)
+        group_top = min(obj.bounds.top for obj in selected_objects)
+        group_right = max(obj.bounds.right for obj in selected_objects)
+        group_bottom = max(obj.bounds.bottom for obj in selected_objects)
+        group_width = group_right - group_left
+        group_height = group_bottom - group_top
+
+        page_width = self.workspace.page_format.width_mm
+        page_height = self.workspace.page_format.height_mm
+
+        target_left = group_left
+        target_top = group_top
+
+        if alignment == "left":
+            target_left = 0.0
+        elif alignment == "center_horizontal":
+            target_left = (page_width - group_width) / 2
+        elif alignment == "right":
+            target_left = page_width - group_width
+        elif alignment == "top":
+            target_top = 0.0
+        elif alignment == "center_vertical":
+            target_top = (page_height - group_height) / 2
+        elif alignment == "bottom":
+            target_top = page_height - group_height
+        else:
+            return
+
+        delta_x = target_left - group_left
+        delta_y = target_top - group_top
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            graphic_object = self.workspace._objects[index]
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(
+                        bounds.left + delta_x,
+                        bounds.top + delta_y,
+                    ),
+                    bounds.size,
+                ),
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
 
     def _create_corner(self, parent) -> None:
 
@@ -204,6 +350,17 @@ class PageEditorView:
         self,
         selected_object: CanvasObject | None,
     ) -> None:
+
+        if selected_object is None:
+            self._selection_x_text.set("X : — mm")
+            self._selection_y_text.set("Y : — mm")
+        else:
+            self._selection_x_text.set(
+                f"X : {selected_object.bounds.left:.2f} mm",
+            )
+            self._selection_y_text.set(
+                f"Y : {selected_object.bounds.top:.2f} mm",
+            )
 
         self._save_page_objects(show_status=False)
 
