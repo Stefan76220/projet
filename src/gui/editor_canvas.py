@@ -99,6 +99,7 @@ class EditorCanvas(CTkCanvas):
 
         self._selected_object_index: int | None = None
         self._selected_object_indices: set[int] = set()
+        self._reference_object_index: int | None = None
         self._interaction_mode: str | None = None
         self._interaction_handle: str | None = None
         self._interaction_start_mm: Point | None = None
@@ -414,6 +415,15 @@ class EditorCanvas(CTkCanvas):
             if self._selected_object_indices
             else None
         )
+
+        if self._reference_object_index == deleted_index:
+            self._reference_object_index = None
+        elif (
+            self._reference_object_index is not None
+            and self._reference_object_index > deleted_index
+        ):
+            self._reference_object_index -= 1
+
         self.redraw()
         self._notify_selection()
 
@@ -543,6 +553,16 @@ class EditorCanvas(CTkCanvas):
             for index in sorted(self._selected_object_indices)
             if 0 <= index < len(self._objects)
         ]
+
+    def get_reference_object_index(self) -> int | None:
+        """Retourne l'index de l'objet choisi comme référence."""
+
+        if self._reference_object_index is None:
+            return None
+        if not 0 <= self._reference_object_index < len(self._objects):
+            self._reference_object_index = None
+            return None
+        return self._reference_object_index
 
     def update_selected_object(self, **changes) -> None:
 
@@ -803,10 +823,18 @@ class EditorCanvas(CTkCanvas):
                 self.page_top + self.viewport.mm_to_px(bounds.bottom),
             )
 
+            is_reference = index == self._reference_object_index
+
             options = {
                 "fill": graphic_object.fill,
-                "outline": "#3874CB" if selected else graphic_object.outline,
-                "width": graphic_object.line_width,
+                "outline": (
+                    "#D62828"
+                    if is_reference
+                    else "#3874CB"
+                    if selected
+                    else graphic_object.outline
+                ),
+                "width": 2 if is_reference else graphic_object.line_width,
             }
 
             if graphic_object.kind == "ellipse":
@@ -854,9 +882,16 @@ class EditorCanvas(CTkCanvas):
                 )
 
             if selected and index == self._selected_object_index:
-                self._draw_selection_handles(bounds)
+                self._draw_selection_handles(
+                    bounds,
+                    is_reference=is_reference,
+                )
 
-    def _draw_selection_handles(self, bounds: Rect) -> None:
+    def _draw_selection_handles(
+        self,
+        bounds: Rect,
+        is_reference: bool = False,
+    ) -> None:
 
         for x_px, y_px in self._selection_handle_positions(bounds).values():
 
@@ -868,7 +903,7 @@ class EditorCanvas(CTkCanvas):
                 x_px + half,
                 y_px + half,
                 fill="white",
-                outline="#3874CB",
+                outline="#D62828" if is_reference else "#3874CB",
                 width=2,
             )
 
@@ -974,6 +1009,7 @@ class EditorCanvas(CTkCanvas):
 
         self._selected_object_index = None
         self._selected_object_indices.clear()
+        self._reference_object_index = None
         self._interaction_mode = None
         self._interaction_handle = None
         self._interaction_start_mm = None
@@ -1268,12 +1304,16 @@ class EditorCanvas(CTkCanvas):
             self._interaction_original_bounds = None
 
         else:
-            if (
+            clicked_selected_object = (
                 object_index is not None
                 and object_index in self._selected_object_indices
-                and len(self._selected_object_indices) > 1
-            ):
+            )
+
+            if clicked_selected_object:
+                # Un second clic sur un objet déjà sélectionné le désigne
+                # comme référence permanente, même s'il est sélectionné seul.
                 self._selected_object_index = object_index
+                self._reference_object_index = object_index
             else:
                 self._selected_object_index = object_index
                 self._selected_object_indices = (
@@ -1281,6 +1321,10 @@ class EditorCanvas(CTkCanvas):
                     if object_index is not None
                     else set()
                 )
+
+                # Un clic dans une zone vide annule aussi la référence rouge.
+                if object_index is None:
+                    self._reference_object_index = None
 
             if object_index is not None and start is not None:
 

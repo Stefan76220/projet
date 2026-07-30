@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import tkinter as tk
+from tkinter import colorchooser
 
 import customtkinter as ctk
 
@@ -59,6 +60,7 @@ class PageEditorView:
         self._selection_y_text = tk.StringVar(
             value="Y : — mm",
         )
+        self._copied_properties: dict[str, object] | None = None
 
     def show(self) -> None:
 
@@ -182,7 +184,6 @@ class PageEditorView:
         toolbar = ctk.CTkFrame(
             parent,
             fg_color="#D9D9D9",
-            height=48,
             corner_radius=0,
         )
         toolbar.pack(
@@ -190,14 +191,21 @@ class PageEditorView:
             padx=20,
             pady=(0, 10),
         )
-        toolbar.pack_propagate(False)
+
+        alignment_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        alignment_row.pack(fill="x", padx=8, pady=(6, 3))
 
         ctk.CTkLabel(
-            toolbar,
+            alignment_row,
             text="Alignement",
             font=Fonts.NORMAL,
             text_color=Colors.TEXT,
-        ).pack(side="left", padx=(12, 8))
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
 
         buttons = (
             ("Gauche", "left"),
@@ -210,15 +218,118 @@ class PageEditorView:
 
         for label, alignment in buttons:
             ctk.CTkButton(
-                toolbar,
+                alignment_row,
                 text=label,
-                width=88,
+                width=86,
                 height=30,
                 command=lambda value=alignment: self._align_selection(value),
-            ).pack(side="left", padx=3, pady=9)
+            ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            alignment_row,
+            text="Distribuer H",
+            width=104,
+            height=30,
+            command=self._distribute_selection_horizontally,
+        ).pack(side="left", padx=(12, 3))
+
+        ctk.CTkButton(
+            alignment_row,
+            text="Distribuer V",
+            width=104,
+            height=30,
+            command=self._distribute_selection_vertically,
+        ).pack(side="left", padx=3)
+
+        properties_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        properties_row.pack(fill="x", padx=8, pady=(3, 6))
+
+        ctk.CTkLabel(
+            properties_row,
+            text="Dimensions",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        ctk.CTkButton(
+            properties_row,
+            text="Même largeur",
+            width=110,
+            height=30,
+            command=self._make_selection_same_width,
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            properties_row,
+            text="Même hauteur",
+            width=110,
+            height=30,
+            command=self._make_selection_same_height,
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            properties_row,
+            text="Même taille",
+            width=104,
+            height=30,
+            command=self._make_selection_same_size,
+        ).pack(side="left", padx=3)
+
+        appearance_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        appearance_row.pack(fill="x", padx=8, pady=(3, 6))
+
+        ctk.CTkLabel(
+            appearance_row,
+            text="Apparence",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        ctk.CTkButton(
+            appearance_row,
+            text="Remplissage",
+            width=110,
+            height=30,
+            command=self._choose_fill_color,
+        ).pack(side="left", padx=3)
+
+        ctk.CTkLabel(
+            appearance_row,
+            text="Copie sélective",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=110,
+            anchor="e",
+        ).pack(side="left", padx=(22, 8))
+
+        ctk.CTkButton(
+            appearance_row,
+            text="Copier propriétés",
+            width=132,
+            height=30,
+            command=self._open_copy_properties_dialog,
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            appearance_row,
+            text="Coller propriétés",
+            width=132,
+            height=30,
+            command=self._paste_properties,
+        ).pack(side="left", padx=3)
 
     def _align_selection(self, alignment: str) -> None:
-        """Aligne la sélection sur la page en conservant les écarts entre objets."""
+        """Aligne chaque objet sélectionné individuellement sur la page."""
 
         if self.workspace is None:
             return
@@ -232,54 +343,36 @@ class PageEditorView:
         if not selected_indices:
             return
 
-        selected_objects = [
-            self.workspace._objects[index]
-            for index in selected_indices
-        ]
-
-        group_left = min(obj.bounds.left for obj in selected_objects)
-        group_top = min(obj.bounds.top for obj in selected_objects)
-        group_right = max(obj.bounds.right for obj in selected_objects)
-        group_bottom = max(obj.bounds.bottom for obj in selected_objects)
-        group_width = group_right - group_left
-        group_height = group_bottom - group_top
-
         page_width = self.workspace.page_format.width_mm
         page_height = self.workspace.page_format.height_mm
-
-        target_left = group_left
-        target_top = group_top
-
-        if alignment == "left":
-            target_left = 0.0
-        elif alignment == "center_horizontal":
-            target_left = (page_width - group_width) / 2
-        elif alignment == "right":
-            target_left = page_width - group_width
-        elif alignment == "top":
-            target_top = 0.0
-        elif alignment == "center_vertical":
-            target_top = (page_height - group_height) / 2
-        elif alignment == "bottom":
-            target_top = page_height - group_height
-        else:
-            return
-
-        delta_x = target_left - group_left
-        delta_y = target_top - group_top
 
         self.workspace._remember_current_state()
 
         for index in selected_indices:
             graphic_object = self.workspace._objects[index]
             bounds = graphic_object.bounds
+            new_x = bounds.left
+            new_y = bounds.top
+
+            if alignment == "left":
+                new_x = 0.0
+            elif alignment == "center_horizontal":
+                new_x = (page_width - bounds.width) / 2
+            elif alignment == "right":
+                new_x = page_width - bounds.width
+            elif alignment == "top":
+                new_y = 0.0
+            elif alignment == "center_vertical":
+                new_y = (page_height - bounds.height) / 2
+            elif alignment == "bottom":
+                new_y = page_height - bounds.height
+            else:
+                return
+
             self.workspace._objects[index] = replace(
                 graphic_object,
                 bounds=Rect(
-                    Point(
-                        bounds.left + delta_x,
-                        bounds.top + delta_y,
-                    ),
+                    Point(new_x, new_y),
                     bounds.size,
                 ),
             )
@@ -287,6 +380,438 @@ class PageEditorView:
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+
+
+    def _distribute_selection_horizontally(self) -> None:
+        """Répartit régulièrement les objets sélectionnés de gauche à droite."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in self.workspace._selected_object_indices
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if len(selected_indices) < 3:
+            return
+
+        selected_indices.sort(
+            key=lambda index: self.workspace._objects[index].bounds.left
+        )
+
+        selected_objects = [
+            self.workspace._objects[index]
+            for index in selected_indices
+        ]
+
+        first_bounds = selected_objects[0].bounds
+        last_bounds = selected_objects[-1].bounds
+        total_width = sum(
+            graphic_object.bounds.width
+            for graphic_object in selected_objects
+        )
+        available_width = last_bounds.right - first_bounds.left
+        spacing = (available_width - total_width) / (len(selected_objects) - 1)
+
+        self.workspace._remember_current_state()
+
+        current_x = first_bounds.left
+
+        for index, graphic_object in zip(selected_indices, selected_objects):
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(current_x, bounds.top),
+                    bounds.size,
+                ),
+            )
+            current_x += bounds.width + spacing
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+
+    def _distribute_selection_vertically(self) -> None:
+        """Répartit régulièrement les objets sélectionnés de haut en bas."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in self.workspace._selected_object_indices
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if len(selected_indices) < 3:
+            return
+
+        selected_indices.sort(
+            key=lambda index: self.workspace._objects[index].bounds.top
+        )
+
+        selected_objects = [
+            self.workspace._objects[index]
+            for index in selected_indices
+        ]
+
+        first_bounds = selected_objects[0].bounds
+        last_bounds = selected_objects[-1].bounds
+        total_height = sum(
+            graphic_object.bounds.height
+            for graphic_object in selected_objects
+        )
+        available_height = last_bounds.bottom - first_bounds.top
+        spacing = (available_height - total_height) / (len(selected_objects) - 1)
+
+        self.workspace._remember_current_state()
+
+        current_y = first_bounds.top
+
+        for index, graphic_object in zip(selected_indices, selected_objects):
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(bounds.left, current_y),
+                    bounds.size,
+                ),
+            )
+            current_y += bounds.height + spacing
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+
+    def _make_selection_same_width(self) -> None:
+        """Donne à tous les objets sélectionnés la largeur de l'objet rouge."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if len(selected_indices) < 2:
+            return
+
+        reference_index = self.workspace.get_reference_object_index()
+
+        if reference_index is None:
+            return
+
+        reference_width = self.workspace._objects[
+            reference_index
+        ].bounds.width
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            if index == reference_index:
+                continue
+
+            graphic_object = self.workspace._objects[index]
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    bounds.origin,
+                    Size(reference_width, bounds.height),
+                ),
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+
+    def _make_selection_same_height(self) -> None:
+        """Donne à tous les objets sélectionnés la hauteur de l'objet rouge."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if len(selected_indices) < 2:
+            return
+
+        reference_index = self.workspace.get_reference_object_index()
+
+        if reference_index is None:
+            return
+
+        reference_height = self.workspace._objects[
+            reference_index
+        ].bounds.height
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            if index == reference_index:
+                continue
+
+            graphic_object = self.workspace._objects[index]
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    bounds.origin,
+                    Size(bounds.width, reference_height),
+                ),
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+
+    def _make_selection_same_size(self) -> None:
+        """Donne à tous les objets sélectionnés la taille de l'objet rouge."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if len(selected_indices) < 2:
+            return
+
+        reference_index = self.workspace.get_reference_object_index()
+
+        if reference_index is None:
+            return
+
+        reference_bounds = self.workspace._objects[
+            reference_index
+        ].bounds
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            if index == reference_index:
+                continue
+
+            graphic_object = self.workspace._objects[index]
+            bounds = graphic_object.bounds
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    bounds.origin,
+                    Size(
+                        reference_bounds.width,
+                        reference_bounds.height,
+                    ),
+                ),
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+
+
+    def _choose_fill_color(self) -> None:
+        """Modifie la couleur de remplissage des objets sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if not selected_indices:
+            self._save_status_text.set("Sélectionner au moins un objet")
+            return
+
+        initial_color = self.workspace._objects[selected_indices[0]].fill
+        chosen_color = colorchooser.askcolor(
+            color=initial_color,
+            title="Couleur de remplissage",
+            parent=self.parent.winfo_toplevel(),
+        )[1]
+
+        if not chosen_color:
+            self.workspace.focus_set()
+            return
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            graphic_object = self.workspace._objects[index]
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                fill=chosen_color,
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Remplissage modifié sur {len(selected_indices)} objet(s)"
+        )
+
+    def _open_copy_properties_dialog(self) -> None:
+        """Ouvre le choix des propriétés à copier depuis l'objet rouge."""
+
+        if self.workspace is None:
+            return
+
+        reference_index = self.workspace.get_reference_object_index()
+
+        if reference_index is None:
+            self._save_status_text.set("Choisir d'abord l'objet rouge")
+            return
+
+        if not (0 <= reference_index < len(self.workspace._objects)):
+            return
+
+        source = self.workspace._objects[reference_index]
+
+        dialog = ctk.CTkToplevel(self.parent)
+        dialog.title("Copier les propriétés")
+        dialog.geometry("390x520")
+        dialog.resizable(False, False)
+        dialog.transient(self.parent.winfo_toplevel())
+        dialog.grab_set()
+
+        ctk.CTkLabel(
+            dialog,
+            text="Propriétés à copier",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+        ).pack(padx=24, pady=(22, 12), anchor="w")
+
+        ctk.CTkLabel(
+            dialog,
+            text="La forme rouge est utilisée comme modèle.",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(padx=24, pady=(0, 12), anchor="w")
+
+        property_choices = (
+            ("fill", "Remplissage"),
+            ("outline", "Couleur du contour"),
+            ("line_width", "Épaisseur du contour"),
+            ("text_color", "Couleur du texte"),
+            ("font_family", "Police"),
+            ("font_size", "Taille de police"),
+            ("bold", "Gras"),
+            ("italic", "Italique"),
+            ("align", "Alignement du texte"),
+        )
+
+        variables: dict[str, tk.BooleanVar] = {}
+
+        options_frame = ctk.CTkScrollableFrame(
+            dialog,
+            fg_color="transparent",
+            height=330,
+        )
+        options_frame.pack(fill="both", expand=True, padx=18, pady=(0, 12))
+
+        for property_name, label in property_choices:
+            is_available = property_name == "fill"
+            variable = tk.BooleanVar(value=is_available)
+            variables[property_name] = variable
+            checkbox = ctk.CTkCheckBox(
+                options_frame,
+                text=label if is_available else f"{label} — bientôt disponible",
+                variable=variable,
+                font=Fonts.NORMAL,
+            )
+            checkbox.pack(anchor="w", padx=8, pady=7)
+            if not is_available:
+                checkbox.configure(state="disabled")
+
+        buttons_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons_frame.pack(fill="x", padx=20, pady=(0, 18))
+
+        def confirm_copy() -> None:
+            selected_properties = {
+                name: getattr(source, name)
+                for name, variable in variables.items()
+                if variable.get()
+            }
+
+            if not selected_properties:
+                self._save_status_text.set("Aucune propriété choisie")
+                return
+
+            self._copied_properties = selected_properties
+            self._save_status_text.set(
+                f"{len(selected_properties)} propriété(s) copiée(s)"
+            )
+            dialog.grab_release()
+            dialog.destroy()
+            self.workspace.focus_set()
+
+        ctk.CTkButton(
+            buttons_frame,
+            text="Annuler",
+            width=110,
+            command=dialog.destroy,
+        ).pack(side="right", padx=(8, 0))
+
+        ctk.CTkButton(
+            buttons_frame,
+            text="Copier",
+            width=110,
+            command=confirm_copy,
+        ).pack(side="right")
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.after(50, dialog.focus_force)
+
+    def _paste_properties(self) -> None:
+        """Applique les propriétés mémorisées aux objets sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        if not self._copied_properties:
+            self._save_status_text.set("Aucune propriété copiée")
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if not selected_indices:
+            self._save_status_text.set("Aucun objet sélectionné")
+            return
+
+        self.workspace._remember_current_state()
+
+        for index in selected_indices:
+            graphic_object = self.workspace._objects[index]
+            self.workspace._objects[index] = replace(
+                graphic_object,
+                **self._copied_properties,
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Propriétés appliquées à {len(selected_indices)} objet(s)"
+        )
 
     def _create_corner(self, parent) -> None:
 
