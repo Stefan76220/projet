@@ -220,7 +220,14 @@ class EditorCanvas(CTkCanvas):
 
         self.bind(
             "<Escape>",
-            self._activate_selection_tool,
+            self._cancel_reference_with_escape,
+        )
+
+        # Le focus peut se trouver sur un bouton de la barre d’outils.
+        # La liaison à la fenêtre garantit que Échap annule tout de même
+        # la sélection et l’objet de référence du canvas.
+        self.after_idle(
+            self._bind_escape_to_window,
         )
 
         self.bind(
@@ -283,6 +290,72 @@ class EditorCanvas(CTkCanvas):
             self._select_all_objects,
             add="+",
         )
+
+    def _bind_escape_to_window(self) -> None:
+
+        top_level = self.winfo_toplevel()
+
+        top_level.bind(
+            "<Escape>",
+            self._cancel_reference_with_escape,
+            add="+",
+        )
+
+    def _clear_reference_state(
+        self,
+        *,
+        clear_selection: bool,
+        redraw: bool = True,
+        notify: bool = True,
+    ) -> None:
+
+        self._reference_object_index = None
+
+        if clear_selection:
+            self._selected_object_index = None
+            self._selected_object_indices.clear()
+
+        self._page_selected = False
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
+        self._marquee_start_mm = None
+
+        if self._marquee_rectangle_id is not None:
+            self.delete(
+                self._marquee_rectangle_id,
+            )
+            self._marquee_rectangle_id = None
+
+        if notify:
+            self._notify_selection()
+
+        if redraw:
+            self.redraw()
+
+    def _cancel_reference_with_escape(
+        self,
+        event=None,
+    ) -> str | None:
+
+        # Pendant l’édition d’un texte, Échap reste réservé à
+        # l’annulation de cette édition.
+        if self._text_editor is not None:
+            return None
+
+        self.set_tool(
+            "selection",
+        )
+
+        self._clear_reference_state(
+            clear_selection=True,
+        )
+
+        self.focus_set()
+
+        return "break"
 
     def _snapshot_state(
         self,
@@ -1007,17 +1080,9 @@ class EditorCanvas(CTkCanvas):
             "selection",
         )
 
-        self._selected_object_index = None
-        self._selected_object_indices.clear()
-        self._reference_object_index = None
-        self._interaction_mode = None
-        self._interaction_handle = None
-        self._interaction_start_mm = None
-        self._interaction_original_bounds = None
-        self._interaction_original_bounds_by_index = {}
-
-        self._notify_selection()
-        self.redraw()
+        self._clear_reference_state(
+            clear_selection=True,
+        )
 
         return "break"
 
@@ -1261,6 +1326,17 @@ class EditorCanvas(CTkCanvas):
             )
             return
 
+        preliminary_object_index = self._hit_test_object(start)
+
+        # Un clic simple dans le vide annule immédiatement la référence rouge
+        # et la sélection bleue, y compris hors de la page.
+        if preliminary_object_index is None:
+            self._clear_reference_state(
+                clear_selection=True,
+                redraw=False,
+                notify=False,
+            )
+
         handle = self._hit_test_handle(
             event.x,
             event.y,
@@ -1279,9 +1355,7 @@ class EditorCanvas(CTkCanvas):
             ].bounds
             return
 
-        object_index = self._hit_test_object(
-            start,
-        )
+        object_index = preliminary_object_index
 
         control_pressed = bool(event.state & 0x0004)
 
@@ -1321,10 +1395,6 @@ class EditorCanvas(CTkCanvas):
                     if object_index is not None
                     else set()
                 )
-
-                # Un clic dans une zone vide annule aussi la référence rouge.
-                if object_index is None:
-                    self._reference_object_index = None
 
             if object_index is not None and start is not None:
 
