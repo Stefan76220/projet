@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from math import atan2, cos, degrees, pi, radians, sin
 import tkinter as tk
 
 from customtkinter import CTkCanvas
@@ -29,6 +30,7 @@ class CanvasObject:
     bold: bool = False
     italic: bool = False
     align: str = "left"
+    rotation: float = 0.0
     locked: bool = False
     group_id: int | None = None
 
@@ -42,6 +44,9 @@ class EditorCanvas(CTkCanvas):
     MIN_OBJECT_SIZE_MM = 1.0
     HANDLE_SIZE_PX = 8
     HANDLE_HIT_MARGIN_PX = 6
+    ROTATION_HANDLE_DISTANCE_PX = 28
+    ROTATION_HANDLE_RADIUS_PX = 6
+    ELLIPSE_SEGMENTS = 64
 
     def __init__(
         self,
@@ -107,6 +112,10 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm: Point | None = None
         self._interaction_original_bounds: Rect | None = None
         self._interaction_original_bounds_by_index: dict[int, Rect] = {}
+        self._interaction_original_rotations_by_index: dict[int, float] = {}
+        self._interaction_original_centers_by_index: dict[int, Point] = {}
+        self._interaction_rotation_pivot: Point | None = None
+        self._interaction_start_angle_deg: float | None = None
 
         self._drawing = False
         self._drawing_start_mm: Point | None = None
@@ -346,6 +355,10 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
         self._interaction_original_bounds_by_index = {}
+        self._interaction_original_rotations_by_index = {}
+        self._interaction_original_centers_by_index = {}
+        self._interaction_rotation_pivot = None
+        self._interaction_start_angle_deg = None
         self._marquee_start_mm = None
 
         if self._marquee_rectangle_id is not None:
@@ -463,7 +476,7 @@ class EditorCanvas(CTkCanvas):
             return None
 
         selected_bounds = [
-            self._objects[index].bounds
+            self._object_visual_bounds(self._objects[index])
             for index in selected_indices
         ]
         min_left = min(bounds.left for bounds in selected_bounds)
@@ -607,7 +620,7 @@ class EditorCanvas(CTkCanvas):
             return None
 
         selected_bounds = [
-            self._objects[index].bounds
+            self._object_visual_bounds(self._objects[index])
             for index in selected_indices
             if 0 <= index < len(self._objects)
         ]
@@ -709,6 +722,10 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
         self._interaction_original_bounds_by_index = {}
+        self._interaction_original_rotations_by_index = {}
+        self._interaction_original_centers_by_index = {}
+        self._interaction_rotation_pivot = None
+        self._interaction_start_angle_deg = None
 
         self.redraw()
         self._notify_selection()
@@ -875,6 +892,199 @@ class EditorCanvas(CTkCanvas):
     def _ungroup_selection_with_keyboard(self, event=None) -> str:
         self.ungroup_selection()
         return "break"
+
+    # ==========================================================
+    # Rotation et géométrie
+    # ==========================================================
+
+    @staticmethod
+    def _normalize_rotation(angle: float) -> float:
+        normalized = float(angle) % 360.0
+        if abs(normalized - 360.0) < 1e-9 or abs(normalized) < 1e-9:
+            return 0.0
+        return normalized
+
+    @staticmethod
+    def _object_center(graphic_object: CanvasObject) -> Point:
+        bounds = graphic_object.bounds
+        return Point(
+            bounds.left + bounds.width / 2,
+            bounds.top + bounds.height / 2,
+        )
+
+    @staticmethod
+    def _rotate_point(
+        point: Point,
+        pivot: Point,
+        angle_degrees: float,
+    ) -> Point:
+        angle = radians(angle_degrees)
+        dx = point.x - pivot.x
+        dy = point.y - pivot.y
+        return Point(
+            pivot.x + dx * cos(angle) - dy * sin(angle),
+            pivot.y + dx * sin(angle) + dy * cos(angle),
+        )
+
+    def _inverse_rotate_point(
+        self,
+        point: Point,
+        pivot: Point,
+        angle_degrees: float,
+    ) -> Point:
+        return self._rotate_point(point, pivot, -angle_degrees)
+
+    def _object_corners(self, graphic_object: CanvasObject) -> list[Point]:
+        bounds = graphic_object.bounds
+        center = self._object_center(graphic_object)
+        corners = [
+            Point(bounds.left, bounds.top),
+            Point(bounds.right, bounds.top),
+            Point(bounds.right, bounds.bottom),
+            Point(bounds.left, bounds.bottom),
+        ]
+        rotation = self._normalize_rotation(graphic_object.rotation)
+        if rotation == 0.0:
+            return corners
+        return [
+            self._rotate_point(point, center, rotation)
+            for point in corners
+        ]
+
+    def _object_visual_bounds(self, graphic_object: CanvasObject) -> Rect:
+        corners = self._object_corners(graphic_object)
+        left = min(point.x for point in corners)
+        top = min(point.y for point in corners)
+        right = max(point.x for point in corners)
+        bottom = max(point.y for point in corners)
+        return Rect(Point(left, top), Size(right - left, bottom - top))
+
+    def _selection_visual_bounds(self, indices) -> Rect | None:
+        visual_bounds = [
+            self._object_visual_bounds(self._objects[index])
+            for index in indices
+            if 0 <= index < len(self._objects)
+        ]
+        if not visual_bounds:
+            return None
+        left = min(bounds.left for bounds in visual_bounds)
+        top = min(bounds.top for bounds in visual_bounds)
+        right = max(bounds.right for bounds in visual_bounds)
+        bottom = max(bounds.bottom for bounds in visual_bounds)
+        return Rect(Point(left, top), Size(right - left, bottom - top))
+
+    def _shift_indices_inside_page(self, indices) -> None:
+        selection_bounds = self._selection_visual_bounds(indices)
+        if selection_bounds is None:
+            return
+
+        dx = 0.0
+        dy = 0.0
+        if selection_bounds.left < 0.0:
+            dx = -selection_bounds.left
+        elif selection_bounds.right > self.page_format.width_mm:
+            dx = self.page_format.width_mm - selection_bounds.right
+
+        if selection_bounds.top < 0.0:
+            dy = -selection_bounds.top
+        elif selection_bounds.bottom > self.page_format.height_mm:
+            dy = self.page_format.height_mm - selection_bounds.bottom
+
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+            return
+
+        for index in indices:
+            if not 0 <= index < len(self._objects):
+                continue
+            graphic_object = self._objects[index]
+            bounds = graphic_object.bounds
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(bounds.left + dx, bounds.top + dy),
+                    bounds.size,
+                ),
+            )
+
+    def _selected_indices_for_rotation(self) -> list[int]:
+        indices = sorted(
+            self._expand_indices_to_groups(self._selected_object_indices)
+        )
+        if not indices:
+            return []
+        if any(self._objects[index].locked for index in indices):
+            return []
+        return indices
+
+    def get_selection_rotation(self) -> float | None:
+        indices = self._selected_indices_for_rotation()
+        if not indices:
+            return None
+        primary_index = self._selected_object_index
+        if primary_index not in indices:
+            primary_index = indices[-1]
+        return self._normalize_rotation(
+            self._objects[primary_index].rotation
+        )
+
+    def set_selection_rotation(self, angle: float) -> bool:
+        indices = self._selected_indices_for_rotation()
+        if not indices:
+            return False
+
+        primary_index = self._selected_object_index
+        if primary_index not in indices:
+            primary_index = indices[-1]
+
+        current_angle = self._normalize_rotation(
+            self._objects[primary_index].rotation
+        )
+        target_angle = self._normalize_rotation(angle)
+        delta = (target_angle - current_angle + 180.0) % 360.0 - 180.0
+        if abs(delta) < 1e-9:
+            return False
+
+        selection_bounds = self._selection_visual_bounds(indices)
+        if selection_bounds is None:
+            return False
+        pivot = Point(
+            selection_bounds.left + selection_bounds.width / 2,
+            selection_bounds.top + selection_bounds.height / 2,
+        )
+
+        self.commit_active_text_edit()
+        self._remember_current_state()
+
+        for index in indices:
+            graphic_object = self._objects[index]
+            center = self._object_center(graphic_object)
+            rotated_center = self._rotate_point(center, pivot, delta)
+            bounds = graphic_object.bounds
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(
+                        rotated_center.x - bounds.width / 2,
+                        rotated_center.y - bounds.height / 2,
+                    ),
+                    bounds.size,
+                ),
+                rotation=self._normalize_rotation(
+                    graphic_object.rotation + delta
+                ),
+            )
+
+        self._shift_indices_inside_page(indices)
+        self.redraw()
+        self._notify_selection()
+        return True
+
+    def _selection_is_single_group(self) -> bool:
+        indices = self._selected_indices_for_rotation()
+        if not indices:
+            return False
+        group_ids = {self._objects[index].group_id for index in indices}
+        return len(group_ids) == 1 and None not in group_ids
 
     # ==========================================================
     # Observateurs
@@ -1196,19 +1406,54 @@ class EditorCanvas(CTkCanvas):
                         drawable,
                     )
 
+    def _point_to_canvas_px(self, point: Point) -> tuple[float, float]:
+        return (
+            self.page_left + self.viewport.mm_to_px(point.x),
+            self.page_top + self.viewport.mm_to_px(point.y),
+        )
+
+    def _object_polygon_points_px(
+        self,
+        graphic_object: CanvasObject,
+    ) -> list[float]:
+        points: list[float] = []
+        for point in self._object_corners(graphic_object):
+            x_px, y_px = self._point_to_canvas_px(point)
+            points.extend((x_px, y_px))
+        return points
+
+    def _ellipse_polygon_points_px(
+        self,
+        graphic_object: CanvasObject,
+    ) -> list[float]:
+        bounds = graphic_object.bounds
+        center = self._object_center(graphic_object)
+        radius_x = bounds.width / 2
+        radius_y = bounds.height / 2
+        rotation = self._normalize_rotation(graphic_object.rotation)
+        points: list[float] = []
+
+        for step in range(self.ELLIPSE_SEGMENTS):
+            angle = 2 * pi * step / self.ELLIPSE_SEGMENTS
+            local_point = Point(
+                center.x + radius_x * cos(angle),
+                center.y + radius_y * sin(angle),
+            )
+            rotated_point = self._rotate_point(
+                local_point,
+                center,
+                rotation,
+            )
+            x_px, y_px = self._point_to_canvas_px(rotated_point)
+            points.extend((x_px, y_px))
+
+        return points
+
     def _draw_objects(self) -> None:
 
         for index, graphic_object in enumerate(self._objects):
 
-            bounds = graphic_object.bounds
             selected = index in self._selected_object_indices
-
-            coordinates = (
-                self.page_left + self.viewport.mm_to_px(bounds.left),
-                self.page_top + self.viewport.mm_to_px(bounds.top),
-                self.page_left + self.viewport.mm_to_px(bounds.right),
-                self.page_top + self.viewport.mm_to_px(bounds.bottom),
-            )
 
             # Un groupe sélectionné est représenté uniquement par son cadre
             # commun. Aucun de ses membres ne conserve un cadre bleu isolé.
@@ -1221,64 +1466,41 @@ class EditorCanvas(CTkCanvas):
                 and graphic_object.group_id is None
             )
 
-            options = {
-                "fill": graphic_object.fill,
-                "outline": (
-                    "#D62828"
-                    if is_reference
-                    else "#3874CB"
-                    if selected_individually
-                    else graphic_object.outline
-                ),
-                "width": 2 if is_reference else graphic_object.line_width,
-            }
+            outline = (
+                "#D62828"
+                if is_reference
+                else "#3874CB"
+                if selected_individually
+                else graphic_object.outline
+            )
+            line_width = (
+                2
+                if is_reference or selected_individually
+                else graphic_object.line_width
+            )
 
-            if graphic_object.kind == "ellipse":
-                self.create_oval(
-                    *coordinates,
-                    **options,
-                )
-            else:
-                self.create_rectangle(
-                    *coordinates,
-                    **options,
-                )
+            points = (
+                self._ellipse_polygon_points_px(graphic_object)
+                if graphic_object.kind == "ellipse"
+                else self._object_polygon_points_px(graphic_object)
+            )
+
+            self.create_polygon(
+                *points,
+                fill=graphic_object.fill,
+                outline=outline,
+                width=line_width,
+                smooth=(graphic_object.kind == "ellipse"),
+                splinesteps=24,
+            )
 
             if graphic_object.kind == "text":
-                padding = 6
-                text_width = max(1, coordinates[2] - coordinates[0] - (padding * 2))
-                font_style = []
-                if graphic_object.bold:
-                    font_style.append("bold")
-                if graphic_object.italic:
-                    font_style.append("italic")
-                anchor_by_align = {
-                    "left": "nw",
-                    "center": "n",
-                    "right": "ne",
-                }
-                x_by_align = {
-                    "left": coordinates[0] + padding,
-                    "center": (coordinates[0] + coordinates[2]) / 2,
-                    "right": coordinates[2] - padding,
-                }
-                self.create_text(
-                    x_by_align.get(graphic_object.align, coordinates[0] + padding),
-                    coordinates[1] + padding,
-                    anchor=anchor_by_align.get(graphic_object.align, "nw"),
-                    justify=graphic_object.align if graphic_object.align in {"left", "center", "right"} else "left",
-                    text=graphic_object.text,
-                    width=text_width,
-                    fill=graphic_object.text_color,
-                    font=(
-                        graphic_object.font_family,
-                        graphic_object.font_size,
-                        " ".join(font_style),
-                    ),
-                )
+                self._draw_rotated_text(graphic_object)
 
             if graphic_object.locked:
-                self._draw_lock_indicator(bounds)
+                self._draw_lock_indicator(
+                    self._object_visual_bounds(graphic_object)
+                )
 
             if (
                 selected
@@ -1287,11 +1509,66 @@ class EditorCanvas(CTkCanvas):
                 and graphic_object.group_id is None
             ):
                 self._draw_selection_handles(
-                    bounds,
+                    graphic_object.bounds,
+                    rotation=graphic_object.rotation,
                     is_reference=is_reference,
                 )
 
         self._draw_selected_group_outlines()
+
+    def _draw_rotated_text(self, graphic_object: CanvasObject) -> None:
+        bounds = graphic_object.bounds
+        center = self._object_center(graphic_object)
+        rotation = self._normalize_rotation(graphic_object.rotation)
+        padding_px = 6
+        padding_mm = self.viewport.px_to_mm(padding_px)
+        text_width = max(1, self.viewport.mm_to_px(bounds.width) - padding_px * 2)
+
+        anchor_by_align = {
+            "left": "nw",
+            "center": "n",
+            "right": "ne",
+        }
+        local_x_by_align = {
+            "left": bounds.left + padding_mm,
+            "center": bounds.left + bounds.width / 2,
+            "right": bounds.right - padding_mm,
+        }
+        local_anchor = Point(
+            local_x_by_align.get(
+                graphic_object.align,
+                bounds.left + padding_mm,
+            ),
+            bounds.top + padding_mm,
+        )
+        anchor_point = self._rotate_point(local_anchor, center, rotation)
+        anchor_x, anchor_y = self._point_to_canvas_px(anchor_point)
+
+        font_style = []
+        if graphic_object.bold:
+            font_style.append("bold")
+        if graphic_object.italic:
+            font_style.append("italic")
+
+        self.create_text(
+            anchor_x,
+            anchor_y,
+            anchor=anchor_by_align.get(graphic_object.align, "nw"),
+            justify=(
+                graphic_object.align
+                if graphic_object.align in {"left", "center", "right"}
+                else "left"
+            ),
+            text=graphic_object.text,
+            width=text_width,
+            fill=graphic_object.text_color,
+            font=(
+                graphic_object.font_family,
+                graphic_object.font_size,
+                " ".join(font_style),
+            ),
+            angle=-rotation,
+        )
 
     def _draw_selected_group_outlines(self) -> None:
         """Matérialise les groupes sélectionnés sans lettre ni abréviation."""
@@ -1316,23 +1593,37 @@ class EditorCanvas(CTkCanvas):
             ):
                 continue
 
-            bounds_list = [self._objects[index].bounds for index in group_indices]
-            left = min(bounds.left for bounds in bounds_list)
-            top = min(bounds.top for bounds in bounds_list)
-            right = max(bounds.right for bounds in bounds_list)
-            bottom = max(bounds.bottom for bounds in bounds_list)
+            group_bounds = self._selection_visual_bounds(group_indices)
+            if group_bounds is None:
+                continue
 
             margin = 4
+            left = self.page_left + self.viewport.mm_to_px(group_bounds.left)
+            top = self.page_top + self.viewport.mm_to_px(group_bounds.top)
+            right = self.page_left + self.viewport.mm_to_px(group_bounds.right)
+            bottom = self.page_top + self.viewport.mm_to_px(group_bounds.bottom)
+
             self.create_rectangle(
-                self.page_left + self.viewport.mm_to_px(left) - margin,
-                self.page_top + self.viewport.mm_to_px(top) - margin,
-                self.page_left + self.viewport.mm_to_px(right) + margin,
-                self.page_top + self.viewport.mm_to_px(bottom) + margin,
+                left - margin,
+                top - margin,
+                right + margin,
+                bottom + margin,
                 outline="#3874CB",
                 width=2,
                 dash=(6, 4),
                 fill="",
             )
+
+            if (
+                group_indices == self._selected_object_indices
+                and not any(self._objects[index].locked for index in group_indices)
+            ):
+                # Le groupe se manipule comme une seule unité : huit poignées
+                # de redimensionnement et une poignée ronde de rotation.
+                self._draw_selection_handles(
+                    group_bounds,
+                    rotation=0.0,
+                )
 
     def _draw_lock_indicator(
         self,
@@ -1392,10 +1683,16 @@ class EditorCanvas(CTkCanvas):
     def _draw_selection_handles(
         self,
         bounds: Rect,
+        rotation: float = 0.0,
         is_reference: bool = False,
     ) -> None:
 
-        for x_px, y_px in self._selection_handle_positions(bounds).values():
+        color = "#D62828" if is_reference else "#3874CB"
+        positions = self._selection_handle_positions(bounds, rotation)
+
+        for name, (x_px, y_px) in positions.items():
+            if name == "rotate":
+                continue
 
             half = self.HANDLE_SIZE_PX / 2
 
@@ -1405,33 +1702,108 @@ class EditorCanvas(CTkCanvas):
                 x_px + half,
                 y_px + half,
                 fill="white",
-                outline="#D62828" if is_reference else "#3874CB",
+                outline=color,
                 width=2,
             )
+
+        top_x, top_y = positions["n"]
+        rotate_x, rotate_y = positions["rotate"]
+        self.create_line(
+            top_x,
+            top_y,
+            rotate_x,
+            rotate_y,
+            fill=color,
+            width=2,
+        )
+        radius = self.ROTATION_HANDLE_RADIUS_PX
+        self.create_oval(
+            rotate_x - radius,
+            rotate_y - radius,
+            rotate_x + radius,
+            rotate_y + radius,
+            fill="white",
+            outline=color,
+            width=2,
+        )
 
     def _selection_handle_positions(
         self,
         bounds: Rect,
+        rotation: float = 0.0,
     ) -> dict[str, tuple[float, float]]:
 
-        left = self.page_left + self.viewport.mm_to_px(bounds.left)
-        top = self.page_top + self.viewport.mm_to_px(bounds.top)
-        right = self.page_left + self.viewport.mm_to_px(bounds.right)
-        bottom = self.page_top + self.viewport.mm_to_px(bounds.bottom)
-
-        center_x = (left + right) / 2
-        center_y = (top + bottom) / 2
-
-        return {
-            "nw": (left, top),
-            "n": (center_x, top),
-            "ne": (right, top),
-            "e": (right, center_y),
-            "se": (right, bottom),
-            "s": (center_x, bottom),
-            "sw": (left, bottom),
-            "w": (left, center_y),
+        center = Point(
+            bounds.left + bounds.width / 2,
+            bounds.top + bounds.height / 2,
+        )
+        page_positions = {
+            "nw": Point(bounds.left, bounds.top),
+            "n": Point(center.x, bounds.top),
+            "ne": Point(bounds.right, bounds.top),
+            "e": Point(bounds.right, center.y),
+            "se": Point(bounds.right, bounds.bottom),
+            "s": Point(center.x, bounds.bottom),
+            "sw": Point(bounds.left, bounds.bottom),
+            "w": Point(bounds.left, center.y),
         }
+
+        normalized_rotation = self._normalize_rotation(rotation)
+        rotated_positions = {
+            name: self._rotate_point(point, center, normalized_rotation)
+            for name, point in page_positions.items()
+        }
+        canvas_positions = {
+            name: self._point_to_canvas_px(point)
+            for name, point in rotated_positions.items()
+        }
+
+        center_x, center_y = self._point_to_canvas_px(center)
+        top_x, top_y = canvas_positions["n"]
+        vector_x = top_x - center_x
+        vector_y = top_y - center_y
+        length = max((vector_x ** 2 + vector_y ** 2) ** 0.5, 1.0)
+        canvas_positions["rotate"] = (
+            top_x + vector_x / length * self.ROTATION_HANDLE_DISTANCE_PX,
+            top_y + vector_y / length * self.ROTATION_HANDLE_DISTANCE_PX,
+        )
+
+        return canvas_positions
+
+    def _group_rotation_handle_position(
+        self,
+        bounds: Rect,
+    ) -> tuple[float, float]:
+        center_x = self.page_left + self.viewport.mm_to_px(
+            bounds.left + bounds.width / 2
+        )
+        top_y = self.page_top + self.viewport.mm_to_px(bounds.top)
+        return center_x, top_y - self.ROTATION_HANDLE_DISTANCE_PX
+
+    def _draw_group_rotation_handle(self, bounds: Rect) -> None:
+        center_x = self.page_left + self.viewport.mm_to_px(
+            bounds.left + bounds.width / 2
+        )
+        top_y = self.page_top + self.viewport.mm_to_px(bounds.top)
+        rotate_x, rotate_y = self._group_rotation_handle_position(bounds)
+        self.create_line(
+            center_x,
+            top_y,
+            rotate_x,
+            rotate_y,
+            fill="#3874CB",
+            width=2,
+        )
+        radius = self.ROTATION_HANDLE_RADIUS_PX
+        self.create_oval(
+            rotate_x - radius,
+            rotate_y - radius,
+            rotate_x + radius,
+            rotate_y + radius,
+            fill="white",
+            outline="#3874CB",
+            width=2,
+        )
 
     # ==========================================================
     # Outils graphiques
@@ -1482,6 +1854,10 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
         self._interaction_original_bounds_by_index = {}
+        self._interaction_original_rotations_by_index = {}
+        self._interaction_original_centers_by_index = {}
+        self._interaction_rotation_pivot = None
+        self._interaction_start_angle_deg = None
 
         self._notify_selection()
         self.redraw()
@@ -1768,31 +2144,94 @@ class EditorCanvas(CTkCanvas):
 
         preliminary_object_index = self._hit_test_object(start)
 
+        # La poignée de rotation se trouve volontairement hors de l'objet.
+        # Elle doit donc être testée avant d'annuler la sélection.
+        handle = self._hit_test_handle(
+            event.x,
+            event.y,
+        )
+
         # Un clic simple dans le vide annule immédiatement la référence rouge
         # et la sélection bleue, y compris hors de la page.
-        if preliminary_object_index is None:
+        if preliminary_object_index is None and handle is None:
             self._clear_reference_state(
                 clear_selection=True,
                 redraw=False,
                 notify=False,
             )
 
-        handle = self._hit_test_handle(
-            event.x,
-            event.y,
-        )
-
         if handle is not None and self._selected_object_index is not None:
 
+            if handle == "rotate":
+                rotation_indices = self._selected_indices_for_rotation()
+                selection_bounds = self._selection_visual_bounds(rotation_indices)
+                if not rotation_indices or selection_bounds is None:
+                    return
+
+                self.commit_active_text_edit()
+                self._remember_current_state()
+                self._interaction_mode = "rotate"
+                self._interaction_handle = handle
+                self._interaction_rotation_pivot = Point(
+                    selection_bounds.left + selection_bounds.width / 2,
+                    selection_bounds.top + selection_bounds.height / 2,
+                )
+                pointer = self._event_to_page_mm_unbounded(event)
+                pivot = self._interaction_rotation_pivot
+                self._interaction_start_angle_deg = degrees(
+                    atan2(pointer.y - pivot.y, pointer.x - pivot.x)
+                )
+                self._interaction_original_bounds_by_index = {
+                    index: self._objects[index].bounds
+                    for index in rotation_indices
+                }
+                self._interaction_original_rotations_by_index = {
+                    index: self._objects[index].rotation
+                    for index in rotation_indices
+                }
+                self._interaction_original_centers_by_index = {
+                    index: self._object_center(self._objects[index])
+                    for index in rotation_indices
+                }
+                self._interaction_start_mm = pointer
+                self._interaction_original_bounds = self._objects[
+                    self._selected_object_index
+                ].bounds
+                return
+
+            self.commit_active_text_edit()
             self._interaction_mode = "resize"
             self._interaction_handle = handle
             self._interaction_start_mm = self._event_to_page_mm(
                 event,
                 clamp_to_page=True,
             )
-            self._interaction_original_bounds = self._objects[
-                self._selected_object_index
-            ].bounds
+
+            if self._selection_is_single_group():
+                resize_indices = self._selected_indices_for_rotation()
+                group_bounds = self._selection_visual_bounds(resize_indices)
+                if not resize_indices or group_bounds is None:
+                    self._interaction_mode = None
+                    self._interaction_handle = None
+                    self._interaction_start_mm = None
+                    return
+
+                self._interaction_original_bounds = group_bounds
+                self._interaction_original_bounds_by_index = {
+                    index: self._objects[index].bounds
+                    for index in resize_indices
+                }
+                self._interaction_original_centers_by_index = {
+                    index: self._object_center(self._objects[index])
+                    for index in resize_indices
+                }
+            else:
+                self._interaction_original_bounds = self._objects[
+                    self._selected_object_index
+                ].bounds
+                self._interaction_original_bounds_by_index = {}
+                self._interaction_original_centers_by_index = {}
+
             return
 
         object_index = preliminary_object_index
@@ -1817,6 +2256,11 @@ class EditorCanvas(CTkCanvas):
             self._interaction_mode = None
             self._interaction_start_mm = None
             self._interaction_original_bounds = None
+            self._interaction_original_bounds_by_index = {}
+            self._interaction_original_rotations_by_index = {}
+            self._interaction_original_centers_by_index = {}
+            self._interaction_rotation_pivot = None
+            self._interaction_start_angle_deg = None
 
         else:
             clicked_selected_object = (
@@ -1869,6 +2313,10 @@ class EditorCanvas(CTkCanvas):
                         and not self._objects[index].locked
                     )
                 }
+                self._interaction_original_rotations_by_index = {}
+                self._interaction_original_centers_by_index = {}
+                self._interaction_rotation_pivot = None
+                self._interaction_start_angle_deg = None
 
             elif object_index is not None:
 
@@ -1876,6 +2324,10 @@ class EditorCanvas(CTkCanvas):
                 self._interaction_start_mm = None
                 self._interaction_original_bounds = None
                 self._interaction_original_bounds_by_index = {}
+                self._interaction_original_rotations_by_index = {}
+                self._interaction_original_centers_by_index = {}
+                self._interaction_rotation_pivot = None
+                self._interaction_start_angle_deg = None
 
             else:
 
@@ -1883,6 +2335,10 @@ class EditorCanvas(CTkCanvas):
                 self._interaction_start_mm = start
                 self._interaction_original_bounds = None
                 self._interaction_original_bounds_by_index = {}
+                self._interaction_original_rotations_by_index = {}
+                self._interaction_original_centers_by_index = {}
+                self._interaction_rotation_pivot = None
+                self._interaction_start_angle_deg = None
                 self._marquee_start_mm = start
                 self._marquee_rectangle_id = self.create_rectangle(
                     event.x,
@@ -2002,9 +2458,13 @@ class EditorCanvas(CTkCanvas):
         if self._interaction_original_bounds is None:
             return
 
-        current = self._event_to_page_mm(
-            event,
-            clamp_to_page=True,
+        current = (
+            self._event_to_page_mm_unbounded(event)
+            if self._interaction_mode == "rotate"
+            else self._event_to_page_mm(
+                event,
+                clamp_to_page=True,
+            )
         )
 
         if current is None:
@@ -2015,6 +2475,12 @@ class EditorCanvas(CTkCanvas):
 
         elif self._interaction_mode == "resize":
             self._resize_selected_object(current)
+
+        elif self._interaction_mode == "rotate":
+            self._rotate_selection_to_pointer(
+                current,
+                snap_to_15_degrees=bool(event.state & 0x0001),
+            )
 
     def _on_left_release(
         self,
@@ -2118,10 +2584,10 @@ class EditorCanvas(CTkCanvas):
                         index
                         for index, graphic_object in enumerate(self._objects)
                         if not (
-                            graphic_object.bounds.right < left
-                            or graphic_object.bounds.left > right
-                            or graphic_object.bounds.bottom < top
-                            or graphic_object.bounds.top > bottom
+                            self._object_visual_bounds(graphic_object).right < left
+                            or self._object_visual_bounds(graphic_object).left > right
+                            or self._object_visual_bounds(graphic_object).bottom < top
+                            or self._object_visual_bounds(graphic_object).top > bottom
                         )
                     }
                     selected = self._expand_indices_to_groups(selected)
@@ -2136,6 +2602,10 @@ class EditorCanvas(CTkCanvas):
         self._interaction_start_mm = None
         self._interaction_original_bounds = None
         self._interaction_original_bounds_by_index = {}
+        self._interaction_original_rotations_by_index = {}
+        self._interaction_original_centers_by_index = {}
+        self._interaction_rotation_pivot = None
+        self._interaction_start_angle_deg = None
 
     def _hit_test_object(
         self,
@@ -2150,8 +2620,25 @@ class EditorCanvas(CTkCanvas):
             -1,
             -1,
         ):
+            graphic_object = self._objects[index]
+            bounds = graphic_object.bounds
+            center = self._object_center(graphic_object)
+            local_point = self._inverse_rotate_point(
+                point,
+                center,
+                graphic_object.rotation,
+            )
 
-            if self._objects[index].bounds.contains(point):
+            if graphic_object.kind == "ellipse":
+                radius_x = bounds.width / 2
+                radius_y = bounds.height / 2
+                if radius_x <= 0.0 or radius_y <= 0.0:
+                    continue
+                normalized_x = (local_point.x - center.x) / radius_x
+                normalized_y = (local_point.y - center.y) / radius_y
+                if normalized_x ** 2 + normalized_y ** 2 <= 1.0:
+                    return index
+            elif bounds.contains(local_point):
                 return index
 
         return None
@@ -2165,21 +2652,74 @@ class EditorCanvas(CTkCanvas):
         if self._selected_object_index is None:
             return None
 
+        rotation_indices = self._selected_indices_for_rotation()
+        if not rotation_indices:
+            return None
+
+        if self._selection_is_single_group():
+            group_bounds = self._selection_visual_bounds(rotation_indices)
+            if group_bounds is None:
+                return None
+
+            positions = self._selection_handle_positions(
+                group_bounds,
+                rotation=0.0,
+            )
+
+            rotate_x, rotate_y = positions["rotate"]
+            rotate_margin = (
+                self.ROTATION_HANDLE_RADIUS_PX
+                + self.HANDLE_HIT_MARGIN_PX
+            )
+            if (
+                abs(x_px - rotate_x) <= rotate_margin
+                and abs(y_px - rotate_y) <= rotate_margin
+            ):
+                return "rotate"
+
+            resize_margin = (
+                self.HANDLE_SIZE_PX / 2
+                + self.HANDLE_HIT_MARGIN_PX
+            )
+            for name, (handle_x, handle_y) in positions.items():
+                if name == "rotate":
+                    continue
+                if (
+                    abs(x_px - handle_x) <= resize_margin
+                    and abs(y_px - handle_y) <= resize_margin
+                ):
+                    return name
+
+            return None
+
         selected_object = self._objects[self._selected_object_index]
         if selected_object.locked or selected_object.group_id is not None:
             return None
 
-        bounds = selected_object.bounds
+        positions = self._selection_handle_positions(
+            selected_object.bounds,
+            selected_object.rotation,
+        )
+
+        rotate_x, rotate_y = positions["rotate"]
+        rotate_margin = (
+            self.ROTATION_HANDLE_RADIUS_PX
+            + self.HANDLE_HIT_MARGIN_PX
+        )
+        if (
+            abs(x_px - rotate_x) <= rotate_margin
+            and abs(y_px - rotate_y) <= rotate_margin
+        ):
+            return "rotate"
 
         margin = (
             self.HANDLE_SIZE_PX / 2
             + self.HANDLE_HIT_MARGIN_PX
         )
 
-        for name, (handle_x, handle_y) in (
-            self._selection_handle_positions(bounds).items()
-        ):
-
+        for name, (handle_x, handle_y) in positions.items():
+            if name == "rotate":
+                continue
             if (
                 abs(x_px - handle_x) <= margin
                 and abs(y_px - handle_y) <= margin
@@ -2200,17 +2740,29 @@ class EditorCanvas(CTkCanvas):
             return
 
         original_bounds = self._interaction_original_bounds_by_index
-
         if not original_bounds:
             return
 
         dx = current.x - self._interaction_start_mm.x
         dy = current.y - self._interaction_start_mm.y
 
-        min_left = min(bounds.left for bounds in original_bounds.values())
-        min_top = min(bounds.top for bounds in original_bounds.values())
-        max_right = max(bounds.right for bounds in original_bounds.values())
-        max_bottom = max(bounds.bottom for bounds in original_bounds.values())
+        original_visual_bounds = []
+        for index, bounds in original_bounds.items():
+            if not 0 <= index < len(self._objects):
+                continue
+            original_visual_bounds.append(
+                self._object_visual_bounds(
+                    replace(self._objects[index], bounds=bounds)
+                )
+            )
+
+        if not original_visual_bounds:
+            return
+
+        min_left = min(bounds.left for bounds in original_visual_bounds)
+        min_top = min(bounds.top for bounds in original_visual_bounds)
+        max_right = max(bounds.right for bounds in original_visual_bounds)
+        max_bottom = max(bounds.bottom for bounds in original_visual_bounds)
 
         dx = min(max(dx, -min_left), self.page_format.width_mm - max_right)
         dy = min(max(dy, -min_top), self.page_format.height_mm - max_bottom)
@@ -2234,6 +2786,116 @@ class EditorCanvas(CTkCanvas):
         self.redraw()
         self._notify_selection()
 
+    def _resize_selected_group(
+        self,
+        current: Point,
+        group_indices: list[int],
+    ) -> None:
+        """Redimensionne proportionnellement tous les membres d'un groupe."""
+
+        original_group = self._interaction_original_bounds
+        handle = self._interaction_handle
+        original_bounds_by_index = self._interaction_original_bounds_by_index
+
+        if original_group is None or handle is None:
+            return
+        if not original_bounds_by_index:
+            return
+        if original_group.width <= 0.0 or original_group.height <= 0.0:
+            return
+
+        valid_indices = [
+            index
+            for index in group_indices
+            if (
+                index in original_bounds_by_index
+                and 0 <= index < len(self._objects)
+                and not self._objects[index].locked
+            )
+        ]
+        if not valid_indices:
+            return
+
+        # Empêche qu'un membre du groupe devienne plus petit que la taille
+        # minimale autorisée par le canvas.
+        minimum_group_width = max(
+            self.MIN_OBJECT_SIZE_MM
+            * original_group.width
+            / max(original_bounds_by_index[index].width, 1e-9)
+            for index in valid_indices
+        )
+        minimum_group_height = max(
+            self.MIN_OBJECT_SIZE_MM
+            * original_group.height
+            / max(original_bounds_by_index[index].height, 1e-9)
+            for index in valid_indices
+        )
+
+        left = original_group.left
+        top = original_group.top
+        right = original_group.right
+        bottom = original_group.bottom
+
+        if "w" in handle:
+            left = min(current.x, right - minimum_group_width)
+        if "e" in handle:
+            right = max(current.x, left + minimum_group_width)
+        if "n" in handle:
+            top = min(current.y, bottom - minimum_group_height)
+        if "s" in handle:
+            bottom = max(current.y, top + minimum_group_height)
+
+        new_width = right - left
+        new_height = bottom - top
+        scale_x = new_width / original_group.width
+        scale_y = new_height / original_group.height
+
+        for index in valid_indices:
+            graphic_object = self._objects[index]
+            original_bounds = original_bounds_by_index[index]
+            original_center = self._interaction_original_centers_by_index.get(
+                index,
+                Point(
+                    original_bounds.left + original_bounds.width / 2,
+                    original_bounds.top + original_bounds.height / 2,
+                ),
+            )
+
+            relative_x = (
+                original_center.x - original_group.left
+            ) / original_group.width
+            relative_y = (
+                original_center.y - original_group.top
+            ) / original_group.height
+
+            new_center = Point(
+                left + relative_x * new_width,
+                top + relative_y * new_height,
+            )
+            object_width = max(
+                original_bounds.width * scale_x,
+                self.MIN_OBJECT_SIZE_MM,
+            )
+            object_height = max(
+                original_bounds.height * scale_y,
+                self.MIN_OBJECT_SIZE_MM,
+            )
+
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(
+                        new_center.x - object_width / 2,
+                        new_center.y - object_height / 2,
+                    ),
+                    Size(object_width, object_height),
+                ),
+            )
+
+        self._shift_indices_inside_page(valid_indices)
+        self.redraw()
+        self._notify_selection()
+
     def _resize_selected_object(
         self,
         current: Point,
@@ -2241,15 +2903,47 @@ class EditorCanvas(CTkCanvas):
 
         if self._selected_object_index is None:
             return
-
         if self._interaction_original_bounds is None:
             return
-
         if self._interaction_handle is None:
             return
 
+        selected_object = self._objects[self._selected_object_index]
+        if selected_object.locked:
+            return
+
+        if (
+            selected_object.group_id is not None
+            and self._interaction_original_bounds_by_index
+        ):
+            group_indices = sorted(
+                self._expand_indices_to_groups(
+                    self._selected_object_indices,
+                )
+            )
+            group_ids = {
+                self._objects[index].group_id
+                for index in group_indices
+                if 0 <= index < len(self._objects)
+            }
+            if len(group_ids) == 1 and None not in group_ids:
+                self._resize_selected_group(
+                    current,
+                    group_indices,
+                )
+                return
+
         original = self._interaction_original_bounds
         handle = self._interaction_handle
+        center = Point(
+            original.left + original.width / 2,
+            original.top + original.height / 2,
+        )
+        local_current = self._inverse_rotate_point(
+            current,
+            center,
+            selected_object.rotation,
+        )
 
         left = original.left
         top = original.top
@@ -2257,74 +2951,104 @@ class EditorCanvas(CTkCanvas):
         bottom = original.bottom
 
         if "w" in handle:
-            left = min(
-                current.x,
-                right - self.MIN_OBJECT_SIZE_MM,
-            )
-
+            left = min(local_current.x, right - self.MIN_OBJECT_SIZE_MM)
         if "e" in handle:
-            right = max(
-                current.x,
-                left + self.MIN_OBJECT_SIZE_MM,
-            )
-
+            right = max(local_current.x, left + self.MIN_OBJECT_SIZE_MM)
         if "n" in handle:
-            top = min(
-                current.y,
-                bottom - self.MIN_OBJECT_SIZE_MM,
-            )
-
+            top = min(local_current.y, bottom - self.MIN_OBJECT_SIZE_MM)
         if "s" in handle:
-            bottom = max(
-                current.y,
-                top + self.MIN_OBJECT_SIZE_MM,
-            )
+            bottom = max(local_current.y, top + self.MIN_OBJECT_SIZE_MM)
 
-        left = max(
-            0.0,
-            left,
+        local_center = Point(
+            (left + right) / 2,
+            (top + bottom) / 2,
         )
-
-        top = max(
-            0.0,
-            top,
+        world_center = self._rotate_point(
+            local_center,
+            center,
+            selected_object.rotation,
         )
+        width = right - left
+        height = bottom - top
 
-        right = min(
-            self.page_format.width_mm,
-            right,
-        )
-
-        bottom = min(
-            self.page_format.height_mm,
-            bottom,
-        )
-
-        selected_object = self._objects[
-            self._selected_object_index
-        ]
-
-        if selected_object.locked:
-            return
-
-        self._objects[
-            self._selected_object_index
-        ] = replace(
+        self._objects[self._selected_object_index] = replace(
             selected_object,
             bounds=Rect(
                 Point(
-                    left,
-                    top,
+                    world_center.x - width / 2,
+                    world_center.y - height / 2,
                 ),
-                Size(
-                    right - left,
-                    bottom - top,
-                ),
+                Size(width, height),
             ),
         )
 
         self.redraw()
         self._notify_selection()
+
+    def _rotate_selection_to_pointer(
+        self,
+        current: Point,
+        *,
+        snap_to_15_degrees: bool,
+    ) -> None:
+        pivot = self._interaction_rotation_pivot
+        start_angle = self._interaction_start_angle_deg
+        if pivot is None or start_angle is None:
+            return
+        if not self._interaction_original_bounds_by_index:
+            return
+
+        current_angle = degrees(
+            atan2(current.y - pivot.y, current.x - pivot.x)
+        )
+        delta = current_angle - start_angle
+        if snap_to_15_degrees:
+            delta = round(delta / 15.0) * 15.0
+
+        for index, original_bounds in (
+            self._interaction_original_bounds_by_index.items()
+        ):
+            if not 0 <= index < len(self._objects):
+                continue
+            graphic_object = self._objects[index]
+            if graphic_object.locked:
+                continue
+
+            original_center = self._interaction_original_centers_by_index[index]
+            rotated_center = self._rotate_point(
+                original_center,
+                pivot,
+                delta,
+            )
+            original_rotation = (
+                self._interaction_original_rotations_by_index[index]
+            )
+
+            self._objects[index] = replace(
+                graphic_object,
+                bounds=Rect(
+                    Point(
+                        rotated_center.x - original_bounds.width / 2,
+                        rotated_center.y - original_bounds.height / 2,
+                    ),
+                    original_bounds.size,
+                ),
+                rotation=self._normalize_rotation(
+                    original_rotation + delta
+                ),
+            )
+
+        self._shift_indices_inside_page(
+            self._interaction_original_bounds_by_index.keys()
+        )
+        self.redraw()
+        self._notify_selection()
+
+    def _event_to_page_mm_unbounded(self, event) -> Point:
+        return Point(
+            self.viewport.px_to_mm(event.x - self.page_left),
+            self.viewport.px_to_mm(event.y - self.page_top),
+        )
 
     def _event_to_page_mm(
         self,

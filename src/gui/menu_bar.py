@@ -103,12 +103,6 @@ class MenuBar:
 
             self._refresh_workspace()
 
-            messagebox.showinfo(
-                "Projet créé",
-                f"Le projet « {nom} » a été créé.",
-                parent=self.root,
-            )
-
         except Exception as exc:
 
             messagebox.showerror(
@@ -133,16 +127,6 @@ class MenuBar:
             )
 
             self._refresh_workspace()
-
-            messagebox.showinfo(
-                "Projet ouvert",
-                (
-                    f"Le projet « "
-                    f"{self.project_manager.get_project_name()} "
-                    f"» est ouvert."
-                ),
-                parent=self.root,
-            )
 
         except Exception as exc:
 
@@ -231,4 +215,3 @@ class MenuBar:
             f"MenuBar("
             f"project={project_name!r})"
         )
-    

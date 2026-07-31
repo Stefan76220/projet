@@ -35,6 +35,13 @@ class PageEditorView:
     MIN_READY_SIZE = 100
     DISPLAY_RETRY_DELAY_MS = 50
     MAX_DISPLAY_RETRIES = 20
+    EDITOR_TOOLBAR_WIDTH = 48
+    EDITOR_TOOL_BUTTON_SIZE = 38
+    EDITOR_TOOLS = (
+        ("selection", "S", "Sélection"),
+        ("texte", "T", "Texte"),
+        ("forme", "F", "Forme"),
+    )
 
     def __init__(
         self,
@@ -80,6 +87,18 @@ class PageEditorView:
         self._lock_button = None
         self._group_button = None
         self._ungroup_button = None
+        self._editor_tool_buttons: dict[str, ctk.CTkButton] = {}
+        self._active_editor_tool = "selection"
+        self._editor_feedback_label: ctk.CTkLabel | None = None
+        self._editor_feedback_after_id: str | None = None
+        self._shape_menu: tk.Menu | None = None
+        self._right_panel: ctk.CTkFrame | None = None
+        self._right_panel_visible = True
+        self._toggle_panel_button: ctk.CTkButton | None = None
+        self._properties_type_text = tk.StringVar(value="Aucune sélection")
+        self._properties_position_text = tk.StringVar(value="Position : —")
+        self._properties_size_text = tk.StringVar(value="Taille : —")
+        self._properties_rotation_text = tk.StringVar(value="Rotation : —")
 
     def show(self) -> None:
 
@@ -87,91 +106,275 @@ class PageEditorView:
 
         self.root = ctk.CTkFrame(
             self.parent,
-            fg_color="#909090",
+            fg_color="#E7EAEE",
         )
-        self.root.pack(
-            fill="both",
-            expand=True,
-        )
+        self.root.pack(fill="both", expand=True)
 
         self._create_header(self.root)
         self._create_alignment_toolbar(self.root)
 
-        editor_area = tk.Frame(
-            self.root,
-            bg="#909090",
-        )
-        editor_area.pack(
-            fill="both",
-            expand=True,
-        )
+        content_area = tk.Frame(self.root, bg="#E7EAEE")
+        content_area.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+        content_area.grid_rowconfigure(0, weight=1)
+        content_area.grid_columnconfigure(0, weight=1)
 
+        editor_area = tk.Frame(content_area, bg="#909090")
+        editor_area.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         editor_area.grid_rowconfigure(1, weight=1)
         editor_area.grid_columnconfigure(1, weight=1)
 
         self._create_corner(editor_area)
         self._create_canvas(editor_area)
         self._create_rulers(editor_area)
+
+        self._create_properties_panel(content_area)
         self._create_status_bar(self.root)
 
         self._display_retry_count = 0
         self.parent.after_idle(self._prepare_first_display)
 
+    def _create_editor_toolbar(self, parent) -> None:
+
+        toolbar = ctk.CTkFrame(
+            parent,
+            width=self.EDITOR_TOOLBAR_WIDTH,
+            fg_color=Colors.SIDEBAR,
+            corner_radius=0,
+        )
+        toolbar.pack(
+            side="left",
+            fill="y",
+        )
+        toolbar.pack_propagate(False)
+
+        self._editor_tool_buttons.clear()
+
+        for key, short_label, tooltip_text in self.EDITOR_TOOLS:
+            button = ctk.CTkButton(
+                toolbar,
+                text=short_label,
+                width=self.EDITOR_TOOL_BUTTON_SIZE,
+                height=self.EDITOR_TOOL_BUTTON_SIZE,
+                corner_radius=7,
+                border_width=0,
+                fg_color="transparent",
+                hover_color=Colors.BUTTON_HOVER,
+                text_color=Colors.TEXT,
+                font=(Fonts.FAMILY, 14, "bold"),
+                command=lambda tool_key=key: self._activate_editor_tool(
+                    tool_key,
+                ),
+            )
+            button.pack(
+                padx=5,
+                pady=(6 if key == "selection" else 3, 3),
+            )
+
+            button.bind(
+                "<Enter>",
+                lambda _event, text=tooltip_text: self._show_editor_tool_name(
+                    text,
+                ),
+                add="+",
+            )
+            button.bind(
+                "<Leave>",
+                self._restore_editor_tool_status,
+                add="+",
+            )
+
+            self._editor_tool_buttons[key] = button
+
+        self._set_active_editor_tool("selection")
+
+    def _activate_editor_tool(self, tool_key: str) -> None:
+
+        if self.workspace is None:
+            return
+
+        if tool_key == "selection":
+            self.workspace.set_tool("selection")
+            self._set_active_editor_tool("selection")
+            self._save_status_text.set("Outil Sélection")
+            self._show_editor_feedback("Sélection active")
+
+        elif tool_key == "texte":
+            self.workspace.set_tool("text")
+            self._set_active_editor_tool("texte")
+            self._save_status_text.set(
+                "Tracez une zone de texte sur la page",
+            )
+            self._show_editor_feedback(
+                "Texte actif — tracez une zone sur la page",
+            )
+
+        elif tool_key == "forme":
+            self._show_shape_menu()
+            return
+
+        self.workspace.focus_set()
+
+    def _show_shape_menu(self) -> None:
+
+        button = self._editor_tool_buttons.get("forme")
+
+        if button is None or self.root is None:
+            return
+
+        previous_tool = self._active_editor_tool
+        previous_canvas_tool = (
+            self.workspace.active_tool
+            if self.workspace is not None
+            else "selection"
+        )
+
+        # Le bouton Forme doit paraître enfoncé dès l'ouverture du menu.
+        # Si l'utilisateur ferme le menu sans choisir de forme, on revient
+        # simplement à l'outil qui était actif auparavant.
+        self._set_active_editor_tool("forme")
+
+        menu = tk.Menu(
+            self.root,
+            tearoff=False,
+        )
+        menu.add_command(
+            label="Rectangle",
+            command=lambda: self._select_shape_tool("rectangle"),
+        )
+        menu.add_command(
+            label="Ellipse",
+            command=lambda: self._select_shape_tool("ellipse"),
+        )
+
+        self._shape_menu = menu
+
+        try:
+            menu.tk_popup(
+                button.winfo_rootx() + button.winfo_width(),
+                button.winfo_rooty(),
+            )
+        finally:
+            try:
+                menu.grab_release()
+            except tk.TclError:
+                pass
+
+            current_canvas_tool = (
+                self.workspace.active_tool
+                if self.workspace is not None
+                else previous_canvas_tool
+            )
+
+            if current_canvas_tool not in {"rectangle", "ellipse"}:
+                self._set_active_editor_tool(previous_tool)
+
+    def _select_shape_tool(self, shape: str) -> None:
+
+        if self.workspace is None:
+            return
+
+        self.workspace.set_tool(shape)
+        self._set_active_editor_tool(shape)
+
+        label = "rectangle" if shape == "rectangle" else "ellipse"
+        self._save_status_text.set(
+            f"Tracez un {label} sur la page",
+        )
+        self._show_editor_feedback(
+            f"{label.capitalize()} actif — tracez la forme sur la page",
+        )
+        self.workspace.focus_set()
+
+    def _show_editor_feedback(self, text: str) -> None:
+        self._save_status_text.set(text)
+
+    def _hide_editor_feedback(self) -> None:
+        return
+
+    def _set_active_editor_tool(self, tool_key: str) -> None:
+
+        self._active_editor_tool = tool_key
+        active_key = tool_key if tool_key in {"texte", "rectangle", "ellipse"} else None
+
+        for key, button in self._editor_tool_buttons.items():
+            if key == active_key:
+                button.configure(
+                    fg_color=Colors.PRIMARY,
+                    hover_color=Colors.PRIMARY_HOVER,
+                    text_color="#FFFFFF",
+                )
+            else:
+                button.configure(
+                    fg_color="#FFFFFF",
+                    hover_color=Colors.BUTTON_HOVER,
+                    text_color=Colors.TEXT,
+                )
+
+    def _sync_editor_tool_state(self) -> None:
+
+        if self.workspace is None:
+            return
+
+        active_tool = self.workspace.active_tool
+        if active_tool == "text":
+            self._set_active_editor_tool("texte")
+        elif active_tool == "rectangle":
+            self._set_active_editor_tool("rectangle")
+        elif active_tool == "ellipse":
+            self._set_active_editor_tool("ellipse")
+        else:
+            self._set_active_editor_tool("selection")
+
+    def _show_editor_tool_name(self, text: str) -> None:
+
+        self._save_status_text.set(text)
+
+    def _restore_editor_tool_status(self, _event=None) -> None:
+
+        if self.workspace is None:
+            self._save_status_text.set("")
+            return
+
+        active_tool = self.workspace.active_tool
+
+        if active_tool == "text":
+            self._save_status_text.set(
+                "Tracez une zone de texte sur la page",
+            )
+        elif active_tool == "rectangle":
+            self._save_status_text.set(
+                "Tracez un rectangle sur la page",
+            )
+        elif active_tool == "ellipse":
+            self._save_status_text.set(
+                "Tracez une ellipse sur la page",
+            )
+        else:
+            self._save_status_text.set("Outil Sélection")
+
     def _create_header(self, parent) -> None:
 
         header = ctk.CTkFrame(
             parent,
-            fg_color="transparent",
-            height=60,
+            fg_color="#F7F8FA",
+            corner_radius=0,
+            height=54,
         )
-        header.pack(
-            fill="x",
-            padx=20,
-            pady=(20, 10),
-        )
+        header.pack(fill="x", pady=(0, 6))
         header.pack_propagate(False)
 
         ctk.CTkButton(
             header,
             text="← Retour",
-            width=120,
+            width=110,
+            height=34,
             command=self.back,
-        ).pack(side="left")
+        ).pack(side="left", padx=(16, 12), pady=10)
 
         ctk.CTkLabel(
             header,
             text=self.page.display_title,
-            font=Fonts.H1,
-            text_color=Colors.TEXT,
-        ).pack(
-            side="left",
-            padx=20,
-        )
-
-        coordinates = ctk.CTkFrame(
-            header,
-            fg_color="transparent",
-        )
-        coordinates.pack(
-            side="left",
-            padx=(0, 20),
-        )
-
-        ctk.CTkLabel(
-            coordinates,
-            textvariable=self._selection_x_text,
-            width=92,
-            anchor="w",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-        ).pack(side="left")
-
-        ctk.CTkLabel(
-            coordinates,
-            textvariable=self._selection_y_text,
-            width=92,
-            anchor="w",
-            font=Fonts.NORMAL,
+            font=Fonts.H2,
             text_color=Colors.TEXT,
         ).pack(side="left")
 
@@ -180,433 +383,223 @@ class PageEditorView:
             textvariable=self._save_status_text,
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
-        ).pack(
-            side="left",
-            padx=(0, 20),
-        )
+        ).pack(side="left", padx=20)
 
-        page_type = getattr(
-            self.page,
-            "page_type",
-            "Page vide",
-        )
-
+        page_type = getattr(self.page, "page_type", "Page vide")
         ctk.CTkLabel(
             header,
             text=page_type,
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
-        ).pack(side="right")
+        ).pack(side="right", padx=(10, 16))
+
+        self._toggle_panel_button = ctk.CTkButton(
+            header,
+            text="Masquer le panneau",
+            width=150,
+            height=34,
+            command=self._toggle_properties_panel,
+        )
+        self._toggle_panel_button.pack(side="right", pady=10)
 
     def _create_alignment_toolbar(self, parent) -> None:
 
-        toolbar = ctk.CTkFrame(
+        ribbon = ctk.CTkFrame(
             parent,
-            fg_color="#D9D9D9",
+            fg_color="#F3F5F7",
             corner_radius=0,
+            height=104,
         )
-        toolbar.pack(
-            fill="x",
-            padx=20,
-            pady=(0, 10),
-        )
+        ribbon.pack(fill="x", padx=12, pady=(0, 8))
+        ribbon.pack_propagate(False)
 
-        alignment_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        alignment_row.pack(fill="x", padx=8, pady=(6, 3))
+        content = tk.Frame(ribbon, bg="#F3F5F7")
+        content.pack(fill="both", expand=True, padx=8, pady=8)
 
-        ctk.CTkLabel(
-            alignment_row,
-            text="Alignement",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
+        def group(title: str, width: int) -> tuple[ctk.CTkFrame, ctk.CTkFrame]:
+            frame = ctk.CTkFrame(
+                content,
+                width=width,
+                height=86,
+                fg_color="#FFFFFF",
+                corner_radius=10,
+            )
+            frame.pack(side="left", fill="y", padx=4)
+            frame.pack_propagate(False)
+            controls = ctk.CTkFrame(frame, fg_color="transparent")
+            controls.pack(fill="both", expand=True, padx=8, pady=(8, 2))
+            ctk.CTkLabel(
+                frame,
+                text=title,
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+                height=18,
+            ).pack(side="bottom", fill="x", pady=(0, 4))
+            return frame, controls
 
-        buttons = (
-            ("Gauche", "left"),
-            ("Centre H", "center_horizontal"),
-            ("Droite", "right"),
-            ("Haut", "top"),
-            ("Centre V", "center_vertical"),
-            ("Bas", "bottom"),
-        )
+        self._editor_tool_buttons.clear()
 
-        for label, alignment in buttons:
-            ctk.CTkButton(
-                alignment_row,
-                text=label,
-                width=86,
-                height=30,
-                command=lambda value=alignment: self._align_selection(value),
-            ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            alignment_row,
-            text="Distribuer H",
-            width=104,
-            height=30,
-            command=self._distribute_selection_horizontally,
-        ).pack(side="left", padx=(12, 3))
-
-        ctk.CTkButton(
-            alignment_row,
-            text="Distribuer V",
-            width=104,
-            height=30,
-            command=self._distribute_selection_vertically,
-        ).pack(side="left", padx=3)
-
-        properties_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        properties_row.pack(fill="x", padx=8, pady=(3, 6))
-
-        ctk.CTkLabel(
-            properties_row,
-            text="Dimensions",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        ctk.CTkButton(
-            properties_row,
-            text="Même largeur",
-            width=110,
-            height=30,
-            command=self._make_selection_same_width,
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            properties_row,
-            text="Même hauteur",
-            width=110,
-            height=30,
-            command=self._make_selection_same_height,
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            properties_row,
-            text="Même taille",
-            width=104,
-            height=30,
-            command=self._make_selection_same_size,
-        ).pack(side="left", padx=3)
-
-        order_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        order_row.pack(fill="x", padx=8, pady=(3, 6))
-
-        ctk.CTkLabel(
-            order_row,
-            text="Ordre",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        ctk.CTkButton(
-            order_row,
-            text="Arrière-plan",
-            width=112,
-            height=30,
-            command=lambda: self._change_object_order("back"),
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            order_row,
-            text="Reculer",
-            width=92,
-            height=30,
-            command=lambda: self._change_object_order("backward"),
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            order_row,
-            text="Avancer",
-            width=92,
-            height=30,
-            command=lambda: self._change_object_order("forward"),
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            order_row,
-            text="Premier plan",
-            width=112,
-            height=30,
-            command=lambda: self._change_object_order("front"),
-        ).pack(side="left", padx=3)
-
-        protection_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        protection_row.pack(fill="x", padx=8, pady=(3, 6))
-
-        ctk.CTkLabel(
-            protection_row,
-            text="Protection",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        self._lock_button = ctk.CTkButton(
-            protection_row,
-            text="Verrouiller",
-            width=120,
-            height=30,
-            command=self._toggle_selection_lock,
-            state="disabled",
-        )
-        self._lock_button.pack(side="left", padx=3)
-
-        ctk.CTkLabel(
-            protection_row,
-            text="Raccourci : Ctrl + L",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT,
-        ).pack(side="left", padx=(10, 0))
-
-        group_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        group_row.pack(fill="x", padx=8, pady=(3, 6))
-
-        ctk.CTkLabel(
-            group_row,
-            text="Groupement",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        self._group_button = ctk.CTkButton(
-            group_row,
-            text="Grouper",
-            width=110,
-            height=30,
-            command=self._group_selection,
-            state="disabled",
-        )
-        self._group_button.pack(side="left", padx=3)
-
-        self._ungroup_button = ctk.CTkButton(
-            group_row,
-            text="Dissocier",
-            width=110,
-            height=30,
-            command=self._ungroup_selection,
-            state="disabled",
-        )
-        self._ungroup_button.pack(side="left", padx=3)
-
-        ctk.CTkLabel(
-            group_row,
-            text="Raccourcis : Ctrl + G / Ctrl + Maj + G",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT,
-        ).pack(side="left", padx=(10, 0))
-
-        appearance_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        appearance_row.pack(fill="x", padx=8, pady=(3, 6))
-
-        ctk.CTkLabel(
-            appearance_row,
-            text="Apparence",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        self._fill_color_button = ctk.CTkButton(
-            appearance_row,
-            text="Remplissage",
-            width=110,
-            height=30,
-            command=self._choose_fill_color,
-        )
-        self._fill_color_button.pack(side="left", padx=3)
-
-        self._outline_color_button = ctk.CTkButton(
-            appearance_row,
-            text="Contour",
-            width=94,
-            height=30,
-            command=self._choose_outline_color,
-        )
-        self._outline_color_button.pack(side="left", padx=3)
-
-        ctk.CTkLabel(
-            appearance_row,
-            text="Épaisseur",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=72,
-        ).pack(side="left", padx=(8, 2))
-
-        self._line_width_combo = ctk.CTkComboBox(
-            appearance_row,
-            variable=self._line_width_var,
-            values=["Sans contour", "1", "2", "3", "4", "5", "6", "8", "10"],
-            width=66,
-            height=30,
-            state="readonly",
-            command=self._change_line_width,
-        )
-        self._line_width_combo.pack(side="left", padx=3)
-
-        self._shape_controls = [
-            self._fill_color_button,
-            self._outline_color_button,
-            self._line_width_combo,
-        ]
-        self._set_shape_controls_enabled(False)
-
-        ctk.CTkLabel(
-            appearance_row,
-            text="Copie sélective",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=110,
-            anchor="e",
-        ).pack(side="left", padx=(18, 8))
-
-        ctk.CTkButton(
-            appearance_row,
-            text="Copier propriétés",
-            width=132,
-            height=30,
-            command=self._open_copy_properties_dialog,
-        ).pack(side="left", padx=3)
-
-        ctk.CTkButton(
-            appearance_row,
-            text="Coller propriétés",
-            width=132,
-            height=30,
-            command=self._paste_properties,
-        ).pack(side="left", padx=3)
-
-        text_row = ctk.CTkFrame(
-            toolbar,
-            fg_color="transparent",
-        )
-        text_row.pack(fill="x", padx=8, pady=(3, 8))
-
-        ctk.CTkLabel(
-            text_row,
-            text="Texte",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=90,
-            anchor="w",
-        ).pack(side="left", padx=(4, 8))
-
-        font_values = self._available_font_families()
-        self._font_family_combo = ctk.CTkComboBox(
-            text_row,
-            variable=self._font_family_var,
-            values=font_values,
-            width=190,
-            height=30,
-            state="readonly",
-            command=self._change_font_family,
-        )
-        self._font_family_combo.pack(side="left", padx=3)
-
-        ctk.CTkLabel(
-            text_row,
-            text="Taille",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            width=48,
-        ).pack(side="left", padx=(10, 2))
-
-        self._font_size_entry = ctk.CTkEntry(
-            text_row,
-            textvariable=self._font_size_var,
-            width=58,
-            height=30,
-            justify="center",
-        )
-        self._font_size_entry.pack(side="left", padx=3)
-        self._font_size_entry.bind(
-            "<Return>",
-            self._apply_font_size,
-        )
-        self._font_size_entry.bind(
-            "<FocusOut>",
-            self._apply_font_size,
-        )
-
-        self._bold_button = ctk.CTkButton(
-            text_row,
-            text="G",
-            width=38,
-            height=30,
-            command=lambda: self._toggle_text_style("bold"),
-        )
-        self._bold_button.pack(side="left", padx=(10, 3))
-
-        self._italic_button = ctk.CTkButton(
-            text_row,
-            text="I",
-            width=38,
-            height=30,
-            command=lambda: self._toggle_text_style("italic"),
-        )
-        self._italic_button.pack(side="left", padx=3)
-
-        self._text_color_button = ctk.CTkButton(
-            text_row,
-            text="Couleur",
-            width=88,
-            height=30,
-            command=self._choose_text_color,
-        )
-        self._text_color_button.pack(side="left", padx=(10, 3))
-
-        for label, alignment in (
-            ("À gauche", "left"),
-            ("Centré", "center"),
-            ("À droite", "right"),
+        _, add = group("Ajouter", 360)
+        for key, label, command in (
+            ("texte", "T  Texte", lambda: self._activate_editor_tool("texte")),
+            ("rectangle", "▭  Rectangle", lambda: self._select_shape_tool("rectangle")),
+            ("ellipse", "○  Ellipse", lambda: self._select_shape_tool("ellipse")),
         ):
             button = ctk.CTkButton(
-                text_row,
+                add,
                 text=label,
-                width=82,
-                height=30,
-                command=lambda value=alignment: self._set_text_alignment(value),
+                width=104,
+                height=38,
+                fg_color="#FFFFFF",
+                hover_color=Colors.BUTTON_HOVER,
+                text_color=Colors.TEXT,
+                border_width=1,
+                border_color="#D5D9DE",
+                command=command,
             )
-            button.pack(side="left", padx=3)
-            self._text_align_buttons[alignment] = button
+            button.pack(side="left", padx=3, pady=4)
+            self._editor_tool_buttons[key] = button
 
-        self._text_controls = [
-            self._font_family_combo,
-            self._font_size_entry,
-            self._bold_button,
-            self._italic_button,
-            self._text_color_button,
-            *self._text_align_buttons.values(),
-        ]
-        self._set_text_controls_enabled(False)
+        _, page = group("Page", 128)
+        ctk.CTkButton(
+            page,
+            text="⛶  Ajuster",
+            width=104,
+            height=38,
+            command=self._fit_page_to_window,
+        ).pack(padx=4, pady=4)
+
+        _, organize = group("Organiser", 304)
+        ctk.CTkButton(
+            organize, text="Aligner", width=84, height=38,
+            command=lambda: self._align_selection("left"),
+        ).pack(side="left", padx=3, pady=4)
+        ctk.CTkButton(
+            organize, text="Distribuer", width=94, height=38,
+            command=self._distribute_selection_horizontally,
+        ).pack(side="left", padx=3, pady=4)
+        self._group_button = ctk.CTkButton(
+            organize, text="Grouper", width=84, height=38,
+            command=self._group_selection, state="disabled",
+        )
+        self._group_button.pack(side="left", padx=3, pady=4)
+
+        _, style = group("Style", 244)
+        self._fill_color_button = ctk.CTkButton(
+            style, text="Remplissage", width=106, height=38,
+            command=self._choose_fill_color, state="disabled",
+        )
+        self._fill_color_button.pack(side="left", padx=3, pady=4)
+        self._outline_color_button = ctk.CTkButton(
+            style, text="Contour", width=96, height=38,
+            command=self._choose_outline_color, state="disabled",
+        )
+        self._outline_color_button.pack(side="left", padx=3, pady=4)
+        self._shape_controls = [self._fill_color_button, self._outline_color_button]
+
+        _, more = group("Panneau", 174)
+        ctk.CTkButton(
+            more,
+            text="Propriétés",
+            width=142,
+            height=38,
+            command=self._toggle_properties_panel,
+        ).pack(padx=4, pady=4)
+
+        self._refresh_group_controls()
+        self._sync_editor_tool_state()
+
+    def _create_properties_panel(self, parent) -> None:
+
+        self._right_panel = ctk.CTkFrame(
+            parent,
+            width=300,
+            fg_color="#F7F8FA",
+            corner_radius=12,
+        )
+        self._right_panel.grid(row=0, column=1, sticky="ns")
+        self._right_panel.grid_propagate(False)
+
+        tabs = ctk.CTkFrame(self._right_panel, fg_color="transparent")
+        tabs.pack(fill="x", padx=10, pady=(12, 8))
+        ctk.CTkButton(tabs, text="Propriétés", width=92, height=30).pack(side="left", padx=2)
+        ctk.CTkButton(tabs, text="Pages", width=72, height=30, state="disabled").pack(side="left", padx=2)
+        ctk.CTkButton(tabs, text="Calques", width=76, height=30, state="disabled").pack(side="left", padx=2)
+
+        info = ctk.CTkFrame(self._right_panel, fg_color="#FFFFFF", corner_radius=10)
+        info.pack(fill="x", padx=10, pady=6)
+        ctk.CTkLabel(info, text="Sélection", font=Fonts.H2, text_color=Colors.TEXT).pack(anchor="w", padx=12, pady=(12, 4))
+        ctk.CTkLabel(info, textvariable=self._properties_type_text, font=Fonts.NORMAL, text_color=Colors.TEXT).pack(anchor="w", padx=12, pady=2)
+        ctk.CTkLabel(info, textvariable=self._properties_position_text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=2)
+        ctk.CTkLabel(info, textvariable=self._properties_size_text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=2)
+        ctk.CTkLabel(info, textvariable=self._properties_rotation_text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=(2, 12))
+
+        for title, text in (
+            ("Dimensions", "Position, taille et rotation"),
+            ("Apparence", "Remplissage et contour"),
+            ("Texte", "Police, taille et alignement"),
+        ):
+            card = ctk.CTkFrame(self._right_panel, fg_color="#FFFFFF", corner_radius=10)
+            card.pack(fill="x", padx=10, pady=6)
+            ctk.CTkLabel(card, text=title, font=Fonts.H2, text_color=Colors.TEXT).pack(anchor="w", padx=12, pady=(10, 2))
+            ctk.CTkLabel(card, text=text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=(0, 10))
+
+        self._refresh_properties_panel()
+
+    def _toggle_properties_panel(self) -> None:
+        if self._right_panel is None:
+            return
+        self._right_panel_visible = not self._right_panel_visible
+        if self._right_panel_visible:
+            self._right_panel.grid()
+            if self._toggle_panel_button is not None:
+                self._toggle_panel_button.configure(text="Masquer le panneau")
+        else:
+            self._right_panel.grid_remove()
+            if self._toggle_panel_button is not None:
+                self._toggle_panel_button.configure(text="Afficher le panneau")
+        if self.workspace is not None:
+            self.parent.after_idle(self._fit_page_to_window)
+
+    def _fit_page_to_window(self) -> None:
+        if self.workspace is None:
+            return
+        self.workspace._fit_page()
+        self.workspace.redraw()
+        self.workspace.focus_set()
+        self._save_status_text.set("Page ajustée à la fenêtre")
+
+    def _refresh_properties_panel(self) -> None:
+        if self.workspace is None:
+            return
+
+        selected = None
+        index = self.workspace._selected_object_index
+        if index is not None and 0 <= index < len(self.workspace._objects):
+            selected = self.workspace._objects[index]
+        elif self.workspace._selected_object_indices:
+            first = self.workspace._selected_object_indices[0]
+            if 0 <= first < len(self.workspace._objects):
+                selected = self.workspace._objects[first]
+
+        if selected is None:
+            self._properties_type_text.set("Aucune sélection")
+            self._properties_position_text.set("Position : —")
+            self._properties_size_text.set("Taille : —")
+            self._properties_rotation_text.set("Rotation : —")
+            return
+
+        labels = {"rectangle": "Rectangle", "ellipse": "Ellipse", "text": "Texte"}
+        self._properties_type_text.set(f"Type : {labels.get(selected.kind, selected.kind.capitalize())}")
+        self._properties_position_text.set(
+            f"Position : X {selected.bounds.left:.2f} mm • Y {selected.bounds.top:.2f} mm"
+        )
+        self._properties_size_text.set(
+            f"Taille : {selected.bounds.width:.2f} × {selected.bounds.height:.2f} mm"
+        )
+        self._properties_rotation_text.set(
+            f"Rotation : {getattr(selected, 'rotation', 0.0):.1f}°"
+        )
 
     def _unlocked_indices(self, indices) -> list[int]:
         """Conserve uniquement les objets existants et déverrouillés."""
@@ -1908,6 +1901,16 @@ class PageEditorView:
             self._refresh_selection_label,
         )
 
+        # Les transformations réalisées à la souris (rotation et
+        # redimensionnement d'un groupe notamment) ne changent pas la
+        # sélection. On déclenche donc explicitement l'enregistrement
+        # automatique à la fin de chaque interaction.
+        self.workspace.bind(
+            "<ButtonRelease-1>",
+            self._schedule_canvas_autosave,
+            add="+",
+        )
+
         window = self.parent.winfo_toplevel()
         window.bind(
             "<Control-s>",
@@ -1940,6 +1943,8 @@ class PageEditorView:
         self._refresh_text_controls()
         self._refresh_lock_control()
         self._refresh_group_controls()
+        self._sync_editor_tool_state()
+        self._refresh_properties_panel()
         self._save_page_objects(show_status=False)
 
     def _create_rulers(self, parent) -> None:
@@ -2087,6 +2092,7 @@ class PageEditorView:
                         bold=bool(element.get("bold", False)),
                         italic=bool(element.get("italic", False)),
                         align=str(element.get("align", "left")),
+                        rotation=float(element.get("rotation", 0.0)),
                         locked=bool(element.get("locked", False)),
                         group_id=(
                             int(element["group_id"])
@@ -2131,9 +2137,21 @@ class PageEditorView:
             "bold": canvas_object.bold,
             "italic": canvas_object.italic,
             "align": canvas_object.align,
+            "rotation": canvas_object.rotation,
             "locked": canvas_object.locked,
             "group_id": canvas_object.group_id,
         }
+
+    def _schedule_canvas_autosave(self, event=None) -> None:
+
+        if self.root is None or self.workspace is None:
+            return
+
+        # after_idle garantit que le canvas a terminé de calculer la rotation
+        # ou les nouvelles dimensions avant la sérialisation.
+        self.root.after_idle(
+            lambda: self._save_page_objects(show_status=False),
+        )
 
     def _save_shortcut(self, event=None) -> str:
 

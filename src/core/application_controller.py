@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tkinter import messagebox
-
 from src.core.document import Document
 
 
@@ -50,11 +48,6 @@ class ApplicationController:
         )
 
         self.refresh_workspace()
-
-        messagebox.showinfo(
-            title="Document créé",
-            message=f"Le document '{name}' a été créé.",
-        )
 
         return document
 

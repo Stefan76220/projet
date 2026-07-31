@@ -13,7 +13,7 @@ class Workspace:
     Zone de travail principale de l'application.
 
     Cette classe pilote les différentes vues affichées
-    (tableau de bord, liste des documents, éditeur).
+    (accueil, liste des documents et éditeur).
     """
 
     def __init__(
@@ -50,6 +50,7 @@ class Workspace:
 
     def show_dashboard(self) -> None:
 
+        self._set_navigation_visible(False)
         self.clear()
 
         DashboardView(
@@ -62,6 +63,7 @@ class Workspace:
     ) -> None:
 
         self.current_project = project
+        self._set_navigation_visible(True)
 
         self.clear()
 
@@ -78,6 +80,7 @@ class Workspace:
         document_info,
     ) -> None:
 
+        self._set_navigation_visible(True)
         self.clear()
 
         self.application.document_manager.load_document(
@@ -94,6 +97,42 @@ class Workspace:
 
         if self.current_project is not None:
             self.show_documents(self.current_project)
+
+    # ==========================================================
+    # Navigation latérale
+    # ==========================================================
+
+    def _set_navigation_visible(
+        self,
+        visible: bool,
+    ) -> None:
+        """
+        Masque la navigation sur l'accueil et la réaffiche dès
+        qu'un projet ou un document est présenté.
+
+        La barre de navigation occupe la colonne 0 de la fenêtre
+        principale. ``grid_remove`` conserve sa configuration afin
+        qu'elle puisse être restaurée sans recréation.
+        """
+
+        parent = self.frame.master
+
+        if parent is None:
+            return
+
+        try:
+            navigation_widgets = parent.grid_slaves(
+                row=0,
+                column=0,
+            )
+        except Exception:
+            return
+
+        for widget in navigation_widgets:
+            if visible:
+                widget.grid()
+            else:
+                widget.grid_remove()
 
     # ==========================================================
     # Utilitaires
