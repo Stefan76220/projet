@@ -78,6 +78,8 @@ class PageEditorView:
         self._shape_controls: list[object] = []
         self._updating_shape_controls = False
         self._lock_button = None
+        self._group_button = None
+        self._ungroup_button = None
 
     def show(self) -> None:
 
@@ -376,6 +378,48 @@ class PageEditorView:
             text_color=Colors.TEXT_LIGHT,
         ).pack(side="left", padx=(10, 0))
 
+        group_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        group_row.pack(fill="x", padx=8, pady=(3, 6))
+
+        ctk.CTkLabel(
+            group_row,
+            text="Groupement",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        self._group_button = ctk.CTkButton(
+            group_row,
+            text="Grouper",
+            width=110,
+            height=30,
+            command=self._group_selection,
+            state="disabled",
+        )
+        self._group_button.pack(side="left", padx=3)
+
+        self._ungroup_button = ctk.CTkButton(
+            group_row,
+            text="Dissocier",
+            width=110,
+            height=30,
+            command=self._ungroup_selection,
+            state="disabled",
+        )
+        self._ungroup_button.pack(side="left", padx=3)
+
+        ctk.CTkLabel(
+            group_row,
+            text="Raccourcis : Ctrl + G / Ctrl + Maj + G",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(side="left", padx=(10, 0))
+
         appearance_row = ctk.CTkFrame(
             toolbar,
             fg_color="transparent",
@@ -632,6 +676,64 @@ class PageEditorView:
                 self._save_status_text.set("Objet(s) déverrouillé(s)")
 
         self._refresh_lock_control()
+        self.workspace.focus_set()
+
+    def _refresh_group_controls(self) -> None:
+        """Actualise les commandes de groupement selon la sélection."""
+
+        if self._group_button is None or self._ungroup_button is None:
+            return
+
+        if self.workspace is None:
+            self._group_button.configure(state="disabled")
+            self._ungroup_button.configure(state="disabled")
+            return
+
+        self._group_button.configure(
+            state=(
+                "normal"
+                if self.workspace.can_group_selection()
+                else "disabled"
+            ),
+        )
+        self._ungroup_button.configure(
+            state=(
+                "normal"
+                if self.workspace.can_ungroup_selection()
+                else "disabled"
+            ),
+        )
+
+    def _group_selection(self) -> None:
+        """Groupe les objets bleus sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        if self.workspace.group_selection():
+            self._save_status_text.set("Objets groupés")
+        else:
+            self._save_status_text.set(
+                "Sélectionner au moins deux objets déverrouillés",
+            )
+
+        self._refresh_group_controls()
+        self.workspace.focus_set()
+
+    def _ungroup_selection(self) -> None:
+        """Dissocie le ou les groupes sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        if self.workspace.ungroup_selection():
+            self._save_status_text.set("Groupe dissocié")
+        else:
+            self._save_status_text.set(
+                "Sélectionner un groupe déverrouillé",
+            )
+
+        self._refresh_group_controls()
         self.workspace.focus_set()
 
     def _selected_order_indices(self) -> list[int]:
@@ -1837,6 +1939,7 @@ class PageEditorView:
         self._refresh_shape_controls()
         self._refresh_text_controls()
         self._refresh_lock_control()
+        self._refresh_group_controls()
         self._save_page_objects(show_status=False)
 
     def _create_rulers(self, parent) -> None:
@@ -1985,6 +2088,11 @@ class PageEditorView:
                         italic=bool(element.get("italic", False)),
                         align=str(element.get("align", "left")),
                         locked=bool(element.get("locked", False)),
+                        group_id=(
+                            int(element["group_id"])
+                            if element.get("group_id") is not None
+                            else None
+                        ),
                     )
                 )
             except (TypeError, ValueError):
@@ -2024,6 +2132,7 @@ class PageEditorView:
             "italic": canvas_object.italic,
             "align": canvas_object.align,
             "locked": canvas_object.locked,
+            "group_id": canvas_object.group_id,
         }
 
     def _save_shortcut(self, event=None) -> str:

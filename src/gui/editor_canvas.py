@@ -30,6 +30,7 @@ class CanvasObject:
     italic: bool = False
     align: str = "left"
     locked: bool = False
+    group_id: int | None = None
 
 
 class EditorCanvas(CTkCanvas):
@@ -301,6 +302,20 @@ class EditorCanvas(CTkCanvas):
             self._toggle_selection_lock,
         )
 
+        # Grouper : Ctrl + G. Dissocier : Ctrl + Maj + G.
+        self.bind(
+            "<Control-g>",
+            self._group_selection_with_keyboard,
+        )
+        self.bind(
+            "<Control-Shift-g>",
+            self._ungroup_selection_with_keyboard,
+        )
+        self.bind(
+            "<Control-Shift-G>",
+            self._ungroup_selection_with_keyboard,
+        )
+
     def _bind_escape_to_window(self) -> None:
 
         top_level = self.winfo_toplevel()
@@ -441,35 +456,63 @@ class EditorCanvas(CTkCanvas):
         event=None,
     ) -> str | None:
 
-        selected_object = self.get_selected_object()
-
-        if selected_object is None:
+        selected_indices = sorted(
+            self._expand_indices_to_groups(self._selected_object_indices)
+        )
+        if not selected_indices:
             return None
 
-        offset = 5.0
-        bounds = selected_object.bounds
-        new_x = min(
-            bounds.left + offset,
-            self.page_format.width_mm - bounds.width,
-        )
-        new_y = min(
-            bounds.top + offset,
-            self.page_format.height_mm - bounds.height,
-        )
+        selected_bounds = [
+            self._objects[index].bounds
+            for index in selected_indices
+        ]
+        min_left = min(bounds.left for bounds in selected_bounds)
+        min_top = min(bounds.top for bounds in selected_bounds)
+        max_right = max(bounds.right for bounds in selected_bounds)
+        max_bottom = max(bounds.bottom for bounds in selected_bounds)
 
-        duplicate = replace(
-            selected_object,
-            bounds=Rect(
-                Point(new_x, new_y),
-                bounds.size,
-            ),
-            locked=False,
-        )
+        offset = 5.0
+        dx = min(offset, self.page_format.width_mm - max_right)
+        dy = min(offset, self.page_format.height_mm - max_bottom)
+        if dx <= 0.0 and dy <= 0.0:
+            dx = max(-offset, -min_left)
+            dy = max(-offset, -min_top)
+
+        existing_group_ids = sorted({
+            self._objects[index].group_id
+            for index in selected_indices
+            if self._objects[index].group_id is not None
+        })
+        next_group_id = self._next_group_id()
+        group_mapping = {
+            group_id: next_group_id + offset_index
+            for offset_index, group_id in enumerate(existing_group_ids)
+        }
 
         self._remember_current_state()
-        self._objects.append(duplicate)
-        self._selected_object_index = len(self._objects) - 1
-        self._selected_object_indices = {self._selected_object_index}
+        first_new_index = len(self._objects)
+
+        for index in selected_indices:
+            selected_object = self._objects[index]
+            bounds = selected_object.bounds
+            duplicate = replace(
+                selected_object,
+                bounds=Rect(
+                    Point(bounds.left + dx, bounds.top + dy),
+                    bounds.size,
+                ),
+                locked=False,
+                group_id=(
+                    group_mapping.get(selected_object.group_id)
+                    if selected_object.group_id is not None
+                    else None
+                ),
+            )
+            self._objects.append(duplicate)
+
+        new_indices = set(range(first_new_index, len(self._objects)))
+        self._selected_object_indices = new_indices
+        self._selected_object_index = max(new_indices)
         self.redraw()
         self._notify_selection()
 
@@ -480,36 +523,51 @@ class EditorCanvas(CTkCanvas):
         event=None,
     ) -> str | None:
 
-        if self._selected_object_index is None:
-            return None
-
-        if not 0 <= self._selected_object_index < len(self._objects):
-            return None
-
-        if self._objects[self._selected_object_index].locked:
+        selected_indices = sorted(
+            self._expand_indices_to_groups(self._selected_object_indices)
+        )
+        deletable_indices = [
+            index
+            for index in selected_indices
+            if not self._objects[index].locked
+        ]
+        if not deletable_indices:
             return "break"
 
+        deleted_set = set(deletable_indices)
+        old_reference_index = self._reference_object_index
+
         self._remember_current_state()
-        deleted_index = self._selected_object_index
-        del self._objects[deleted_index]
+        old_objects = list(self._objects)
+        self._objects = [
+            graphic_object
+            for index, graphic_object in enumerate(old_objects)
+            if index not in deleted_set
+        ]
+
+        old_to_new: dict[int, int] = {}
+        new_index = 0
+        for old_index in range(len(old_objects)):
+            if old_index in deleted_set:
+                continue
+            old_to_new[old_index] = new_index
+            new_index += 1
+
         self._selected_object_indices = {
-            index - 1 if index > deleted_index else index
-            for index in self._selected_object_indices
-            if index != deleted_index
+            old_to_new[index]
+            for index in selected_indices
+            if index in old_to_new
         }
         self._selected_object_index = (
             max(self._selected_object_indices)
             if self._selected_object_indices
             else None
         )
-
-        if self._reference_object_index == deleted_index:
-            self._reference_object_index = None
-        elif (
-            self._reference_object_index is not None
-            and self._reference_object_index > deleted_index
-        ):
-            self._reference_object_index -= 1
+        self._reference_object_index = (
+            old_to_new.get(old_reference_index)
+            if old_reference_index is not None
+            else None
+        )
 
         self.redraw()
         self._notify_selection()
@@ -671,6 +729,151 @@ class EditorCanvas(CTkCanvas):
     ) -> str:
 
         self.toggle_selection_lock()
+        return "break"
+
+    # ==========================================================
+    # Groupement
+    # ==========================================================
+
+    def _group_indices_for_object(self, object_index: int) -> set[int]:
+        """Retourne tous les membres du groupe de l'objet."""
+
+        if not 0 <= object_index < len(self._objects):
+            return set()
+
+        group_id = self._objects[object_index].group_id
+        if group_id is None:
+            return {object_index}
+
+        return {
+            index
+            for index, graphic_object in enumerate(self._objects)
+            if graphic_object.group_id == group_id
+        }
+
+    def _expand_indices_to_groups(self, indices) -> set[int]:
+        """Étend une sélection afin qu'un groupe reste toujours entier."""
+
+        expanded: set[int] = set()
+        for index in indices:
+            if 0 <= index < len(self._objects):
+                expanded.update(self._group_indices_for_object(index))
+        return expanded
+
+    def _next_group_id(self) -> int:
+        group_ids = [
+            graphic_object.group_id
+            for graphic_object in self._objects
+            if graphic_object.group_id is not None
+        ]
+        return (max(group_ids) + 1) if group_ids else 1
+
+    def can_group_selection(self) -> bool:
+        selected_indices = self._expand_indices_to_groups(
+            self._selected_object_indices,
+        )
+        return (
+            len(selected_indices) >= 2
+            and all(
+                not self._objects[index].locked
+                for index in selected_indices
+            )
+        )
+
+    def can_ungroup_selection(self) -> bool:
+        selected_indices = self._expand_indices_to_groups(
+            self._selected_object_indices,
+        )
+        grouped_indices = [
+            index
+            for index in selected_indices
+            if self._objects[index].group_id is not None
+        ]
+        return bool(grouped_indices) and all(
+            not self._objects[index].locked
+            for index in grouped_indices
+        )
+
+    def group_selection(self) -> bool:
+        """Réunit les objets bleus en un seul groupe logique."""
+
+        selected_indices = self._expand_indices_to_groups(
+            self._selected_object_indices,
+        )
+        if len(selected_indices) < 2:
+            return False
+        if any(self._objects[index].locked for index in selected_indices):
+            return False
+
+        self.commit_active_text_edit()
+        self._remember_current_state()
+        group_id = self._next_group_id()
+
+        for index in selected_indices:
+            self._objects[index] = replace(
+                self._objects[index],
+                group_id=group_id,
+            )
+
+        # Une référence rouge désigne toujours un objet indépendant.
+        # Si cet objet vient d'être intégré au groupe, la référence est annulée
+        # afin qu'aucun membre ne paraisse isolé du groupe.
+        if self._reference_object_index in selected_indices:
+            self._reference_object_index = None
+
+        self._selected_object_indices = set(selected_indices)
+        if self._selected_object_index not in self._selected_object_indices:
+            self._selected_object_index = max(self._selected_object_indices)
+
+        self.redraw()
+        self._notify_selection()
+        return True
+
+    def ungroup_selection(self) -> bool:
+        """Dissocie entièrement les groupes présents dans la sélection."""
+
+        selected_indices = self._expand_indices_to_groups(
+            self._selected_object_indices,
+        )
+        group_ids = {
+            self._objects[index].group_id
+            for index in selected_indices
+            if self._objects[index].group_id is not None
+        }
+        if not group_ids:
+            return False
+
+        grouped_indices = {
+            index
+            for index, graphic_object in enumerate(self._objects)
+            if graphic_object.group_id in group_ids
+        }
+        if any(self._objects[index].locked for index in grouped_indices):
+            return False
+
+        self.commit_active_text_edit()
+        self._remember_current_state()
+
+        for index in grouped_indices:
+            self._objects[index] = replace(
+                self._objects[index],
+                group_id=None,
+            )
+
+        self._selected_object_indices = set(grouped_indices)
+        if self._selected_object_index not in self._selected_object_indices:
+            self._selected_object_index = max(self._selected_object_indices)
+
+        self.redraw()
+        self._notify_selection()
+        return True
+
+    def _group_selection_with_keyboard(self, event=None) -> str:
+        self.group_selection()
+        return "break"
+
+    def _ungroup_selection_with_keyboard(self, event=None) -> str:
+        self.ungroup_selection()
         return "break"
 
     # ==========================================================
@@ -1007,7 +1210,16 @@ class EditorCanvas(CTkCanvas):
                 self.page_top + self.viewport.mm_to_px(bounds.bottom),
             )
 
-            is_reference = index == self._reference_object_index
+            # Un groupe sélectionné est représenté uniquement par son cadre
+            # commun. Aucun de ses membres ne conserve un cadre bleu isolé.
+            selected_individually = (
+                selected
+                and graphic_object.group_id is None
+            )
+            is_reference = (
+                index == self._reference_object_index
+                and graphic_object.group_id is None
+            )
 
             options = {
                 "fill": graphic_object.fill,
@@ -1015,7 +1227,7 @@ class EditorCanvas(CTkCanvas):
                     "#D62828"
                     if is_reference
                     else "#3874CB"
-                    if selected
+                    if selected_individually
                     else graphic_object.outline
                 ),
                 "width": 2 if is_reference else graphic_object.line_width,
@@ -1072,11 +1284,55 @@ class EditorCanvas(CTkCanvas):
                 selected
                 and index == self._selected_object_index
                 and not graphic_object.locked
+                and graphic_object.group_id is None
             ):
                 self._draw_selection_handles(
                     bounds,
                     is_reference=is_reference,
                 )
+
+        self._draw_selected_group_outlines()
+
+    def _draw_selected_group_outlines(self) -> None:
+        """Matérialise les groupes sélectionnés sans lettre ni abréviation."""
+
+        selected_group_ids = {
+            self._objects[index].group_id
+            for index in self._selected_object_indices
+            if (
+                0 <= index < len(self._objects)
+                and self._objects[index].group_id is not None
+            )
+        }
+
+        for group_id in selected_group_ids:
+            group_indices = {
+                index
+                for index, graphic_object in enumerate(self._objects)
+                if graphic_object.group_id == group_id
+            }
+            if not group_indices or not group_indices.issubset(
+                self._selected_object_indices
+            ):
+                continue
+
+            bounds_list = [self._objects[index].bounds for index in group_indices]
+            left = min(bounds.left for bounds in bounds_list)
+            top = min(bounds.top for bounds in bounds_list)
+            right = max(bounds.right for bounds in bounds_list)
+            bottom = max(bounds.bottom for bounds in bounds_list)
+
+            margin = 4
+            self.create_rectangle(
+                self.page_left + self.viewport.mm_to_px(left) - margin,
+                self.page_top + self.viewport.mm_to_px(top) - margin,
+                self.page_left + self.viewport.mm_to_px(right) + margin,
+                self.page_top + self.viewport.mm_to_px(bottom) + margin,
+                outline="#3874CB",
+                width=2,
+                dash=(6, 4),
+                fill="",
+            )
 
     def _draw_lock_indicator(
         self,
@@ -1278,7 +1534,10 @@ class EditorCanvas(CTkCanvas):
         if self._objects[object_index].kind != "text":
             return None
 
-        if self._objects[object_index].locked:
+        if (
+            self._objects[object_index].locked
+            or self._objects[object_index].group_id is not None
+        ):
             return "break"
 
         self._selected_object_index = object_index
@@ -1301,7 +1560,11 @@ class EditorCanvas(CTkCanvas):
 
         graphic_object = self._objects[object_index]
 
-        if graphic_object.kind != "text" or graphic_object.locked:
+        if (
+            graphic_object.kind != "text"
+            or graphic_object.locked
+            or graphic_object.group_id is not None
+        ):
             return
 
         self._text_edit_object_index = object_index
@@ -1538,16 +1801,17 @@ class EditorCanvas(CTkCanvas):
 
         if control_pressed:
             if object_index is not None:
-                if object_index in self._selected_object_indices:
-                    self._selected_object_indices.remove(object_index)
-                    if self._selected_object_index == object_index:
+                clicked_indices = self._group_indices_for_object(object_index)
+                if clicked_indices.issubset(self._selected_object_indices):
+                    self._selected_object_indices.difference_update(clicked_indices)
+                    if self._selected_object_index in clicked_indices:
                         self._selected_object_index = (
                             max(self._selected_object_indices)
                             if self._selected_object_indices
                             else None
                         )
                 else:
-                    self._selected_object_indices.add(object_index)
+                    self._selected_object_indices.update(clicked_indices)
                     self._selected_object_index = object_index
 
             self._interaction_mode = None
@@ -1561,14 +1825,27 @@ class EditorCanvas(CTkCanvas):
             )
 
             if clicked_selected_object:
-                # Un second clic sur un objet déjà sélectionné le désigne
-                # comme référence permanente, même s'il est sélectionné seul.
-                self._selected_object_index = object_index
-                self._reference_object_index = object_index
+                clicked_group_indices = self._group_indices_for_object(
+                    object_index,
+                )
+
+                if self._objects[object_index].group_id is not None:
+                    # Un groupe reste une seule unité de sélection. Un clic sur
+                    # l'un de ses membres ne peut donc pas transformer ce seul
+                    # membre en objet rouge de référence.
+                    self._selected_object_indices = set(clicked_group_indices)
+                    self._selected_object_index = object_index
+                    if self._reference_object_index in clicked_group_indices:
+                        self._reference_object_index = None
+                else:
+                    # Un second clic sur un objet indépendant déjà sélectionné
+                    # le désigne comme référence permanente.
+                    self._selected_object_index = object_index
+                    self._reference_object_index = object_index
             else:
                 self._selected_object_index = object_index
                 self._selected_object_indices = (
-                    {object_index}
+                    self._group_indices_for_object(object_index)
                     if object_index is not None
                     else set()
                 )
@@ -1847,6 +2124,7 @@ class EditorCanvas(CTkCanvas):
                             or graphic_object.bounds.top > bottom
                         )
                     }
+                    selected = self._expand_indices_to_groups(selected)
                     self._selected_object_indices = selected
                     self._selected_object_index = max(selected) if selected else None
 
@@ -1888,7 +2166,7 @@ class EditorCanvas(CTkCanvas):
             return None
 
         selected_object = self._objects[self._selected_object_index]
-        if selected_object.locked:
+        if selected_object.locked or selected_object.group_id is not None:
             return None
 
         bounds = selected_object.bounds
