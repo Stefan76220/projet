@@ -29,6 +29,7 @@ class CanvasObject:
     bold: bool = False
     italic: bool = False
     align: str = "left"
+    locked: bool = False
 
 
 class EditorCanvas(CTkCanvas):
@@ -291,6 +292,15 @@ class EditorCanvas(CTkCanvas):
             add="+",
         )
 
+        self.bind(
+            "<Control-l>",
+            self._toggle_selection_lock,
+        )
+        self.bind(
+            "<Control-L>",
+            self._toggle_selection_lock,
+        )
+
     def _bind_escape_to_window(self) -> None:
 
         top_level = self.winfo_toplevel()
@@ -453,6 +463,7 @@ class EditorCanvas(CTkCanvas):
                 Point(new_x, new_y),
                 bounds.size,
             ),
+            locked=False,
         )
 
         self._remember_current_state()
@@ -474,6 +485,9 @@ class EditorCanvas(CTkCanvas):
 
         if not 0 <= self._selected_object_index < len(self._objects):
             return None
+
+        if self._objects[self._selected_object_index].locked:
+            return "break"
 
         self._remember_current_state()
         deleted_index = self._selected_object_index
@@ -507,10 +521,17 @@ class EditorCanvas(CTkCanvas):
         event,
     ) -> str | None:
 
-        selected_indices = sorted(self._selected_object_indices)
+        selected_indices = [
+            index
+            for index in sorted(self._selected_object_indices)
+            if (
+                0 <= index < len(self._objects)
+                and not self._objects[index].locked
+            )
+        ]
 
         if not selected_indices:
-            return None
+            return "break"
 
         step = 10.0 if event.state & 0x0001 else 1.0
         dx = 0.0
@@ -566,6 +587,90 @@ class EditorCanvas(CTkCanvas):
         self.redraw()
         self._notify_selection()
 
+        return "break"
+
+    # ==========================================================
+    # Verrouillage
+    # ==========================================================
+
+    def _selected_indices_for_locking(self) -> list[int]:
+
+        selected_indices = [
+            index
+            for index in sorted(self._selected_object_indices)
+            if 0 <= index < len(self._objects)
+        ]
+
+        if (
+            not selected_indices
+            and self._selected_object_index is not None
+            and 0 <= self._selected_object_index < len(self._objects)
+        ):
+            selected_indices = [self._selected_object_index]
+
+        return selected_indices
+
+    def get_selection_lock_state(self) -> bool | None:
+        """Retourne l'état de verrouillage commun de la sélection."""
+
+        selected_indices = self._selected_indices_for_locking()
+        if not selected_indices:
+            return None
+
+        return all(
+            self._objects[index].locked
+            for index in selected_indices
+        )
+
+    def set_selection_locked(self, locked: bool) -> bool:
+        """Verrouille ou déverrouille les objets bleus sélectionnés."""
+
+        selected_indices = self._selected_indices_for_locking()
+        if not selected_indices:
+            return False
+
+        changed_indices = [
+            index
+            for index in selected_indices
+            if self._objects[index].locked != locked
+        ]
+        if not changed_indices:
+            return False
+
+        self.commit_active_text_edit()
+        self._remember_current_state()
+
+        for index in changed_indices:
+            self._objects[index] = replace(
+                self._objects[index],
+                locked=locked,
+            )
+
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
+
+        self.redraw()
+        self._notify_selection()
+        return True
+
+    def toggle_selection_lock(self) -> bool:
+        """Bascule le verrouillage de la sélection."""
+
+        state = self.get_selection_lock_state()
+        if state is None:
+            return False
+
+        return self.set_selection_locked(not state)
+
+    def _toggle_selection_lock(
+        self,
+        event=None,
+    ) -> str:
+
+        self.toggle_selection_lock()
         return "break"
 
     # ==========================================================
@@ -645,6 +750,9 @@ class EditorCanvas(CTkCanvas):
             return
 
         current = self._objects[self._selected_object_index]
+        if current.locked:
+            return
+
         self._objects[self._selected_object_index] = replace(current, **changes)
         self.redraw()
         self._notify_selection()
@@ -706,6 +814,9 @@ class EditorCanvas(CTkCanvas):
                 continue
 
             graphic_object = self._objects[index]
+            if graphic_object.locked:
+                continue
+
             bounds = graphic_object.bounds
             new_x = bounds.left
             new_y = bounds.top
@@ -954,11 +1065,73 @@ class EditorCanvas(CTkCanvas):
                     ),
                 )
 
-            if selected and index == self._selected_object_index:
+            if graphic_object.locked:
+                self._draw_lock_indicator(bounds)
+
+            if (
+                selected
+                and index == self._selected_object_index
+                and not graphic_object.locked
+            ):
                 self._draw_selection_handles(
                     bounds,
                     is_reference=is_reference,
                 )
+
+    def _draw_lock_indicator(
+        self,
+        bounds: Rect,
+    ) -> None:
+        """Dessine un petit cadenas, sans lettre ni abréviation."""
+
+        right = self.page_left + self.viewport.mm_to_px(bounds.right)
+        top = self.page_top + self.viewport.mm_to_px(bounds.top)
+        badge_x = right - 10
+        badge_y = top + 10
+
+        self.create_oval(
+            badge_x - 9,
+            badge_y - 9,
+            badge_x + 9,
+            badge_y + 9,
+            fill="#F4F4F4",
+            outline="#666666",
+            width=1,
+        )
+
+        # Anse du cadenas.
+        self.create_arc(
+            badge_x - 4,
+            badge_y - 6,
+            badge_x + 4,
+            badge_y + 2,
+            start=0,
+            extent=180,
+            style="arc",
+            outline="#444444",
+            width=2,
+        )
+
+        # Corps du cadenas.
+        self.create_rectangle(
+            badge_x - 5,
+            badge_y - 1,
+            badge_x + 5,
+            badge_y + 6,
+            fill="#666666",
+            outline="#444444",
+            width=1,
+        )
+
+        # Entrée de clé.
+        self.create_oval(
+            badge_x - 1,
+            badge_y + 1,
+            badge_x + 1,
+            badge_y + 3,
+            fill="#F4F4F4",
+            outline="",
+        )
 
     def _draw_selection_handles(
         self,
@@ -1105,6 +1278,9 @@ class EditorCanvas(CTkCanvas):
         if self._objects[object_index].kind != "text":
             return None
 
+        if self._objects[object_index].locked:
+            return "break"
+
         self._selected_object_index = object_index
         self._selected_object_indices = {object_index}
         self._start_text_editing(
@@ -1125,7 +1301,7 @@ class EditorCanvas(CTkCanvas):
 
         graphic_object = self._objects[object_index]
 
-        if graphic_object.kind != "text":
+        if graphic_object.kind != "text" or graphic_object.locked:
             return
 
         self._text_edit_object_index = object_index
@@ -1253,6 +1429,7 @@ class EditorCanvas(CTkCanvas):
             commit
             and object_index is not None
             and 0 <= object_index < len(self._objects)
+            and not self._objects[object_index].locked
         ):
             edited_text = editor.get(
                 "1.0",
@@ -1396,7 +1573,11 @@ class EditorCanvas(CTkCanvas):
                     else set()
                 )
 
-            if object_index is not None and start is not None:
+            if (
+                object_index is not None
+                and start is not None
+                and not self._objects[object_index].locked
+            ):
 
                 self._interaction_mode = "move"
                 self._interaction_start_mm = start
@@ -1406,8 +1587,18 @@ class EditorCanvas(CTkCanvas):
                 self._interaction_original_bounds_by_index = {
                     index: self._objects[index].bounds
                     for index in self._selected_object_indices
-                    if 0 <= index < len(self._objects)
+                    if (
+                        0 <= index < len(self._objects)
+                        and not self._objects[index].locked
+                    )
                 }
+
+            elif object_index is not None:
+
+                self._interaction_mode = None
+                self._interaction_start_mm = None
+                self._interaction_original_bounds = None
+                self._interaction_original_bounds_by_index = {}
 
             else:
 
@@ -1696,9 +1887,11 @@ class EditorCanvas(CTkCanvas):
         if self._selected_object_index is None:
             return None
 
-        bounds = self._objects[
-            self._selected_object_index
-        ].bounds
+        selected_object = self._objects[self._selected_object_index]
+        if selected_object.locked:
+            return None
+
+        bounds = selected_object.bounds
 
         margin = (
             self.HANDLE_SIZE_PX / 2
@@ -1749,6 +1942,9 @@ class EditorCanvas(CTkCanvas):
                 continue
 
             graphic_object = self._objects[index]
+            if graphic_object.locked:
+                continue
+
             self._objects[index] = replace(
                 graphic_object,
                 bounds=Rect(
@@ -1829,6 +2025,9 @@ class EditorCanvas(CTkCanvas):
         selected_object = self._objects[
             self._selected_object_index
         ]
+
+        if selected_object.locked:
+            return
 
         self._objects[
             self._selected_object_index
