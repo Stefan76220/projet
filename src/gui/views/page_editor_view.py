@@ -487,23 +487,28 @@ class PageEditorView:
         self.workspace.focus_set()
 
     def _make_selection_same_width(self) -> None:
-        """Donne à tous les objets sélectionnés la largeur de l'objet rouge."""
+        """Donne aux objets cibles la largeur de l'objet rouge."""
 
         if self.workspace is None:
-            return
-
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
-
-        if len(selected_indices) < 2:
             return
 
         reference_index = self.workspace.get_reference_object_index()
 
         if reference_index is None:
+            self._save_status_text.set("Choisir d'abord l'objet rouge")
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if (
+                0 <= index < len(self.workspace._objects)
+                and index != reference_index
+            )
+        ]
+
+        if not selected_indices:
+            self._save_status_text.set("Sélectionner au moins un objet cible")
             return
 
         reference_width = self.workspace._objects[
@@ -513,9 +518,6 @@ class PageEditorView:
         self.workspace._remember_current_state()
 
         for index in selected_indices:
-            if index == reference_index:
-                continue
-
             graphic_object = self.workspace._objects[index]
             bounds = graphic_object.bounds
             self.workspace._objects[index] = replace(
@@ -529,25 +531,33 @@ class PageEditorView:
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Largeur appliquée à {len(selected_indices)} objet(s)"
+        )
 
     def _make_selection_same_height(self) -> None:
-        """Donne à tous les objets sélectionnés la hauteur de l'objet rouge."""
+        """Donne aux objets cibles la hauteur de l'objet rouge."""
 
         if self.workspace is None:
-            return
-
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
-
-        if len(selected_indices) < 2:
             return
 
         reference_index = self.workspace.get_reference_object_index()
 
         if reference_index is None:
+            self._save_status_text.set("Choisir d'abord l'objet rouge")
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if (
+                0 <= index < len(self.workspace._objects)
+                and index != reference_index
+            )
+        ]
+
+        if not selected_indices:
+            self._save_status_text.set("Sélectionner au moins un objet cible")
             return
 
         reference_height = self.workspace._objects[
@@ -557,9 +567,6 @@ class PageEditorView:
         self.workspace._remember_current_state()
 
         for index in selected_indices:
-            if index == reference_index:
-                continue
-
             graphic_object = self.workspace._objects[index]
             bounds = graphic_object.bounds
             self.workspace._objects[index] = replace(
@@ -573,25 +580,33 @@ class PageEditorView:
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Hauteur appliquée à {len(selected_indices)} objet(s)"
+        )
 
     def _make_selection_same_size(self) -> None:
-        """Donne à tous les objets sélectionnés la taille de l'objet rouge."""
+        """Donne aux objets cibles la taille de l'objet rouge."""
 
         if self.workspace is None:
-            return
-
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
-
-        if len(selected_indices) < 2:
             return
 
         reference_index = self.workspace.get_reference_object_index()
 
         if reference_index is None:
+            self._save_status_text.set("Choisir d'abord l'objet rouge")
+            return
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if (
+                0 <= index < len(self.workspace._objects)
+                and index != reference_index
+            )
+        ]
+
+        if not selected_indices:
+            self._save_status_text.set("Sélectionner au moins un objet cible")
             return
 
         reference_bounds = self.workspace._objects[
@@ -601,9 +616,6 @@ class PageEditorView:
         self.workspace._remember_current_state()
 
         for index in selected_indices:
-            if index == reference_index:
-                continue
-
             graphic_object = self.workspace._objects[index]
             bounds = graphic_object.bounds
             self.workspace._objects[index] = replace(
@@ -620,6 +632,9 @@ class PageEditorView:
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Taille appliquée à {len(selected_indices)} objet(s)"
+        )
 
 
     def _choose_fill_color(self) -> None:
@@ -787,14 +802,19 @@ class PageEditorView:
             self._save_status_text.set("Aucune propriété copiée")
             return
 
+        reference_index = self.workspace.get_reference_object_index()
+
         selected_indices = [
             index
             for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
+            if (
+                0 <= index < len(self.workspace._objects)
+                and index != reference_index
+            )
         ]
 
         if not selected_indices:
-            self._save_status_text.set("Aucun objet sélectionné")
+            self._save_status_text.set("Aucun objet cible sélectionné")
             return
 
         self.workspace._remember_current_state()
