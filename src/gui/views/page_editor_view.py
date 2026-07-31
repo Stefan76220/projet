@@ -77,6 +77,7 @@ class PageEditorView:
         self._line_width_combo = None
         self._shape_controls: list[object] = []
         self._updating_shape_controls = False
+        self._lock_button = None
 
     def show(self) -> None:
 
@@ -343,6 +344,38 @@ class PageEditorView:
             command=lambda: self._change_object_order("front"),
         ).pack(side="left", padx=3)
 
+        protection_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        protection_row.pack(fill="x", padx=8, pady=(3, 6))
+
+        ctk.CTkLabel(
+            protection_row,
+            text="Protection",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        self._lock_button = ctk.CTkButton(
+            protection_row,
+            text="Verrouiller",
+            width=120,
+            height=30,
+            command=self._toggle_selection_lock,
+            state="disabled",
+        )
+        self._lock_button.pack(side="left", padx=3)
+
+        ctk.CTkLabel(
+            protection_row,
+            text="Raccourci : Ctrl + L",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(side="left", padx=(10, 0))
+
         appearance_row = ctk.CTkFrame(
             toolbar,
             fg_color="transparent",
@@ -531,23 +564,92 @@ class PageEditorView:
         ]
         self._set_text_controls_enabled(False)
 
+    def _unlocked_indices(self, indices) -> list[int]:
+        """Conserve uniquement les objets existants et déverrouillés."""
+
+        if self.workspace is None:
+            return []
+
+        return [
+            index
+            for index in indices
+            if (
+                0 <= index < len(self.workspace._objects)
+                and not self.workspace._objects[index].locked
+            )
+        ]
+
+    def _refresh_lock_control(self) -> None:
+        """Actualise le bouton de verrouillage selon la sélection courante."""
+
+        if self._lock_button is None:
+            return
+
+        if self.workspace is None:
+            self._lock_button.configure(
+                text="Verrouiller",
+                state="disabled",
+            )
+            return
+
+        state = self.workspace.get_selection_lock_state()
+
+        if state is None:
+            self._lock_button.configure(
+                text="Verrouiller",
+                state="disabled",
+            )
+        elif state:
+            self._lock_button.configure(
+                text="Déverrouiller",
+                state="normal",
+            )
+        else:
+            self._lock_button.configure(
+                text="Verrouiller",
+                state="normal",
+            )
+
+    def _toggle_selection_lock(self) -> None:
+        """Verrouille ou déverrouille les objets actuellement sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        state = self.workspace.get_selection_lock_state()
+
+        if state is None:
+            self._save_status_text.set("Sélectionner au moins un objet")
+            return
+
+        target_locked_state = not state
+        changed = self.workspace.set_selection_locked(target_locked_state)
+
+        if changed:
+            if target_locked_state:
+                self._save_status_text.set("Objet(s) verrouillé(s)")
+            else:
+                self._save_status_text.set("Objet(s) déverrouillé(s)")
+
+        self._refresh_lock_control()
+        self.workspace.focus_set()
+
     def _selected_order_indices(self) -> list[int]:
         """Retourne les objets bleus concernés par l'ordre d'empilement."""
 
         if self.workspace is None:
             return []
 
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        selected_indices = self._unlocked_indices(
+            sorted(self.workspace._selected_object_indices)
+        )
 
         if not selected_indices:
             primary_index = self.workspace._selected_object_index
             if (
                 primary_index is not None
                 and 0 <= primary_index < len(self.workspace._objects)
+                and not self.workspace._objects[primary_index].locked
             ):
                 selected_indices = [primary_index]
 
@@ -748,11 +850,9 @@ class PageEditorView:
         if self.workspace is None:
             return []
 
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        selected_indices = self._unlocked_indices(
+            sorted(self.workspace._selected_object_indices)
+        )
 
         # L'index principal ne sert que de secours lorsque le canvas vient de
         # sélectionner un objet et que l'ensemble multiple n'est pas encore
@@ -762,6 +862,7 @@ class PageEditorView:
             if (
                 primary_index is not None
                 and 0 <= primary_index < len(self.workspace._objects)
+                and not self.workspace._objects[primary_index].locked
             ):
                 selected_indices = [primary_index]
 
@@ -864,6 +965,7 @@ class PageEditorView:
             if (
                 0 <= index < len(self.workspace._objects)
                 and self.workspace._objects[index].kind == "text"
+                and not self.workspace._objects[index].locked
             )
         ]
 
@@ -1065,13 +1167,12 @@ class PageEditorView:
         if self.workspace is None:
             return
 
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        selected_indices = self._unlocked_indices(
+            sorted(self.workspace._selected_object_indices)
+        )
 
         if not selected_indices:
+            self._save_status_text.set("Aucun objet modifiable sélectionné")
             return
 
         page_width = self.workspace.page_format.width_mm
@@ -1119,13 +1220,14 @@ class PageEditorView:
         if self.workspace is None:
             return
 
-        selected_indices = [
-            index
-            for index in self.workspace._selected_object_indices
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        selected_indices = self._unlocked_indices(
+            self.workspace._selected_object_indices
+        )
 
         if len(selected_indices) < 3:
+            self._save_status_text.set(
+                "Sélectionner au moins trois objets déverrouillés"
+            )
             return
 
         selected_indices.sort(
@@ -1171,13 +1273,14 @@ class PageEditorView:
         if self.workspace is None:
             return
 
-        selected_indices = [
-            index
-            for index in self.workspace._selected_object_indices
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        selected_indices = self._unlocked_indices(
+            self.workspace._selected_object_indices
+        )
 
         if len(selected_indices) < 3:
+            self._save_status_text.set(
+                "Sélectionner au moins trois objets déverrouillés"
+            )
             return
 
         selected_indices.sort(
@@ -1235,6 +1338,7 @@ class PageEditorView:
             if (
                 0 <= index < len(self.workspace._objects)
                 and index != reference_index
+                and not self.workspace._objects[index].locked
             )
         ]
 
@@ -1284,6 +1388,7 @@ class PageEditorView:
             if (
                 0 <= index < len(self.workspace._objects)
                 and index != reference_index
+                and not self.workspace._objects[index].locked
             )
         ]
 
@@ -1333,6 +1438,7 @@ class PageEditorView:
             if (
                 0 <= index < len(self.workspace._objects)
                 and index != reference_index
+                and not self.workspace._objects[index].locked
             )
         ]
 
@@ -1590,6 +1696,7 @@ class PageEditorView:
             if (
                 0 <= index < len(self.workspace._objects)
                 and index != reference_index
+                and not self.workspace._objects[index].locked
             )
         ]
 
@@ -1729,6 +1836,7 @@ class PageEditorView:
 
         self._refresh_shape_controls()
         self._refresh_text_controls()
+        self._refresh_lock_control()
         self._save_page_objects(show_status=False)
 
     def _create_rulers(self, parent) -> None:
@@ -1876,6 +1984,7 @@ class PageEditorView:
                         bold=bool(element.get("bold", False)),
                         italic=bool(element.get("italic", False)),
                         align=str(element.get("align", "left")),
+                        locked=bool(element.get("locked", False)),
                     )
                 )
             except (TypeError, ValueError):
@@ -1914,6 +2023,7 @@ class PageEditorView:
             "bold": canvas_object.bold,
             "italic": canvas_object.italic,
             "align": canvas_object.align,
+            "locked": canvas_object.locked,
         }
 
     def _save_shortcut(self, event=None) -> str:
