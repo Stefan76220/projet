@@ -296,6 +296,53 @@ class PageEditorView:
             command=self._make_selection_same_size,
         ).pack(side="left", padx=3)
 
+        order_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        order_row.pack(fill="x", padx=8, pady=(3, 6))
+
+        ctk.CTkLabel(
+            order_row,
+            text="Ordre",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        ctk.CTkButton(
+            order_row,
+            text="Arrière-plan",
+            width=112,
+            height=30,
+            command=lambda: self._change_object_order("back"),
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            order_row,
+            text="Reculer",
+            width=92,
+            height=30,
+            command=lambda: self._change_object_order("backward"),
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            order_row,
+            text="Avancer",
+            width=92,
+            height=30,
+            command=lambda: self._change_object_order("forward"),
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            order_row,
+            text="Premier plan",
+            width=112,
+            height=30,
+            command=lambda: self._change_object_order("front"),
+        ).pack(side="left", padx=3)
+
         appearance_row = ctk.CTkFrame(
             toolbar,
             fg_color="transparent",
@@ -483,6 +530,181 @@ class PageEditorView:
             *self._text_align_buttons.values(),
         ]
         self._set_text_controls_enabled(False)
+
+    def _selected_order_indices(self) -> list[int]:
+        """Retourne les objets bleus concernés par l'ordre d'empilement."""
+
+        if self.workspace is None:
+            return []
+
+        selected_indices = [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        if not selected_indices:
+            primary_index = self.workspace._selected_object_index
+            if (
+                primary_index is not None
+                and 0 <= primary_index < len(self.workspace._objects)
+            ):
+                selected_indices = [primary_index]
+
+        reference_index = self.workspace.get_reference_object_index()
+        target_indices = [
+            index
+            for index in selected_indices
+            if index != reference_index
+        ]
+
+        return target_indices or selected_indices
+
+    @staticmethod
+    def _index_by_identity(objects: list[CanvasObject], target) -> int | None:
+        if target is None:
+            return None
+
+        for index, graphic_object in enumerate(objects):
+            if graphic_object is target:
+                return index
+
+        return None
+
+    def _restore_indices_after_reorder(
+        self,
+        selected_objects: list[CanvasObject],
+        primary_object,
+        reference_object,
+    ) -> None:
+        """Rétablit sélection et référence après réorganisation de la liste."""
+
+        if self.workspace is None:
+            return
+
+        objects = self.workspace._objects
+        selected_indices = {
+            index
+            for selected_object in selected_objects
+            if (
+                index := self._index_by_identity(objects, selected_object)
+            ) is not None
+        }
+
+        primary_index = self._index_by_identity(objects, primary_object)
+        if primary_index not in selected_indices:
+            primary_index = max(selected_indices) if selected_indices else None
+
+        self.workspace._selected_object_indices = selected_indices
+        self.workspace._selected_object_index = primary_index
+        self.workspace._reference_object_index = self._index_by_identity(
+            objects,
+            reference_object,
+        )
+
+    def _change_object_order(self, action: str) -> None:
+        """Modifie l'ordre d'empilement des objets sélectionnés."""
+
+        if self.workspace is None:
+            return
+
+        target_indices = self._selected_order_indices()
+        if not target_indices:
+            self._save_status_text.set("Sélectionner au moins un objet")
+            return
+
+        self.workspace.commit_active_text_edit()
+
+        objects = list(self.workspace._objects)
+        target_objects = [objects[index] for index in target_indices]
+        target_identities = {id(graphic_object) for graphic_object in target_objects}
+
+        selected_objects = [
+            objects[index]
+            for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(objects)
+        ]
+        primary_object = (
+            objects[self.workspace._selected_object_index]
+            if (
+                self.workspace._selected_object_index is not None
+                and 0 <= self.workspace._selected_object_index < len(objects)
+            )
+            else None
+        )
+        reference_index = self.workspace.get_reference_object_index()
+        reference_object = (
+            objects[reference_index]
+            if reference_index is not None
+            else None
+        )
+
+        reordered = list(objects)
+
+        if action == "front":
+            reordered = [
+                graphic_object
+                for graphic_object in objects
+                if id(graphic_object) not in target_identities
+            ] + target_objects
+            status_label = "Placé au premier plan"
+
+        elif action == "back":
+            reordered = target_objects + [
+                graphic_object
+                for graphic_object in objects
+                if id(graphic_object) not in target_identities
+            ]
+            status_label = "Placé à l’arrière-plan"
+
+        elif action == "forward":
+            for index in range(len(reordered) - 2, -1, -1):
+                current_selected = id(reordered[index]) in target_identities
+                next_selected = id(reordered[index + 1]) in target_identities
+                if current_selected and not next_selected:
+                    reordered[index], reordered[index + 1] = (
+                        reordered[index + 1],
+                        reordered[index],
+                    )
+            status_label = "Avancé d’un niveau"
+
+        elif action == "backward":
+            for index in range(1, len(reordered)):
+                current_selected = id(reordered[index]) in target_identities
+                previous_selected = id(reordered[index - 1]) in target_identities
+                if current_selected and not previous_selected:
+                    reordered[index], reordered[index - 1] = (
+                        reordered[index - 1],
+                        reordered[index],
+                    )
+            status_label = "Reculé d’un niveau"
+
+        else:
+            return
+
+        changed = any(
+            before is not after
+            for before, after in zip(objects, reordered)
+        )
+
+        if not changed:
+            self._save_status_text.set("Ordre déjà atteint")
+            self.workspace.focus_set()
+            return
+
+        self.workspace._remember_current_state()
+        self.workspace._objects = reordered
+        self._restore_indices_after_reorder(
+            selected_objects,
+            primary_object,
+            reference_object,
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+        self._save_status_text.set(
+            f"{status_label} : {len(target_objects)} objet(s)"
+        )
 
     def _available_font_families(self) -> list[str]:
         """Retourne les polices installées, avec les plus courantes en tête."""
