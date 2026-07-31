@@ -71,6 +71,12 @@ class PageEditorView:
         self._text_align_buttons: dict[str, object] = {}
         self._text_controls: list[object] = []
         self._updating_text_controls = False
+        self._fill_color_button = None
+        self._outline_color_button = None
+        self._line_width_var = tk.StringVar(value="2")
+        self._line_width_combo = None
+        self._shape_controls: list[object] = []
+        self._updating_shape_controls = False
 
     def show(self) -> None:
 
@@ -305,13 +311,49 @@ class PageEditorView:
             anchor="w",
         ).pack(side="left", padx=(4, 8))
 
-        ctk.CTkButton(
+        self._fill_color_button = ctk.CTkButton(
             appearance_row,
             text="Remplissage",
             width=110,
             height=30,
             command=self._choose_fill_color,
-        ).pack(side="left", padx=3)
+        )
+        self._fill_color_button.pack(side="left", padx=3)
+
+        self._outline_color_button = ctk.CTkButton(
+            appearance_row,
+            text="Contour",
+            width=94,
+            height=30,
+            command=self._choose_outline_color,
+        )
+        self._outline_color_button.pack(side="left", padx=3)
+
+        ctk.CTkLabel(
+            appearance_row,
+            text="Épaisseur",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=72,
+        ).pack(side="left", padx=(8, 2))
+
+        self._line_width_combo = ctk.CTkComboBox(
+            appearance_row,
+            variable=self._line_width_var,
+            values=["Sans contour", "1", "2", "3", "4", "5", "6", "8", "10"],
+            width=66,
+            height=30,
+            state="readonly",
+            command=self._change_line_width,
+        )
+        self._line_width_combo.pack(side="left", padx=3)
+
+        self._shape_controls = [
+            self._fill_color_button,
+            self._outline_color_button,
+            self._line_width_combo,
+        ]
+        self._set_shape_controls_enabled(False)
 
         ctk.CTkLabel(
             appearance_row,
@@ -320,7 +362,7 @@ class PageEditorView:
             text_color=Colors.TEXT,
             width=110,
             anchor="e",
-        ).pack(side="left", padx=(22, 8))
+        ).pack(side="left", padx=(18, 8))
 
         ctk.CTkButton(
             appearance_row,
@@ -473,23 +515,144 @@ class PageEditorView:
 
         return ordered or preferred
 
-    def _selected_text_indices(self) -> list[int]:
-        """Retourne uniquement les zones de texte cibles sélectionnées."""
+    def _selected_shape_indices(self) -> list[int]:
+        """Retourne les objets ciblés par les commandes d'apparence.
+
+        Toutes les zones graphiques possèdent un remplissage et un contour,
+        y compris les zones de texte. La référence rouge est protégée dès
+        qu'une ou plusieurs cibles bleues sont sélectionnées.
+        """
 
         if self.workspace is None:
             return []
 
-        reference_index = self.workspace.get_reference_object_index()
-
-        return [
+        selected_indices = [
             index
             for index in sorted(self.workspace._selected_object_indices)
+            if 0 <= index < len(self.workspace._objects)
+        ]
+
+        # L'index principal ne sert que de secours lorsque le canvas vient de
+        # sélectionner un objet et que l'ensemble multiple n'est pas encore
+        # renseigné. Il n'est jamais ajouté à une sélection déjà existante.
+        if not selected_indices:
+            primary_index = self.workspace._selected_object_index
+            if (
+                primary_index is not None
+                and 0 <= primary_index < len(self.workspace._objects)
+            ):
+                selected_indices = [primary_index]
+
+        reference_index = self.workspace.get_reference_object_index()
+        target_indices = [
+            index
+            for index in selected_indices
+            if index != reference_index
+        ]
+
+        return target_indices or selected_indices
+
+    def _set_shape_controls_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+
+        for control in self._shape_controls:
+            if control is not None:
+                control.configure(state=state)
+
+        if enabled and self._line_width_combo is not None:
+            self._line_width_combo.configure(state="readonly")
+
+    def _refresh_shape_controls(self) -> None:
+        if self.workspace is None:
+            return
+
+        shape_indices = self._selected_shape_indices()
+        self._updating_shape_controls = True
+
+        try:
+            if not shape_indices:
+                self._line_width_var.set("2")
+                self._set_shape_controls_enabled(False)
+                return
+
+            line_widths = {
+                self.workspace._objects[index].line_width
+                for index in shape_indices
+            }
+            if len(line_widths) == 1:
+                line_width = next(iter(line_widths))
+                self._line_width_var.set(
+                    "Sans contour" if line_width == 0 else str(line_width)
+                )
+            else:
+                self._line_width_var.set("")
+            self._set_shape_controls_enabled(True)
+        finally:
+            self._updating_shape_controls = False
+
+    def _apply_shape_changes(self, status_label: str, **changes) -> bool:
+        if self.workspace is None or self._updating_shape_controls:
+            return False
+
+        shape_indices = self._selected_shape_indices()
+
+        if not shape_indices:
+            self._save_status_text.set("Sélectionner au moins un objet")
+            return False
+
+        self.workspace.commit_active_text_edit()
+        self.workspace._remember_current_state()
+
+        for index in shape_indices:
+            self.workspace._objects[index] = replace(
+                self.workspace._objects[index],
+                **changes,
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+        self._save_status_text.set(
+            f"{status_label} sur {len(shape_indices)} objet(s)"
+        )
+        return True
+
+    def _selected_text_indices(self) -> list[int]:
+        """Retourne les zones de texte réellement sélectionnées.
+
+        Comme pour les formes, la référence rouge est exclue lorsqu'il existe
+        des cibles bleues, mais reste modifiable lorsqu'elle est seule.
+        """
+
+        if self.workspace is None:
+            return []
+
+        selected_indices = set(self.workspace._selected_object_indices)
+        primary_index = self.workspace._selected_object_index
+
+        if (
+            primary_index is not None
+            and 0 <= primary_index < len(self.workspace._objects)
+        ):
+            selected_indices.add(primary_index)
+
+        text_indices = [
+            index
+            for index in sorted(selected_indices)
             if (
                 0 <= index < len(self.workspace._objects)
-                and index != reference_index
                 and self.workspace._objects[index].kind == "text"
             )
         ]
+
+        reference_index = self.workspace.get_reference_object_index()
+        target_indices = [
+            index
+            for index in text_indices
+            if index != reference_index
+        ]
+
+        return target_indices or text_indices
 
     def _set_text_controls_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -984,22 +1147,18 @@ class PageEditorView:
 
 
     def _choose_fill_color(self) -> None:
-        """Modifie la couleur de remplissage des objets sélectionnés."""
+        """Modifie le remplissage des objets sélectionnés."""
 
         if self.workspace is None:
             return
 
-        selected_indices = [
-            index
-            for index in sorted(self.workspace._selected_object_indices)
-            if 0 <= index < len(self.workspace._objects)
-        ]
+        shape_indices = self._selected_shape_indices()
 
-        if not selected_indices:
+        if not shape_indices:
             self._save_status_text.set("Sélectionner au moins un objet")
             return
 
-        initial_color = self.workspace._objects[selected_indices[0]].fill
+        initial_color = self.workspace._objects[shape_indices[0]].fill
         chosen_color = colorchooser.askcolor(
             color=initial_color,
             title="Couleur de remplissage",
@@ -1010,20 +1169,66 @@ class PageEditorView:
             self.workspace.focus_set()
             return
 
-        self.workspace._remember_current_state()
+        self._apply_shape_changes(
+            "Remplissage modifié",
+            fill=chosen_color,
+        )
 
-        for index in selected_indices:
-            graphic_object = self.workspace._objects[index]
-            self.workspace._objects[index] = replace(
-                graphic_object,
-                fill=chosen_color,
-            )
+    def _choose_outline_color(self) -> None:
+        """Modifie la couleur du contour des objets sélectionnés."""
 
-        self.workspace.redraw()
-        self.workspace._notify_selection()
-        self.workspace.focus_set()
-        self._save_status_text.set(
-            f"Remplissage modifié sur {len(selected_indices)} objet(s)"
+        if self.workspace is None:
+            return
+
+        shape_indices = self._selected_shape_indices()
+
+        if not shape_indices:
+            self._save_status_text.set("Sélectionner au moins un objet")
+            return
+
+        initial_color = self.workspace._objects[shape_indices[0]].outline
+        chosen_color = colorchooser.askcolor(
+            color=initial_color,
+            title="Couleur du contour",
+            parent=self.parent.winfo_toplevel(),
+        )[1]
+
+        if not chosen_color:
+            self.workspace.focus_set()
+            return
+
+        self._apply_shape_changes(
+            "Contour modifié",
+            outline=chosen_color,
+        )
+
+    def _change_line_width(self, value: str) -> None:
+        """Modifie l'épaisseur du contour des objets sélectionnés."""
+
+        if self._updating_shape_controls:
+            return
+
+        if value == "Sans contour":
+            line_width = 0
+            status_label = "Contour supprimé"
+        else:
+            try:
+                line_width = int(value)
+            except (TypeError, ValueError):
+                self._save_status_text.set("Épaisseur de contour invalide")
+                self._refresh_shape_controls()
+                return
+
+            if not 1 <= line_width <= 50:
+                self._save_status_text.set("Épaisseur comprise entre 1 et 50")
+                self._refresh_shape_controls()
+                return
+
+            status_label = "Épaisseur modifiée"
+
+        self._apply_shape_changes(
+            status_label,
+            line_width=line_width,
         )
 
     def _open_copy_properties_dialog(self) -> None:
@@ -1300,6 +1505,7 @@ class PageEditorView:
                 f"Y : {selected_object.bounds.top:.2f} mm",
             )
 
+        self._refresh_shape_controls()
         self._refresh_text_controls()
         self._save_page_objects(show_status=False)
 
