@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import tkinter as tk
-from tkinter import colorchooser
+from tkinter import colorchooser, font as tkfont
 
 import customtkinter as ctk
 
@@ -61,6 +61,16 @@ class PageEditorView:
             value="Y : — mm",
         )
         self._copied_properties: dict[str, object] | None = None
+        self._font_family_var = tk.StringVar(value="Arial")
+        self._font_size_var = tk.StringVar(value="12")
+        self._font_family_combo = None
+        self._font_size_entry = None
+        self._text_color_button = None
+        self._bold_button = None
+        self._italic_button = None
+        self._text_align_buttons: dict[str, object] = {}
+        self._text_controls: list[object] = []
+        self._updating_text_controls = False
 
     def show(self) -> None:
 
@@ -327,6 +337,342 @@ class PageEditorView:
             height=30,
             command=self._paste_properties,
         ).pack(side="left", padx=3)
+
+        text_row = ctk.CTkFrame(
+            toolbar,
+            fg_color="transparent",
+        )
+        text_row.pack(fill="x", padx=8, pady=(3, 8))
+
+        ctk.CTkLabel(
+            text_row,
+            text="Texte",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=90,
+            anchor="w",
+        ).pack(side="left", padx=(4, 8))
+
+        font_values = self._available_font_families()
+        self._font_family_combo = ctk.CTkComboBox(
+            text_row,
+            variable=self._font_family_var,
+            values=font_values,
+            width=190,
+            height=30,
+            state="readonly",
+            command=self._change_font_family,
+        )
+        self._font_family_combo.pack(side="left", padx=3)
+
+        ctk.CTkLabel(
+            text_row,
+            text="Taille",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            width=48,
+        ).pack(side="left", padx=(10, 2))
+
+        self._font_size_entry = ctk.CTkEntry(
+            text_row,
+            textvariable=self._font_size_var,
+            width=58,
+            height=30,
+            justify="center",
+        )
+        self._font_size_entry.pack(side="left", padx=3)
+        self._font_size_entry.bind(
+            "<Return>",
+            self._apply_font_size,
+        )
+        self._font_size_entry.bind(
+            "<FocusOut>",
+            self._apply_font_size,
+        )
+
+        self._bold_button = ctk.CTkButton(
+            text_row,
+            text="G",
+            width=38,
+            height=30,
+            command=lambda: self._toggle_text_style("bold"),
+        )
+        self._bold_button.pack(side="left", padx=(10, 3))
+
+        self._italic_button = ctk.CTkButton(
+            text_row,
+            text="I",
+            width=38,
+            height=30,
+            command=lambda: self._toggle_text_style("italic"),
+        )
+        self._italic_button.pack(side="left", padx=3)
+
+        self._text_color_button = ctk.CTkButton(
+            text_row,
+            text="Couleur",
+            width=88,
+            height=30,
+            command=self._choose_text_color,
+        )
+        self._text_color_button.pack(side="left", padx=(10, 3))
+
+        for label, alignment in (
+            ("À gauche", "left"),
+            ("Centré", "center"),
+            ("À droite", "right"),
+        ):
+            button = ctk.CTkButton(
+                text_row,
+                text=label,
+                width=82,
+                height=30,
+                command=lambda value=alignment: self._set_text_alignment(value),
+            )
+            button.pack(side="left", padx=3)
+            self._text_align_buttons[alignment] = button
+
+        self._text_controls = [
+            self._font_family_combo,
+            self._font_size_entry,
+            self._bold_button,
+            self._italic_button,
+            self._text_color_button,
+            *self._text_align_buttons.values(),
+        ]
+        self._set_text_controls_enabled(False)
+
+    def _available_font_families(self) -> list[str]:
+        """Retourne les polices installées, avec les plus courantes en tête."""
+
+        preferred = [
+            "Arial",
+            "Calibri",
+            "Cambria",
+            "Garamond",
+            "Georgia",
+            "Times New Roman",
+            "Verdana",
+            "Courier New",
+        ]
+
+        try:
+            installed = sorted(
+                {
+                    name
+                    for name in tkfont.families(self.parent)
+                    if name and not name.startswith("@")
+                },
+                key=str.casefold,
+            )
+        except tk.TclError:
+            installed = []
+
+        ordered = [name for name in preferred if name in installed]
+        ordered.extend(name for name in installed if name not in ordered)
+
+        return ordered or preferred
+
+    def _selected_text_indices(self) -> list[int]:
+        """Retourne uniquement les zones de texte cibles sélectionnées."""
+
+        if self.workspace is None:
+            return []
+
+        reference_index = self.workspace.get_reference_object_index()
+
+        return [
+            index
+            for index in sorted(self.workspace._selected_object_indices)
+            if (
+                0 <= index < len(self.workspace._objects)
+                and index != reference_index
+                and self.workspace._objects[index].kind == "text"
+            )
+        ]
+
+    def _set_text_controls_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+
+        for control in self._text_controls:
+            if control is not None:
+                control.configure(state=state)
+
+        if enabled and self._font_family_combo is not None:
+            self._font_family_combo.configure(state="readonly")
+
+    @staticmethod
+    def _set_toggle_button_state(button, active: bool) -> None:
+        if button is None:
+            return
+
+        button.configure(
+            fg_color="#3874CB" if active else "#AFAFAF",
+            hover_color="#2F63AE" if active else "#999999",
+            text_color="#FFFFFF" if active else "#222222",
+        )
+
+    def _refresh_text_controls(self) -> None:
+        if self.workspace is None:
+            return
+
+        text_indices = self._selected_text_indices()
+        self._updating_text_controls = True
+
+        try:
+            if not text_indices:
+                self._font_family_var.set("Arial")
+                self._font_size_var.set("12")
+                self._set_toggle_button_state(self._bold_button, False)
+                self._set_toggle_button_state(self._italic_button, False)
+                for button in self._text_align_buttons.values():
+                    self._set_toggle_button_state(button, False)
+                self._set_text_controls_enabled(False)
+                return
+
+            text_objects = [
+                self.workspace._objects[index]
+                for index in text_indices
+            ]
+
+            font_families = {obj.font_family for obj in text_objects}
+            font_sizes = {obj.font_size for obj in text_objects}
+            bold_values = {obj.bold for obj in text_objects}
+            italic_values = {obj.italic for obj in text_objects}
+            alignments = {obj.align for obj in text_objects}
+
+            self._font_family_var.set(
+                next(iter(font_families))
+                if len(font_families) == 1
+                else ""
+            )
+            self._font_size_var.set(
+                str(next(iter(font_sizes)))
+                if len(font_sizes) == 1
+                else ""
+            )
+
+            self._set_toggle_button_state(
+                self._bold_button,
+                bold_values == {True},
+            )
+            self._set_toggle_button_state(
+                self._italic_button,
+                italic_values == {True},
+            )
+
+            active_alignment = (
+                next(iter(alignments))
+                if len(alignments) == 1
+                else None
+            )
+            for alignment, button in self._text_align_buttons.items():
+                self._set_toggle_button_state(
+                    button,
+                    alignment == active_alignment,
+                )
+
+            self._set_text_controls_enabled(True)
+        finally:
+            self._updating_text_controls = False
+
+    def _apply_text_changes(self, **changes) -> bool:
+        if self.workspace is None or self._updating_text_controls:
+            return False
+
+        text_indices = self._selected_text_indices()
+
+        if not text_indices:
+            self._save_status_text.set("Sélectionner une zone de texte")
+            return False
+
+        self.workspace.commit_active_text_edit()
+        self.workspace._remember_current_state()
+
+        for index in text_indices:
+            self.workspace._objects[index] = replace(
+                self.workspace._objects[index],
+                **changes,
+            )
+
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self.workspace.focus_set()
+        self._save_status_text.set(
+            f"Texte modifié sur {len(text_indices)} zone(s)"
+        )
+        return True
+
+    def _change_font_family(self, font_family: str) -> None:
+        if font_family:
+            self._apply_text_changes(font_family=font_family)
+
+    def _apply_font_size(self, event=None) -> str | None:
+        if self._updating_text_controls:
+            return None
+
+        value = self._font_size_var.get().strip()
+
+        try:
+            font_size = int(value)
+        except ValueError:
+            self._save_status_text.set("Taille de police invalide")
+            self._refresh_text_controls()
+            return "break" if event is not None else None
+
+        if not 1 <= font_size <= 500:
+            self._save_status_text.set("Taille comprise entre 1 et 500")
+            self._refresh_text_controls()
+            return "break" if event is not None else None
+
+        self._apply_text_changes(font_size=font_size)
+        return "break" if event is not None else None
+
+    def _toggle_text_style(self, property_name: str) -> None:
+        if self.workspace is None:
+            return
+
+        text_indices = self._selected_text_indices()
+
+        if not text_indices:
+            self._save_status_text.set("Sélectionner une zone de texte")
+            return
+
+        new_value = not all(
+            bool(getattr(self.workspace._objects[index], property_name))
+            for index in text_indices
+        )
+        self._apply_text_changes(**{property_name: new_value})
+
+    def _choose_text_color(self) -> None:
+        if self.workspace is None:
+            return
+
+
+        text_indices = self._selected_text_indices()
+
+        if not text_indices:
+            self._save_status_text.set("Sélectionner une zone de texte")
+            return
+
+        initial_color = self.workspace._objects[text_indices[0]].text_color
+        chosen_color = colorchooser.askcolor(
+            color=initial_color,
+            title="Couleur du texte",
+            parent=self.parent.winfo_toplevel(),
+        )[1]
+
+        if not chosen_color:
+            self.workspace.focus_set()
+            return
+
+        self._apply_text_changes(text_color=chosen_color)
+
+    def _set_text_alignment(self, alignment: str) -> None:
+        if alignment not in {"left", "center", "right"}:
+            return
+
+        self._apply_text_changes(align=alignment)
 
     def _align_selection(self, alignment: str) -> None:
         """Aligne chaque objet sélectionné individuellement sur la page."""
@@ -719,18 +1065,19 @@ class PageEditorView:
         ).pack(padx=24, pady=(0, 12), anchor="w")
 
         property_choices = (
-            ("fill", "Remplissage"),
-            ("outline", "Couleur du contour"),
-            ("line_width", "Épaisseur du contour"),
-            ("text_color", "Couleur du texte"),
-            ("font_family", "Police"),
-            ("font_size", "Taille de police"),
-            ("bold", "Gras"),
-            ("italic", "Italique"),
-            ("align", "Alignement du texte"),
+            ("fill", "Remplissage", "appearance"),
+            ("outline", "Couleur du contour", "appearance"),
+            ("line_width", "Épaisseur du contour", "appearance"),
+            ("text_color", "Couleur du texte", "text"),
+            ("font_family", "Police", "text"),
+            ("font_size", "Taille de police", "text"),
+            ("bold", "Gras", "text"),
+            ("italic", "Italique", "text"),
+            ("align", "Alignement du texte", "text"),
         )
 
         variables: dict[str, tk.BooleanVar] = {}
+        source_is_text = source.kind == "text"
 
         options_frame = ctk.CTkScrollableFrame(
             dialog,
@@ -739,17 +1086,23 @@ class PageEditorView:
         )
         options_frame.pack(fill="both", expand=True, padx=18, pady=(0, 12))
 
-        for property_name, label in property_choices:
-            is_available = property_name == "fill"
+        for property_name, label, property_group in property_choices:
+            is_available = property_group == "appearance" or source_is_text
             variable = tk.BooleanVar(value=is_available)
             variables[property_name] = variable
+
+            checkbox_text = label
+            if not is_available:
+                checkbox_text = f"{label} — réservé aux textes"
+
             checkbox = ctk.CTkCheckBox(
                 options_frame,
-                text=label if is_available else f"{label} — bientôt disponible",
+                text=checkbox_text,
                 variable=variable,
                 font=Fonts.NORMAL,
             )
             checkbox.pack(anchor="w", padx=8, pady=7)
+
             if not is_available:
                 checkbox.configure(state="disabled")
 
@@ -817,20 +1170,60 @@ class PageEditorView:
             self._save_status_text.set("Aucun objet cible sélectionné")
             return
 
+        appearance_properties = {
+            "fill",
+            "outline",
+            "line_width",
+        }
+        text_properties = {
+            "text_color",
+            "font_family",
+            "font_size",
+            "bold",
+            "italic",
+            "align",
+        }
+
         self.workspace._remember_current_state()
+
+        modified_count = 0
 
         for index in selected_indices:
             graphic_object = self.workspace._objects[index]
+
+            applicable_properties = {
+                name: value
+                for name, value in self._copied_properties.items()
+                if (
+                    name in appearance_properties
+                    or (
+                        name in text_properties
+                        and graphic_object.kind == "text"
+                    )
+                )
+            }
+
+            if not applicable_properties:
+                continue
+
             self.workspace._objects[index] = replace(
                 graphic_object,
-                **self._copied_properties,
+                **applicable_properties,
             )
+            modified_count += 1
 
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+
+        if modified_count == 0:
+            self._save_status_text.set(
+                "Aucune propriété compatible avec les objets cibles"
+            )
+            return
+
         self._save_status_text.set(
-            f"Propriétés appliquées à {len(selected_indices)} objet(s)"
+            f"Propriétés appliquées à {modified_count} objet(s)"
         )
 
     def _create_corner(self, parent) -> None:
@@ -907,6 +1300,7 @@ class PageEditorView:
                 f"Y : {selected_object.bounds.top:.2f} mm",
             )
 
+        self._refresh_text_controls()
         self._save_page_objects(show_status=False)
 
     def _create_rulers(self, parent) -> None:
