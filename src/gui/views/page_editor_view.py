@@ -391,16 +391,7 @@ class PageEditorView:
             text=page_type,
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
-        ).pack(side="right", padx=(10, 16))
-
-        self._toggle_panel_button = ctk.CTkButton(
-            header,
-            text="Masquer le panneau",
-            width=150,
-            height=34,
-            command=self._toggle_properties_panel,
-        )
-        self._toggle_panel_button.pack(side="right", pady=10)
+        ).pack(side="right", padx=16)
 
     def _create_alignment_toolbar(self, parent) -> None:
 
@@ -408,7 +399,7 @@ class PageEditorView:
             parent,
             fg_color="#F3F5F7",
             corner_radius=0,
-            height=104,
+            height=116,
         )
         ribbon.pack(fill="x", padx=12, pady=(0, 8))
         ribbon.pack_propagate(False)
@@ -420,14 +411,16 @@ class PageEditorView:
             frame = ctk.CTkFrame(
                 content,
                 width=width,
-                height=86,
+                height=98,
                 fg_color="#FFFFFF",
                 corner_radius=10,
             )
             frame.pack(side="left", fill="y", padx=4)
             frame.pack_propagate(False)
+
             controls = ctk.CTkFrame(frame, fg_color="transparent")
-            controls.pack(fill="both", expand=True, padx=8, pady=(8, 2))
+            controls.pack(fill="both", expand=True, padx=7, pady=(7, 1))
+
             ctk.CTkLabel(
                 frame,
                 text=title,
@@ -435,79 +428,131 @@ class PageEditorView:
                 text_color=Colors.TEXT_LIGHT,
                 height=18,
             ).pack(side="bottom", fill="x", pady=(0, 4))
+
             return frame, controls
 
-        self._editor_tool_buttons.clear()
-
-        _, add = group("Ajouter", 360)
-        for key, label, command in (
-            ("texte", "T  Texte", lambda: self._activate_editor_tool("texte")),
-            ("rectangle", "▭  Rectangle", lambda: self._select_shape_tool("rectangle")),
-            ("ellipse", "○  Ellipse", lambda: self._select_shape_tool("ellipse")),
-        ):
+        def icon_button(
+            parent_frame,
+            icon: str,
+            label: str,
+            command,
+            width: int = 76,
+            state: str = "normal",
+        ) -> ctk.CTkButton:
             button = ctk.CTkButton(
-                add,
-                text=label,
-                width=104,
-                height=38,
+                parent_frame,
+                text=f"{icon}\n{label}",
+                width=width,
+                height=58,
+                corner_radius=8,
                 fg_color="#FFFFFF",
                 hover_color=Colors.BUTTON_HOVER,
                 text_color=Colors.TEXT,
                 border_width=1,
                 border_color="#D5D9DE",
+                font=(Fonts.FAMILY, 12),
                 command=command,
+                state=state,
             )
-            button.pack(side="left", padx=3, pady=4)
-            self._editor_tool_buttons[key] = button
+            button.pack(side="left", padx=3, pady=2)
+            button.bind(
+                "<Enter>",
+                lambda _event, text=label: self._show_editor_tool_name(text),
+                add="+",
+            )
+            button.bind(
+                "<Leave>",
+                self._restore_editor_tool_status,
+                add="+",
+            )
+            return button
 
-        _, page = group("Page", 128)
-        ctk.CTkButton(
+        self._editor_tool_buttons.clear()
+
+        _, add = group("Ajouter", 270)
+        self._editor_tool_buttons["texte"] = icon_button(
+            add,
+            "T",
+            "Texte",
+            lambda: self._activate_editor_tool("texte"),
+        )
+        self._editor_tool_buttons["rectangle"] = icon_button(
+            add,
+            "▭",
+            "Rectangle",
+            lambda: self._select_shape_tool("rectangle"),
+            width=84,
+        )
+        self._editor_tool_buttons["ellipse"] = icon_button(
+            add,
+            "○",
+            "Ellipse",
+            lambda: self._select_shape_tool("ellipse"),
+        )
+
+        _, page = group("Page", 98)
+        icon_button(
             page,
-            text="⛶  Ajuster",
-            width=104,
-            height=38,
-            command=self._fit_page_to_window,
-        ).pack(padx=4, pady=4)
-
-        _, organize = group("Organiser", 304)
-        ctk.CTkButton(
-            organize, text="Aligner", width=84, height=38,
-            command=lambda: self._align_selection("left"),
-        ).pack(side="left", padx=3, pady=4)
-        ctk.CTkButton(
-            organize, text="Distribuer", width=94, height=38,
-            command=self._distribute_selection_horizontally,
-        ).pack(side="left", padx=3, pady=4)
-        self._group_button = ctk.CTkButton(
-            organize, text="Grouper", width=84, height=38,
-            command=self._group_selection, state="disabled",
+            "⛶",
+            "Ajuster",
+            self._fit_page_to_window,
         )
-        self._group_button.pack(side="left", padx=3, pady=4)
 
-        _, style = group("Style", 244)
-        self._fill_color_button = ctk.CTkButton(
-            style, text="Remplissage", width=106, height=38,
-            command=self._choose_fill_color, state="disabled",
+        _, organize = group("Organiser", 270)
+        icon_button(
+            organize,
+            "≡",
+            "Aligner",
+            lambda: self._align_selection("left"),
         )
-        self._fill_color_button.pack(side="left", padx=3, pady=4)
-        self._outline_color_button = ctk.CTkButton(
-            style, text="Contour", width=96, height=38,
-            command=self._choose_outline_color, state="disabled",
+        icon_button(
+            organize,
+            "↔",
+            "Distribuer",
+            self._distribute_selection_horizontally,
+            width=84,
         )
-        self._outline_color_button.pack(side="left", padx=3, pady=4)
-        self._shape_controls = [self._fill_color_button, self._outline_color_button]
+        self._group_button = icon_button(
+            organize,
+            "▣",
+            "Grouper",
+            self._group_selection,
+            state="disabled",
+        )
 
-        _, more = group("Panneau", 174)
-        ctk.CTkButton(
-            more,
-            text="Propriétés",
-            width=142,
-            height=38,
-            command=self._toggle_properties_panel,
-        ).pack(padx=4, pady=4)
+        _, style = group("Style", 190)
+        self._fill_color_button = icon_button(
+            style,
+            "▨",
+            "Remplissage",
+            self._choose_fill_color,
+            width=86,
+            state="disabled",
+        )
+        self._outline_color_button = icon_button(
+            style,
+            "□",
+            "Contour",
+            self._choose_outline_color,
+            state="disabled",
+        )
+        self._shape_controls = [
+            self._fill_color_button,
+            self._outline_color_button,
+        ]
+
+        _, panel = group("Affichage", 108)
+        self._toggle_panel_button = icon_button(
+            panel,
+            "▤",
+            "Panneau",
+            self._toggle_properties_panel,
+            width=84,
+        )
 
         self._refresh_group_controls()
         self._sync_editor_tool_state()
+        self._refresh_panel_toggle_state()
 
     def _create_properties_panel(self, parent) -> None:
 
@@ -549,17 +594,37 @@ class PageEditorView:
     def _toggle_properties_panel(self) -> None:
         if self._right_panel is None:
             return
+
         self._right_panel_visible = not self._right_panel_visible
+
         if self._right_panel_visible:
             self._right_panel.grid()
-            if self._toggle_panel_button is not None:
-                self._toggle_panel_button.configure(text="Masquer le panneau")
         else:
             self._right_panel.grid_remove()
-            if self._toggle_panel_button is not None:
-                self._toggle_panel_button.configure(text="Afficher le panneau")
+
+        self._refresh_panel_toggle_state()
+
         if self.workspace is not None:
             self.parent.after_idle(self._fit_page_to_window)
+
+    def _refresh_panel_toggle_state(self) -> None:
+        button = self._toggle_panel_button
+
+        if button is None:
+            return
+
+        if self._right_panel_visible:
+            button.configure(
+                fg_color=Colors.PRIMARY,
+                hover_color=Colors.PRIMARY_HOVER,
+                text_color="#FFFFFF",
+            )
+        else:
+            button.configure(
+                fg_color="#FFFFFF",
+                hover_color=Colors.BUTTON_HOVER,
+                text_color=Colors.TEXT,
+            )
 
     def _fit_page_to_window(self) -> None:
         if self.workspace is None:
