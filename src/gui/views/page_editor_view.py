@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
+import shutil
 import tkinter as tk
-from tkinter import colorchooser, font as tkfont
+from tkinter import colorchooser, font as tkfont, messagebox
 
 import customtkinter as ctk
 
+from src.core.document import Document
 from src.engine.foundation import Point, Rect, Size
 from src.engine.page_format import A4, A5, BOOK_16X24, BOOK_17X24
 from src.gui.editor_canvas import CanvasObject, EditorCanvas
 from src.gui.rulers.horizontal_ruler import HorizontalRuler
 from src.gui.rulers.vertical_ruler import VerticalRuler
 from src.gui.status_bar import StatusBar
+from src.library.page_types.page_type_library import PageTypeLibrary
 from src.theme.colors import Colors
 from src.theme.fonts import Fonts
 
@@ -24,6 +28,1487 @@ PAGE_FORMATS = {
     "17x24": BOOK_17X24,
     "17 × 24": BOOK_17X24,
 }
+
+
+# Chaque type éditorial reçoit une apparence stable. Ces couleurs sont
+# volontairement douces afin de rester lisibles dans le chemin de fer.
+PAGE_TYPE_APPEARANCES = {
+    "Page vide": {
+        "icone": "📄",
+        "couleur": "#D9D4C7",
+    },
+    "Page de texte": {
+        "icone": "📝",
+        "couleur": "#B8C8D8",
+    },
+    "Page image": {
+        "icone": "🖼",
+        "couleur": "#C8B8D8",
+    },
+    "Page de chapitre": {
+        "icone": "📖",
+        "couleur": "#D8C3A5",
+    },
+    "Couverture": {
+        "icone": "📕",
+        "couleur": "#D8B4A0",
+    },
+    "Page de transition": {
+        "icone": "◇",
+        "couleur": "#B8D2C2",
+    },
+    "Table des matières": {
+        "icone": "☷",
+        "couleur": "#AFC8C8",
+    },
+    "Page d’illustration": {
+        "icone": "🖼",
+        "couleur": "#C6B7D8",
+    },
+    "Création libre": {
+        "icone": "✦",
+        "couleur": "#B7CBE0",
+    },
+    "Modèle": {
+        "icone": "▦",
+        "couleur": "#C8C8C8",
+    },
+}
+
+FALLBACK_EDITORIAL_COLORS = (
+    "#C4D4DF",
+    "#C8D8C2",
+    "#D8C7B8",
+    "#CDC3DA",
+    "#D4C5C5",
+    "#C1D4D1",
+)
+
+
+class RenamePageDialog(ctk.CTkToplevel):
+    """Boîte de dialogue fiable pour renommer la page courante."""
+
+    def __init__(
+        self,
+        parent,
+        current_name: str,
+        on_validate,
+    ) -> None:
+        super().__init__(parent)
+
+        self.on_validate = on_validate
+
+        self.title("Renommer la page")
+        self.geometry("460x220")
+        self.resizable(False, False)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=22,
+        )
+
+        ctk.CTkLabel(
+            container,
+            text="Renommer la page",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).pack(
+            fill="x",
+            pady=(0, 8),
+        )
+
+        ctk.CTkLabel(
+            container,
+            text="Saisis le nouveau nom de la page.",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).pack(
+            fill="x",
+            pady=(0, 14),
+        )
+
+        self.name_entry = ctk.CTkEntry(
+            container,
+            height=40,
+            font=Fonts.NORMAL,
+            border_color=Colors.BORDER,
+        )
+        self.name_entry.pack(fill="x")
+        self.name_entry.insert(0, current_name)
+        self.name_entry.bind("<Return>", self.validate)
+        self.name_entry.bind("<Escape>", self.cancel)
+
+        buttons = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        buttons.pack(
+            fill="x",
+            pady=(18, 0),
+        )
+
+        ctk.CTkButton(
+            buttons,
+            text="Annuler",
+            width=110,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.cancel,
+        ).pack(
+            side="right",
+            padx=(8, 0),
+        )
+
+        ctk.CTkButton(
+            buttons,
+            text="Valider",
+            width=110,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self.validate,
+        ).pack(side="right")
+
+        self.after(60, self._prepare_entry)
+        self.after(80, self._center_window)
+
+    def _prepare_entry(self) -> None:
+        self.name_entry.focus_set()
+        self.name_entry.select_range(0, "end")
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+
+    def validate(self, _event=None) -> None:
+        new_name = self.name_entry.get().strip()
+
+        if not new_name:
+            self.name_entry.focus_set()
+            return
+
+        callback = self.on_validate
+        self.grab_release()
+        self.destroy()
+
+        self.master.after_idle(
+            lambda: callback(new_name)
+        )
+
+    def cancel(self, _event=None) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+
+class PageSetupDialog(ctk.CTkToplevel):
+    """Réglages visuels du format, des marges et des fonds perdus."""
+
+    FREE_FORMAT_LABEL = "Format libre"
+    PREVIEW_WIDTH = 280
+    PREVIEW_HEIGHT = 360
+
+    def __init__(
+        self,
+        parent,
+        page,
+        on_validate,
+    ) -> None:
+        super().__init__(parent)
+
+        self.page = page
+        self.on_validate = on_validate
+        self._preview_after_id = None
+        self._dimension_widgets: dict[str, list[object]] = {}
+
+        self.title("Format de la page")
+        self.geometry("940x630")
+        self.minsize(860, 590)
+        self.resizable(True, True)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        current_format_mode = str(
+            getattr(
+                page,
+                "format_mode",
+                "preregle",
+            )
+        ).strip().lower()
+
+        current_format = str(
+            getattr(
+                page,
+                "format",
+                "A5",
+            )
+        ).strip()
+
+        preset_names = list(
+            getattr(
+                page,
+                "FORMAT_PRESETS",
+                {},
+            ).keys()
+        )
+
+        selected_format = (
+            self.FREE_FORMAT_LABEL
+            if current_format_mode == "libre"
+            else current_format
+        )
+
+        if selected_format not in preset_names:
+            selected_format = self.FREE_FORMAT_LABEL
+
+        self._format_values = preset_names + [
+            self.FREE_FORMAT_LABEL
+        ]
+
+        self.format_var = tk.StringVar(
+            value=selected_format,
+        )
+        self.orientation_var = tk.StringVar(
+            value=str(
+                getattr(
+                    page,
+                    "orientation",
+                    "Portrait",
+                )
+            )
+        )
+        self.width_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "width_mm",
+                    148.0,
+                )
+            )
+        )
+        self.height_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "height_mm",
+                    210.0,
+                )
+            )
+        )
+
+        self.margin_top_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "margin_top_mm",
+                    15.0,
+                )
+            )
+        )
+        self.margin_bottom_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "margin_bottom_mm",
+                    15.0,
+                )
+            )
+        )
+        self.margin_inside_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "margin_inside_mm",
+                    15.0,
+                )
+            )
+        )
+        self.margin_outside_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "margin_outside_mm",
+                    15.0,
+                )
+            )
+        )
+
+        self.bleed_top_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "bleed_top_mm",
+                    0.0,
+                )
+            )
+        )
+        self.bleed_right_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "bleed_right_mm",
+                    0.0,
+                )
+            )
+        )
+        self.bleed_bottom_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "bleed_bottom_mm",
+                    0.0,
+                )
+            )
+        )
+        self.bleed_left_var = tk.StringVar(
+            value=self._format_number(
+                getattr(
+                    page,
+                    "bleed_left_mm",
+                    0.0,
+                )
+            )
+        )
+
+        self.error_var = tk.StringVar(value="")
+        self.preview_info_var = tk.StringVar(value="")
+
+        self._build()
+        self._install_preview_traces()
+        self._refresh_dimension_state()
+        self._draw_preview()
+
+        self.after(80, self._center_window)
+
+    # ==========================================================
+    # Construction
+    # ==========================================================
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=20,
+        )
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(2, weight=1)
+
+        ctk.CTkLabel(
+            container,
+            text="Format, marges et fonds perdus",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                "Utilise les flèches pour ajuster les valeurs. "
+                "La vignette montre immédiatement la surface obtenue."
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            pady=(4, 14),
+        )
+
+        body = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        body.grid(
+            row=2,
+            column=0,
+            sticky="nsew",
+        )
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=0)
+        body.grid_rowconfigure(0, weight=1)
+
+        controls = ctk.CTkScrollableFrame(
+            body,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        controls.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 16),
+        )
+        controls.grid_columnconfigure(0, weight=1)
+
+        self._build_format_section(controls)
+        self._build_margins_section(controls)
+        self._build_bleed_section(controls)
+
+        self._build_preview(body)
+
+        footer = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        footer.grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            pady=(14, 0),
+        )
+        footer.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            footer,
+            textvariable=self.error_var,
+            font=Fonts.SMALL,
+            text_color="#B42318",
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=(0, 12),
+        )
+
+        ctk.CTkButton(
+            footer,
+            text="Annuler",
+            width=110,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.cancel,
+        ).grid(
+            row=0,
+            column=1,
+            padx=(0, 8),
+        )
+
+        ctk.CTkButton(
+            footer,
+            text="Appliquer",
+            width=120,
+            height=36,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self.validate,
+        ).grid(
+            row=0,
+            column=2,
+        )
+
+    def _build_format_section(self, parent) -> None:
+        section = self._section(
+            parent,
+            "Format de la page",
+            0,
+        )
+
+        self._combo_control(
+            section,
+            label="Format",
+            variable=self.format_var,
+            values=self._format_values,
+            row=0,
+            column=0,
+            command=self._on_format_changed,
+        )
+        self._combo_control(
+            section,
+            label="Orientation",
+            variable=self.orientation_var,
+            values=["Portrait", "Paysage"],
+            row=0,
+            column=1,
+            command=self._on_orientation_changed,
+        )
+
+        self._number_control(
+            section,
+            key="width",
+            label="Largeur",
+            variable=self.width_var,
+            row=1,
+            column=0,
+            minimum=1.0,
+            step=1.0,
+        )
+        self._number_control(
+            section,
+            key="height",
+            label="Hauteur",
+            variable=self.height_var,
+            row=1,
+            column=1,
+            minimum=1.0,
+            step=1.0,
+        )
+
+    def _build_margins_section(self, parent) -> None:
+        section = self._section(
+            parent,
+            "Marges de composition",
+            1,
+        )
+
+        values = (
+            ("margin_top", "Haute", self.margin_top_var),
+            ("margin_bottom", "Basse", self.margin_bottom_var),
+            ("margin_inside", "Intérieure", self.margin_inside_var),
+            ("margin_outside", "Extérieure", self.margin_outside_var),
+        )
+
+        for index, (key, label, variable) in enumerate(values):
+            self._number_control(
+                section,
+                key=key,
+                label=label,
+                variable=variable,
+                row=index // 2,
+                column=index % 2,
+                minimum=0.0,
+                step=1.0,
+            )
+
+    def _build_bleed_section(self, parent) -> None:
+        section = self._section(
+            parent,
+            "Fonds perdus",
+            2,
+        )
+
+        values = (
+            ("bleed_top", "Haut", self.bleed_top_var),
+            ("bleed_right", "Droite", self.bleed_right_var),
+            ("bleed_bottom", "Bas", self.bleed_bottom_var),
+            ("bleed_left", "Gauche", self.bleed_left_var),
+        )
+
+        for index, (key, label, variable) in enumerate(values):
+            self._number_control(
+                section,
+                key=key,
+                label=label,
+                variable=variable,
+                row=index // 2,
+                column=index % 2,
+                minimum=0.0,
+                step=1.0,
+            )
+
+    def _build_preview(self, parent) -> None:
+        preview_frame = ctk.CTkFrame(
+            parent,
+            width=320,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        preview_frame.grid(
+            row=0,
+            column=1,
+            sticky="ns",
+        )
+        preview_frame.grid_propagate(False)
+
+        ctk.CTkLabel(
+            preview_frame,
+            text="Aperçu",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+        ).pack(
+            pady=(16, 8),
+        )
+
+        self.preview_canvas = tk.Canvas(
+            preview_frame,
+            width=self.PREVIEW_WIDTH,
+            height=self.PREVIEW_HEIGHT,
+            bg="#E7E9EC",
+            highlightthickness=0,
+        )
+        self.preview_canvas.pack(
+            padx=18,
+            pady=(0, 8),
+        )
+
+        ctk.CTkLabel(
+            preview_frame,
+            textvariable=self.preview_info_var,
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            justify="center",
+        ).pack(
+            padx=14,
+            pady=(0, 10),
+        )
+
+        legend = ctk.CTkFrame(
+            preview_frame,
+            fg_color="transparent",
+        )
+        legend.pack(
+            padx=18,
+            pady=(0, 14),
+            fill="x",
+        )
+
+        self._legend_line(
+            legend,
+            color="#4F7FA3",
+            text="Marges / zone de composition",
+        )
+        self._legend_line(
+            legend,
+            color="#C97945",
+            text="Fonds perdus",
+        )
+
+    def _section(
+        self,
+        parent,
+        title: str,
+        row: int,
+    ) -> ctk.CTkFrame:
+        section = ctk.CTkFrame(
+            parent,
+            fg_color="#F7F8FA",
+            corner_radius=10,
+        )
+        section.grid(
+            row=row,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12 if row == 0 else 6, 6),
+        )
+        section.grid_columnconfigure(0, weight=1)
+        section.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            section,
+            text=title,
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(12, 6),
+        )
+
+        return section
+
+    def _combo_control(
+        self,
+        parent,
+        *,
+        label: str,
+        variable,
+        values: list[str],
+        row: int,
+        column: int,
+        command,
+    ) -> None:
+        frame = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+        )
+        frame.grid(
+            row=row + 1,
+            column=column,
+            sticky="ew",
+            padx=(14 if column == 0 else 7, 14 if column == 1 else 7),
+            pady=7,
+        )
+        frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            frame,
+            text=label,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            pady=(0, 4),
+        )
+
+        combo = ctk.CTkComboBox(
+            frame,
+            values=values,
+            variable=variable,
+            state="readonly",
+            command=command,
+        )
+        combo.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+        )
+
+    def _number_control(
+        self,
+        parent,
+        *,
+        key: str,
+        label: str,
+        variable,
+        row: int,
+        column: int,
+        minimum: float,
+        step: float,
+    ) -> None:
+        frame = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+        )
+        frame.grid(
+            row=row + 1,
+            column=column,
+            sticky="ew",
+            padx=(14 if column == 0 else 7, 14 if column == 1 else 7),
+            pady=7,
+        )
+        frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            frame,
+            text=label,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            pady=(0, 4),
+        )
+
+        entry = ctk.CTkEntry(
+            frame,
+            textvariable=variable,
+            height=36,
+        )
+        entry.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+        )
+
+        ctk.CTkLabel(
+            frame,
+            text="mm",
+            width=28,
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+        ).grid(
+            row=1,
+            column=1,
+            padx=(6, 4),
+        )
+
+        buttons = ctk.CTkFrame(
+            frame,
+            fg_color="transparent",
+            width=30,
+        )
+        buttons.grid(
+            row=1,
+            column=2,
+            sticky="ns",
+        )
+
+        up_button = ctk.CTkButton(
+            buttons,
+            text="▲",
+            width=28,
+            height=16,
+            corner_radius=5,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            font=(Fonts.FAMILY, 9),
+            command=lambda: self._adjust_variable(
+                variable,
+                step,
+                minimum,
+            ),
+        )
+        up_button.pack(
+            pady=(0, 2),
+        )
+
+        down_button = ctk.CTkButton(
+            buttons,
+            text="▼",
+            width=28,
+            height=16,
+            corner_radius=5,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            font=(Fonts.FAMILY, 9),
+            command=lambda: self._adjust_variable(
+                variable,
+                -step,
+                minimum,
+            ),
+        )
+        down_button.pack()
+
+        entry.bind(
+            "<MouseWheel>",
+            lambda event: self._adjust_from_wheel(
+                event,
+                variable,
+                step,
+                minimum,
+            ),
+            add="+",
+        )
+
+        self._dimension_widgets[key] = [
+            entry,
+            up_button,
+            down_button,
+        ]
+
+    @staticmethod
+    def _legend_line(
+        parent,
+        *,
+        color: str,
+        text: str,
+    ) -> None:
+        row = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+        )
+        row.pack(
+            fill="x",
+            pady=2,
+        )
+
+        mark = tk.Canvas(
+            row,
+            width=30,
+            height=12,
+            bg="#FFFFFF",
+            highlightthickness=0,
+        )
+        mark.pack(
+            side="left",
+            padx=(0, 6),
+        )
+        mark.create_line(
+            2,
+            6,
+            28,
+            6,
+            fill=color,
+            width=2,
+            dash=(5, 3),
+        )
+
+        ctk.CTkLabel(
+            row,
+            text=text,
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).pack(
+            side="left",
+            fill="x",
+            expand=True,
+        )
+
+    # ==========================================================
+    # Ajustement visuel
+    # ==========================================================
+
+    def _install_preview_traces(self) -> None:
+        variables = (
+            self.format_var,
+            self.orientation_var,
+            self.width_var,
+            self.height_var,
+            self.margin_top_var,
+            self.margin_bottom_var,
+            self.margin_inside_var,
+            self.margin_outside_var,
+            self.bleed_top_var,
+            self.bleed_right_var,
+            self.bleed_bottom_var,
+            self.bleed_left_var,
+        )
+
+        for variable in variables:
+            variable.trace_add(
+                "write",
+                self._schedule_preview,
+            )
+
+    def _schedule_preview(self, *_args) -> None:
+        if self._preview_after_id is not None:
+            try:
+                self.after_cancel(
+                    self._preview_after_id
+                )
+            except tk.TclError:
+                pass
+
+        self._preview_after_id = self.after(
+            20,
+            self._draw_preview,
+        )
+
+    def _adjust_variable(
+        self,
+        variable,
+        delta: float,
+        minimum: float,
+    ) -> None:
+        try:
+            current = self._parse_number(
+                variable.get(),
+                "valeur",
+            )
+        except ValueError:
+            current = minimum
+
+        value = max(
+            minimum,
+            current + delta,
+        )
+        variable.set(
+            self._format_number(value)
+        )
+        self.error_var.set("")
+
+    def _adjust_from_wheel(
+        self,
+        event,
+        variable,
+        step: float,
+        minimum: float,
+    ) -> str:
+        delta = step if event.delta > 0 else -step
+        self._adjust_variable(
+            variable,
+            delta,
+            minimum,
+        )
+        return "break"
+
+    def _draw_preview(self) -> None:
+        self._preview_after_id = None
+
+        try:
+            width = self._parse_positive(
+                self.width_var.get(),
+                "largeur",
+            )
+            height = self._parse_positive(
+                self.height_var.get(),
+                "hauteur",
+            )
+
+            margin_top = self._parse_non_negative(
+                self.margin_top_var.get(),
+                "marge haute",
+            )
+            margin_bottom = self._parse_non_negative(
+                self.margin_bottom_var.get(),
+                "marge basse",
+            )
+            margin_inside = self._parse_non_negative(
+                self.margin_inside_var.get(),
+                "marge intérieure",
+            )
+            margin_outside = self._parse_non_negative(
+                self.margin_outside_var.get(),
+                "marge extérieure",
+            )
+
+            bleed_top = self._parse_non_negative(
+                self.bleed_top_var.get(),
+                "fond perdu haut",
+            )
+            bleed_right = self._parse_non_negative(
+                self.bleed_right_var.get(),
+                "fond perdu droit",
+            )
+            bleed_bottom = self._parse_non_negative(
+                self.bleed_bottom_var.get(),
+                "fond perdu bas",
+            )
+            bleed_left = self._parse_non_negative(
+                self.bleed_left_var.get(),
+                "fond perdu gauche",
+            )
+
+        except ValueError:
+            return
+
+        canvas = self.preview_canvas
+        canvas.delete("all")
+
+        total_width = width + bleed_left + bleed_right
+        total_height = height + bleed_top + bleed_bottom
+
+        available_width = self.PREVIEW_WIDTH - 42
+        available_height = self.PREVIEW_HEIGHT - 46
+
+        scale = min(
+            available_width / max(total_width, 1.0),
+            available_height / max(total_height, 1.0),
+        )
+
+        outer_width = total_width * scale
+        outer_height = total_height * scale
+        outer_x = (
+            self.PREVIEW_WIDTH - outer_width
+        ) / 2
+        outer_y = (
+            self.PREVIEW_HEIGHT - outer_height
+        ) / 2
+
+        page_x = outer_x + bleed_left * scale
+        page_y = outer_y + bleed_top * scale
+        page_width = width * scale
+        page_height = height * scale
+
+        if any(
+            value > 0
+            for value in (
+                bleed_top,
+                bleed_right,
+                bleed_bottom,
+                bleed_left,
+            )
+        ):
+            canvas.create_rectangle(
+                outer_x,
+                outer_y,
+                outer_x + outer_width,
+                outer_y + outer_height,
+                fill="#F5E5D8",
+                outline="#C97945",
+                width=2,
+                dash=(6, 4),
+            )
+
+        canvas.create_rectangle(
+            page_x + 5,
+            page_y + 6,
+            page_x + page_width + 5,
+            page_y + page_height + 6,
+            fill="#B7BCC2",
+            outline="",
+        )
+        canvas.create_rectangle(
+            page_x,
+            page_y,
+            page_x + page_width,
+            page_y + page_height,
+            fill="#FFFFFF",
+            outline="#4B4F55",
+            width=1,
+        )
+
+        is_verso = (
+            int(
+                getattr(
+                    self.page,
+                    "number",
+                    1,
+                )
+            ) % 2 == 0
+        )
+
+        left_margin = (
+            margin_outside
+            if is_verso
+            else margin_inside
+        )
+        right_margin = (
+            margin_inside
+            if is_verso
+            else margin_outside
+        )
+
+        composition_width = (
+            width - left_margin - right_margin
+        )
+        composition_height = (
+            height - margin_top - margin_bottom
+        )
+
+        valid_composition = (
+            composition_width > 0
+            and composition_height > 0
+        )
+
+        guide_color = (
+            "#4F7FA3"
+            if valid_composition
+            else "#B42318"
+        )
+
+        if valid_composition:
+            comp_x = page_x + left_margin * scale
+            comp_y = page_y + margin_top * scale
+            comp_width = composition_width * scale
+            comp_height = composition_height * scale
+
+            canvas.create_rectangle(
+                comp_x,
+                comp_y,
+                comp_x + comp_width,
+                comp_y + comp_height,
+                outline=guide_color,
+                width=2,
+                dash=(5, 3),
+            )
+        else:
+            canvas.create_line(
+                page_x,
+                page_y,
+                page_x + page_width,
+                page_y + page_height,
+                fill=guide_color,
+                width=2,
+            )
+            canvas.create_line(
+                page_x + page_width,
+                page_y,
+                page_x,
+                page_y + page_height,
+                fill=guide_color,
+                width=2,
+            )
+
+        page_side = (
+            "page gauche"
+            if is_verso
+            else "page droite"
+        )
+
+        self.preview_info_var.set(
+            f"{self._format_number(width)} × "
+            f"{self._format_number(height)} mm\n"
+            f"{page_side} — intérieur matérialisé"
+        )
+
+    # ==========================================================
+    # Format et validation
+    # ==========================================================
+
+    def _on_format_changed(self, _value=None) -> None:
+        self._refresh_dimension_state()
+        self._apply_preset_dimensions()
+
+    def _on_orientation_changed(self, _value=None) -> None:
+        if self.format_var.get() != self.FREE_FORMAT_LABEL:
+            self._apply_preset_dimensions()
+            return
+
+        try:
+            width = self._parse_number(
+                self.width_var.get(),
+                "largeur",
+            )
+            height = self._parse_number(
+                self.height_var.get(),
+                "hauteur",
+            )
+        except ValueError:
+            return
+
+        orientation = self.orientation_var.get()
+
+        if orientation == "Paysage" and height > width:
+            width, height = height, width
+        elif orientation == "Portrait" and width > height:
+            width, height = height, width
+
+        self.width_var.set(
+            self._format_number(width)
+        )
+        self.height_var.set(
+            self._format_number(height)
+        )
+
+    def _refresh_dimension_state(self) -> None:
+        is_free = (
+            self.format_var.get()
+            == self.FREE_FORMAT_LABEL
+        )
+        state = "normal" if is_free else "disabled"
+
+        for key in ("width", "height"):
+            for widget in self._dimension_widgets.get(
+                key,
+                [],
+            ):
+                try:
+                    widget.configure(
+                        state=state
+                    )
+                except (tk.TclError, ValueError):
+                    pass
+
+    def _apply_preset_dimensions(self) -> None:
+        format_name = self.format_var.get()
+
+        if format_name == self.FREE_FORMAT_LABEL:
+            return
+
+        presets = getattr(
+            self.page,
+            "FORMAT_PRESETS",
+            {},
+        )
+
+        if format_name not in presets:
+            return
+
+        width, height = presets[format_name]
+        orientation = self.orientation_var.get()
+
+        if orientation == "Paysage" and height > width:
+            width, height = height, width
+        elif orientation == "Portrait" and width > height:
+            width, height = height, width
+
+        self.width_var.set(
+            self._format_number(width)
+        )
+        self.height_var.set(
+            self._format_number(height)
+        )
+
+    def validate(self, _event=None) -> None:
+        try:
+            settings = {
+                "format": self.format_var.get(),
+                "orientation": self.orientation_var.get(),
+                "width_mm": self._parse_positive(
+                    self.width_var.get(),
+                    "largeur",
+                ),
+                "height_mm": self._parse_positive(
+                    self.height_var.get(),
+                    "hauteur",
+                ),
+                "margins": {
+                    "top_mm": self._parse_non_negative(
+                        self.margin_top_var.get(),
+                        "marge haute",
+                    ),
+                    "bottom_mm": self._parse_non_negative(
+                        self.margin_bottom_var.get(),
+                        "marge basse",
+                    ),
+                    "inside_mm": self._parse_non_negative(
+                        self.margin_inside_var.get(),
+                        "marge intérieure",
+                    ),
+                    "outside_mm": self._parse_non_negative(
+                        self.margin_outside_var.get(),
+                        "marge extérieure",
+                    ),
+                },
+                "bleed": {
+                    "top_mm": self._parse_non_negative(
+                        self.bleed_top_var.get(),
+                        "fond perdu haut",
+                    ),
+                    "right_mm": self._parse_non_negative(
+                        self.bleed_right_var.get(),
+                        "fond perdu droit",
+                    ),
+                    "bottom_mm": self._parse_non_negative(
+                        self.bleed_bottom_var.get(),
+                        "fond perdu bas",
+                    ),
+                    "left_mm": self._parse_non_negative(
+                        self.bleed_left_var.get(),
+                        "fond perdu gauche",
+                    ),
+                },
+            }
+
+            if (
+                settings["margins"]["top_mm"]
+                + settings["margins"]["bottom_mm"]
+                >= settings["height_mm"]
+            ):
+                raise ValueError(
+                    "Les marges haute et basse occupent toute la hauteur."
+                )
+
+            if (
+                settings["margins"]["inside_mm"]
+                + settings["margins"]["outside_mm"]
+                >= settings["width_mm"]
+            ):
+                raise ValueError(
+                    "Les marges intérieure et extérieure "
+                    "occupent toute la largeur."
+                )
+
+        except (TypeError, ValueError) as error:
+            self.error_var.set(str(error))
+            return
+
+        callback = self.on_validate
+
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        self.destroy()
+        self.master.after_idle(
+            lambda: callback(settings)
+        )
+
+    def cancel(self, _event=None) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+
+    @staticmethod
+    def _parse_number(
+        value: str,
+        label: str,
+    ) -> float:
+        normalized = str(value).strip().replace(",", ".")
+
+        try:
+            return float(normalized)
+        except ValueError as error:
+            raise ValueError(
+                f"La valeur « {label} » n'est pas valide."
+            ) from error
+
+    @classmethod
+    def _parse_positive(
+        cls,
+        value: str,
+        label: str,
+    ) -> float:
+        number = cls._parse_number(
+            value,
+            label,
+        )
+
+        if number <= 0:
+            raise ValueError(
+                f"La valeur « {label} » doit être supérieure à zéro."
+            )
+
+        return number
+
+    @classmethod
+    def _parse_non_negative(
+        cls,
+        value: str,
+        label: str,
+    ) -> float:
+        number = cls._parse_number(
+            value,
+            label,
+        )
+
+        if number < 0:
+            raise ValueError(
+                f"La valeur « {label} » ne peut pas être négative."
+            )
+
+        return number
+
+    @staticmethod
+    def _format_number(value) -> str:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = 0.0
+
+        return (
+            f"{number:.2f}"
+            .rstrip("0")
+            .rstrip(".")
+        )
 
 
 class PageEditorView:
@@ -92,6 +1577,10 @@ class PageEditorView:
         self._editor_feedback_label: ctk.CTkLabel | None = None
         self._editor_feedback_after_id: str | None = None
         self._shape_menu: tk.Menu | None = None
+        self._page_menu: tk.Menu | None = None
+        self._page_menu_button: ctk.CTkButton | None = None
+        self._page_context_tag = f"PageContextMenu_{id(self)}"
+        self._page_context_widgets: list[tk.Misc] = []
         self._right_panel: ctk.CTkFrame | None = None
         self._right_panel_visible = True
         self._toggle_panel_button: ctk.CTkButton | None = None
@@ -99,6 +1588,8 @@ class PageEditorView:
         self._properties_position_text = tk.StringVar(value="Position : —")
         self._properties_size_text = tk.StringVar(value="Taille : —")
         self._properties_rotation_text = tk.StringVar(value="Rotation : —")
+        self._page_guide_tag = f"PageGuides_{id(self)}"
+        self._workspace_base_redraw = None
 
     def show(self) -> None:
 
@@ -129,6 +1620,7 @@ class PageEditorView:
 
         self._create_properties_panel(content_area)
         self._create_status_bar(self.root)
+        self._bind_page_context_menu()
 
         self._display_retry_count = 0
         self.parent.after_idle(self._prepare_first_display)
@@ -358,40 +1850,524 @@ class PageEditorView:
             parent,
             fg_color="#F7F8FA",
             corner_radius=0,
-            height=54,
+            height=48,
         )
         header.pack(fill="x", pady=(0, 6))
         header.pack_propagate(False)
 
-        ctk.CTkButton(
+        header.grid_columnconfigure(2, weight=1)
+
+        back_button = ctk.CTkButton(
             header,
-            text="← Retour",
-            width=110,
-            height=34,
+            text="←",
+            width=32,
+            height=30,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color="#D5D9DE",
+            font=(Fonts.FAMILY, 16, "bold"),
             command=self.back,
-        ).pack(side="left", padx=(16, 12), pady=10)
+        )
+        back_button.grid(
+            row=0,
+            column=0,
+            padx=(12, 8),
+            pady=9,
+            sticky="w",
+        )
+        back_button.bind(
+            "<Enter>",
+            lambda _event: self._show_editor_tool_name(
+                "Retour au Centre du projet"
+            ),
+            add="+",
+        )
+        back_button.bind(
+            "<Leave>",
+            self._restore_editor_tool_status,
+            add="+",
+        )
+
+        page_title = str(
+            self.page.display_title
+        )
+        displayed_title = (
+            page_title
+            if len(page_title) <= 34
+            else f"{page_title[:33]}…"
+        )
 
         ctk.CTkLabel(
             header,
-            text=self.page.display_title,
+            text=displayed_title,
+            width=220,
+            anchor="w",
             font=Fonts.H2,
             text_color=Colors.TEXT,
-        ).pack(side="left")
+        ).grid(
+            row=0,
+            column=1,
+            padx=(0, 10),
+            pady=8,
+            sticky="w",
+        )
 
         ctk.CTkLabel(
             header,
             textvariable=self._save_status_text,
-            font=Fonts.NORMAL,
+            anchor="w",
+            font=Fonts.SMALL,
             text_color=Colors.TEXT_LIGHT,
-        ).pack(side="left", padx=20)
+        ).grid(
+            row=0,
+            column=2,
+            padx=(0, 10),
+            pady=8,
+            sticky="ew",
+        )
 
-        page_type = getattr(self.page, "page_type", "Page vide")
+        page_type = str(
+            getattr(
+                self.page,
+                "page_type",
+                "Page vide",
+            )
+        )
+        appearance = self._appearance_for_type(page_type)
+        displayed_type = (
+            page_type
+            if len(page_type) <= 16
+            else f"{page_type[:15]}…"
+        )
+
+        setup_button = ctk.CTkButton(
+            header,
+            text="▱",
+            width=32,
+            height=30,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color="#D5D9DE",
+            font=(Fonts.FAMILY, 16, "bold"),
+            command=self._open_page_setup,
+        )
+        setup_button.grid(
+            row=0,
+            column=3,
+            padx=(0, 6),
+            pady=9,
+            sticky="e",
+        )
+        setup_button.bind(
+            "<Enter>",
+            lambda _event: self._show_editor_tool_name(
+                "Format, marges et fonds perdus"
+            ),
+            add="+",
+        )
+        setup_button.bind(
+            "<Leave>",
+            self._restore_editor_tool_status,
+            add="+",
+        )
+
         ctk.CTkLabel(
             header,
-            text=page_type,
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT_LIGHT,
-        ).pack(side="right", padx=16)
+            text=f"{appearance['icone']}  {displayed_type}",
+            width=112,
+            height=28,
+            corner_radius=8,
+            fg_color=appearance["couleur"],
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT,
+        ).grid(
+            row=0,
+            column=4,
+            padx=(0, 6),
+            pady=10,
+            sticky="e",
+        )
+
+        self._page_menu_button = ctk.CTkButton(
+            header,
+            text="⚙",
+            width=32,
+            height=30,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color="#D5D9DE",
+            font=(Fonts.FAMILY, 15),
+            command=self._show_page_menu,
+        )
+        self._page_menu_button.grid(
+            row=0,
+            column=5,
+            padx=(0, 6),
+            pady=9,
+            sticky="e",
+        )
+        self._page_menu_button.bind(
+            "<Enter>",
+            lambda _event: self._show_editor_tool_name(
+                "Gérer la page"
+            ),
+            add="+",
+        )
+        self._page_menu_button.bind(
+            "<Leave>",
+            self._restore_editor_tool_status,
+            add="+",
+        )
+
+        new_page_button = ctk.CTkButton(
+            header,
+            text="+",
+            width=32,
+            height=30,
+            corner_radius=8,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            text_color="#FFFFFF",
+            font=(Fonts.FAMILY, 18, "bold"),
+            command=self._new_page,
+        )
+        new_page_button.grid(
+            row=0,
+            column=6,
+            padx=(0, 12),
+            pady=9,
+            sticky="e",
+        )
+        new_page_button.bind(
+            "<Enter>",
+            lambda _event: self._show_editor_tool_name(
+                "Nouvelle page"
+            ),
+            add="+",
+        )
+        new_page_button.bind(
+            "<Leave>",
+            self._restore_editor_tool_status,
+            add="+",
+        )
+
+    def _build_page_menu(self) -> tk.Menu:
+        """Construit le menu commun au bouton et au clic droit."""
+
+        parent = (
+            self.root
+            if self.root is not None
+            else self.parent
+        )
+
+        menu = tk.Menu(
+            parent,
+            tearoff=False,
+        )
+        menu.add_command(
+            label="Renommer…",
+            command=lambda: self._schedule_page_action(
+                self._rename_page
+            ),
+        )
+
+        type_menu = tk.Menu(
+            menu,
+            tearoff=False,
+        )
+
+        current_type = str(
+            getattr(
+                self.page,
+                "page_type",
+                "Page vide",
+            )
+        )
+
+        for page_type in self._available_page_types():
+            appearance = self._appearance_for_type(page_type)
+            check = "✓ " if page_type == current_type else ""
+
+            type_menu.add_command(
+                label=(
+                    f"{check}{appearance['icone']}  {page_type}"
+                ),
+                command=lambda selected_type=page_type: (
+                    self._schedule_page_action(
+                        lambda: self._change_page_type(
+                            selected_type
+                        )
+                    )
+                ),
+            )
+
+        menu.add_cascade(
+            label="Type et couleur",
+            menu=type_menu,
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Dupliquer",
+            command=lambda: self._schedule_page_action(
+                self._duplicate_page
+            ),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Supprimer…",
+            command=lambda: self._schedule_page_action(
+                self._delete_page
+            ),
+        )
+
+        self._page_menu = menu
+        return menu
+
+    def _schedule_page_action(self, action) -> None:
+        """
+        Lance l'action après la fermeture du menu natif.
+
+        Cette temporisation évite que le menu conserve la souris ou le
+        clavier au moment d'ouvrir une boîte de dialogue.
+        """
+
+        target = (
+            self.root
+            if self.root is not None
+            else self.parent
+        )
+
+        try:
+            target.after(
+                40,
+                action,
+            )
+        except tk.TclError:
+            return
+
+    def _show_page_menu(self) -> None:
+        """Ouvre le menu depuis le bouton visible de l'en-tête."""
+
+        button = self._page_menu_button
+
+        if button is None:
+            return
+
+        menu = self._build_page_menu()
+
+        try:
+            menu.tk_popup(
+                button.winfo_rootx(),
+                button.winfo_rooty() + button.winfo_height(),
+            )
+        finally:
+            try:
+                menu.grab_release()
+            except tk.TclError:
+                pass
+
+    def _iter_context_widgets(self):
+        """Parcourt toute la vue, y compris le canvas et ses sous-widgets."""
+
+        root = self.root
+
+        if root is None:
+            return
+
+        pending = [root]
+        visited: set[int] = set()
+
+        while pending:
+            widget = pending.pop()
+            identity = id(widget)
+
+            if identity in visited:
+                continue
+
+            visited.add(identity)
+            yield widget
+
+            try:
+                pending.extend(
+                    widget.winfo_children()
+                )
+            except tk.TclError:
+                continue
+
+    def _bind_page_context_menu(self) -> None:
+        """
+        Place une balise de clic droit prioritaire sur tous les widgets
+        de l'Atelier. Le menu fonctionne ainsi même si le canvas possède
+        déjà ses propres liaisons de souris.
+        """
+
+        self._unbind_page_context_menu()
+
+        root = self.root
+
+        if root is None:
+            return
+
+        tag = self._page_context_tag
+
+        try:
+            root.bind_class(
+                tag,
+                "<Button-3>",
+                self._show_page_context_menu,
+            )
+        except tk.TclError:
+            return
+
+        self._page_context_widgets = []
+
+        for widget in self._iter_context_widgets():
+            try:
+                current_tags = tuple(
+                    widget.bindtags()
+                )
+                filtered_tags = tuple(
+                    existing_tag
+                    for existing_tag in current_tags
+                    if existing_tag != tag
+                )
+                widget.bindtags(
+                    (tag,) + filtered_tags
+                )
+                self._page_context_widgets.append(
+                    widget
+                )
+            except tk.TclError:
+                continue
+
+    def _unbind_page_context_menu(self) -> None:
+
+        tag = self._page_context_tag
+
+        for widget in self._page_context_widgets:
+            try:
+                widget.bindtags(
+                    tuple(
+                        existing_tag
+                        for existing_tag in widget.bindtags()
+                        if existing_tag != tag
+                    )
+                )
+            except tk.TclError:
+                continue
+
+        self._page_context_widgets = []
+
+        root = self.root
+
+        if root is None:
+            return
+
+        try:
+            root.unbind_class(
+                tag,
+                "<Button-3>",
+            )
+        except tk.TclError:
+            pass
+
+    def _show_page_context_menu(self, event):
+        """Ouvre les commandes de la page au point du clic droit."""
+
+        root = self.root
+
+        if root is None or not root.winfo_exists():
+            return "break"
+
+        menu = self._build_page_menu()
+
+        try:
+            menu.tk_popup(
+                event.x_root,
+                event.y_root,
+            )
+        finally:
+            try:
+                menu.grab_release()
+            except tk.TclError:
+                pass
+
+        return "break"
+
+    def _available_page_types(self) -> list[str]:
+        """Retourne les types connus, dans un ordre éditorial stable."""
+
+        names = ["Page vide"]
+
+        try:
+            library = PageTypeLibrary()
+            library.load()
+            names.extend(
+                page_type.name
+                for page_type in library.all()
+            )
+        except (OSError, ValueError):
+            names.extend(
+                [
+                    "Page de texte",
+                    "Page image",
+                    "Page de chapitre",
+                ]
+            )
+
+        current_type = str(
+            getattr(
+                self.page,
+                "page_type",
+                "Page vide",
+            )
+        ).strip()
+
+        if current_type:
+            names.append(current_type)
+
+        ordered_names = []
+        known_names = set()
+
+        for name in names:
+            clean_name = str(name).strip()
+
+            if not clean_name or clean_name in known_names:
+                continue
+
+            known_names.add(clean_name)
+            ordered_names.append(clean_name)
+
+        return ordered_names
+
+    @staticmethod
+    def _appearance_for_type(page_type: str) -> dict[str, str]:
+        """Associe toujours la même couleur au même type éditorial."""
+
+        clean_type = str(page_type).strip() or "Page vide"
+        known = PAGE_TYPE_APPEARANCES.get(clean_type)
+
+        if known is not None:
+            return dict(known)
+
+        color_index = sum(
+            ord(character)
+            for character in clean_type
+        ) % len(FALLBACK_EDITORIAL_COLORS)
+
+        return {
+            "icone": "📄",
+            "couleur": FALLBACK_EDITORIAL_COLORS[color_index],
+        }
 
     def _create_alignment_toolbar(self, parent) -> None:
 
@@ -1962,6 +3938,8 @@ class PageEditorView:
         if saved_objects:
             self.workspace._objects = saved_objects
 
+        self._install_page_guides()
+
         self.workspace.add_selection_listener(
             self._refresh_selection_label,
         )
@@ -2011,6 +3989,342 @@ class PageEditorView:
         self._sync_editor_tool_state()
         self._refresh_properties_panel()
         self._save_page_objects(show_status=False)
+
+    def _install_page_guides(self) -> None:
+        """Maintient visibles les marges et les fonds perdus sur le canvas."""
+
+        if self.workspace is None:
+            return
+
+        base_redraw = self.workspace.redraw
+        self._workspace_base_redraw = base_redraw
+
+        def redraw_with_guides(*args, **kwargs):
+            result = base_redraw(
+                *args,
+                **kwargs,
+            )
+            self._draw_page_guides()
+            return result
+
+        self.workspace.redraw = redraw_with_guides
+
+        # Le Viewport conserve déjà le redraw d'origine. Ce second écouteur
+        # replace les guides après les déplacements et changements de zoom.
+        self.workspace.viewport.add_listener(
+            self._draw_page_guides,
+        )
+
+        self.workspace.bind(
+            "<Configure>",
+            lambda _event: self.parent.after_idle(
+                self._draw_page_guides
+            ),
+            add="+",
+        )
+
+    def _draw_page_guides(self, *_args) -> None:
+        """Dessine les limites de composition et de fond perdu."""
+
+        canvas = self.workspace
+
+        if canvas is None:
+            return
+
+        try:
+            if not canvas.winfo_exists():
+                return
+
+            canvas.delete(
+                self._page_guide_tag
+            )
+
+            page_left = float(
+                canvas.page_left
+            )
+            page_top = float(
+                canvas.page_top
+            )
+
+            page_width_px = canvas.viewport.mm_to_px(
+                canvas.page_format.width_mm
+            )
+            page_height_px = canvas.viewport.mm_to_px(
+                canvas.page_format.height_mm
+            )
+
+            bleed_top = max(
+                0.0,
+                float(
+                    getattr(
+                        self.page,
+                        "bleed_top_mm",
+                        0.0,
+                    )
+                ),
+            )
+            bleed_right = max(
+                0.0,
+                float(
+                    getattr(
+                        self.page,
+                        "bleed_right_mm",
+                        0.0,
+                    )
+                ),
+            )
+            bleed_bottom = max(
+                0.0,
+                float(
+                    getattr(
+                        self.page,
+                        "bleed_bottom_mm",
+                        0.0,
+                    )
+                ),
+            )
+            bleed_left = max(
+                0.0,
+                float(
+                    getattr(
+                        self.page,
+                        "bleed_left_mm",
+                        0.0,
+                    )
+                ),
+            )
+
+            if any(
+                value > 0
+                for value in (
+                    bleed_top,
+                    bleed_right,
+                    bleed_bottom,
+                    bleed_left,
+                )
+            ):
+                bleed_x1 = (
+                    page_left
+                    - canvas.viewport.mm_to_px(
+                        bleed_left
+                    )
+                )
+                bleed_y1 = (
+                    page_top
+                    - canvas.viewport.mm_to_px(
+                        bleed_top
+                    )
+                )
+                bleed_x2 = (
+                    page_left
+                    + page_width_px
+                    + canvas.viewport.mm_to_px(
+                        bleed_right
+                    )
+                )
+                bleed_y2 = (
+                    page_top
+                    + page_height_px
+                    + canvas.viewport.mm_to_px(
+                        bleed_bottom
+                    )
+                )
+
+                canvas.create_rectangle(
+                    bleed_x1,
+                    bleed_y1,
+                    bleed_x2,
+                    bleed_y2,
+                    outline="#C97945",
+                    width=2,
+                    dash=(7, 4),
+                    tags=(
+                        self._page_guide_tag,
+                        "fond_perdu",
+                    ),
+                )
+                canvas.create_text(
+                    bleed_x1 + 5,
+                    bleed_y1 + 5,
+                    text="Fond perdu",
+                    anchor="nw",
+                    fill="#9A562D",
+                    font=(Fonts.FAMILY, 9, "bold"),
+                    tags=(
+                        self._page_guide_tag,
+                        "fond_perdu",
+                    ),
+                )
+
+            is_verso = (
+                int(
+                    getattr(
+                        self.page,
+                        "number",
+                        1,
+                    )
+                ) % 2 == 0
+            )
+
+            if hasattr(
+                self.page,
+                "composition_box_mm",
+            ):
+                composition = self.page.composition_box_mm(
+                    verso=is_verso
+                )
+            else:
+                margin_top = float(
+                    getattr(
+                        self.page,
+                        "margin_top_mm",
+                        15.0,
+                    )
+                )
+                margin_bottom = float(
+                    getattr(
+                        self.page,
+                        "margin_bottom_mm",
+                        15.0,
+                    )
+                )
+                margin_inside = float(
+                    getattr(
+                        self.page,
+                        "margin_inside_mm",
+                        15.0,
+                    )
+                )
+                margin_outside = float(
+                    getattr(
+                        self.page,
+                        "margin_outside_mm",
+                        15.0,
+                    )
+                )
+
+                left_margin = (
+                    margin_outside
+                    if is_verso
+                    else margin_inside
+                )
+                right_margin = (
+                    margin_inside
+                    if is_verso
+                    else margin_outside
+                )
+
+                composition = {
+                    "x": left_margin,
+                    "y": margin_top,
+                    "largeur": (
+                        canvas.page_format.width_mm
+                        - left_margin
+                        - right_margin
+                    ),
+                    "hauteur": (
+                        canvas.page_format.height_mm
+                        - margin_top
+                        - margin_bottom
+                    ),
+                }
+
+            composition_width = max(
+                0.0,
+                float(
+                    composition.get(
+                        "largeur",
+                        0.0,
+                    )
+                ),
+            )
+            composition_height = max(
+                0.0,
+                float(
+                    composition.get(
+                        "hauteur",
+                        0.0,
+                    )
+                ),
+            )
+
+            if (
+                composition_width > 0
+                and composition_height > 0
+            ):
+                margin_x1 = (
+                    page_left
+                    + canvas.viewport.mm_to_px(
+                        float(
+                            composition.get(
+                                "x",
+                                0.0,
+                            )
+                        )
+                    )
+                )
+                margin_y1 = (
+                    page_top
+                    + canvas.viewport.mm_to_px(
+                        float(
+                            composition.get(
+                                "y",
+                                0.0,
+                            )
+                        )
+                    )
+                )
+                margin_x2 = (
+                    margin_x1
+                    + canvas.viewport.mm_to_px(
+                        composition_width
+                    )
+                )
+                margin_y2 = (
+                    margin_y1
+                    + canvas.viewport.mm_to_px(
+                        composition_height
+                    )
+                )
+
+                canvas.create_rectangle(
+                    margin_x1,
+                    margin_y1,
+                    margin_x2,
+                    margin_y2,
+                    outline="#4F7FA3",
+                    width=2,
+                    dash=(6, 4),
+                    tags=(
+                        self._page_guide_tag,
+                        "marges",
+                    ),
+                )
+                canvas.create_text(
+                    margin_x1 + 5,
+                    margin_y1 + 5,
+                    text="Zone de composition",
+                    anchor="nw",
+                    fill="#365F7B",
+                    font=(Fonts.FAMILY, 9, "bold"),
+                    tags=(
+                        self._page_guide_tag,
+                        "marges",
+                    ),
+                )
+
+            canvas.tag_raise(
+                self._page_guide_tag
+            )
+
+        except (
+            AttributeError,
+            RuntimeError,
+            tk.TclError,
+            TypeError,
+            ValueError,
+        ):
+            return
 
     def _create_rulers(self, parent) -> None:
 
@@ -2099,7 +4413,32 @@ class PageEditorView:
                 "format",
                 "A5",
             )
-        ).strip()
+        ).strip() or "A5"
+
+        width_mm = getattr(
+            self.page,
+            "width_mm",
+            None,
+        )
+        height_mm = getattr(
+            self.page,
+            "height_mm",
+            None,
+        )
+
+        try:
+            width_value = float(width_mm)
+            height_value = float(height_mm)
+        except (TypeError, ValueError):
+            width_value = 0.0
+            height_value = 0.0
+
+        if width_value > 0 and height_value > 0:
+            return type(A5)(
+                name=format_name,
+                width_mm=width_value,
+                height_mm=height_value,
+            )
 
         page_format = PAGE_FORMATS.get(
             format_name,
@@ -2258,6 +4597,366 @@ class PageEditorView:
                     lambda: self._save_status_text.set(""),
                 )
 
+    def _document_root(self) -> Path | None:
+        """Retrouve le dossier du livre qui contient la page courante."""
+
+        page_root = getattr(
+            self.page,
+            "root",
+            None,
+        )
+
+        if page_root is None:
+            return None
+
+        document_root = Path(page_root).parent.parent
+
+        if not (document_root / "document.json").exists():
+            return None
+
+        return document_root
+
+    def _load_current_document(self) -> Document | None:
+        """Charge le livre auquel appartient la page courante."""
+
+        document_root = self._document_root()
+
+        if document_root is None:
+            return None
+
+        try:
+            return Document().load(document_root)
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+        ):
+            return None
+
+    def _open_page_setup(self) -> None:
+        """Ouvre les réglages physiques de la page."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Cette page est verrouillée"
+            )
+            return
+
+        PageSetupDialog(
+            parent=self.parent,
+            page=self.page,
+            on_validate=self._apply_page_setup,
+        )
+
+    def _apply_page_setup(
+        self,
+        settings: dict,
+    ) -> None:
+        """Applique le format, les marges et les fonds perdus."""
+
+        try:
+            self._save_page_objects(
+                show_status=False,
+            )
+
+            if settings["format"] == PageSetupDialog.FREE_FORMAT_LABEL:
+                self.page.set_custom_format(
+                    settings["width_mm"],
+                    settings["height_mm"],
+                    orientation=settings["orientation"],
+                    label="Format libre",
+                )
+            else:
+                self.page.set_format(
+                    settings["format"],
+                    settings["orientation"],
+                )
+
+            self.page.set_margins(
+                **settings["margins"],
+            )
+            self.page.set_bleed(
+                **settings["bleed"],
+            )
+
+            document = self._load_current_document()
+
+            if document is not None:
+                document.update_page_summary(
+                    self.page
+                )
+
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            self._save_status_text.set(
+                f"Réglages non appliqués : {error}"
+            )
+            return
+
+        self.show()
+        self._save_status_text.set(
+            "Format de page enregistré"
+        )
+
+    def _rename_page(self) -> None:
+        """Ouvre la boîte de renommage de la page courante."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Cette page est verrouillée"
+            )
+            return
+
+        RenamePageDialog(
+            parent=self.parent,
+            current_name=self.page.display_title,
+            on_validate=self._apply_page_name,
+        )
+
+    def _apply_page_name(self, new_name: str) -> None:
+        """Enregistre le nouveau nom dans la page et dans le livre."""
+
+        clean_name = new_name.strip()
+
+        if not clean_name:
+            self._save_status_text.set(
+                "Le nom ne peut pas être vide"
+            )
+            return
+
+        try:
+            self._save_page_objects()
+            self.page.rename(clean_name)
+
+            document = self._load_current_document()
+
+            if document is None:
+                raise RuntimeError(
+                    "Livre introuvable"
+                )
+
+            document.update_page_summary(
+                self.page
+            )
+
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+        ):
+            self._save_status_text.set(
+                "La page n’a pas pu être renommée"
+            )
+            return
+
+        self.show()
+
+    def _change_page_type(self, page_type: str) -> None:
+        """Change le type et applique sa couleur éditoriale officielle."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Cette page est verrouillée"
+            )
+            return
+
+        appearance = self._appearance_for_type(page_type)
+
+        try:
+            self._save_page_objects()
+            self.page.set_type(page_type)
+            self.page.color = appearance["couleur"]
+            self.page.icon = appearance["icone"]
+            self.page.save(update_history=False)
+
+            document = self._load_current_document()
+
+            if document is not None:
+                document.update_page_summary(self.page)
+
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+        ):
+            self._save_status_text.set(
+                "Le type de page n’a pas pu être modifié"
+            )
+            return
+
+        self.show()
+
+    def _duplicate_page(self) -> None:
+        """Duplique la page courante et ouvre immédiatement sa copie."""
+
+        self._save_page_objects()
+        document = self._load_current_document()
+
+        if document is None:
+            self._save_status_text.set(
+                "Duplication impossible : livre introuvable"
+            )
+            return
+
+        try:
+            duplicated_page = document.duplicate_page(
+                self.page.number
+            )
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+        ):
+            duplicated_page = None
+
+        if duplicated_page is None:
+            self._save_status_text.set(
+                "La page n’a pas pu être dupliquée"
+            )
+            return
+
+        self.page = duplicated_page
+        self.workspace = None
+        self.status_bar = None
+        self.root = None
+        self.show()
+
+    def _delete_page(self) -> None:
+        """Supprime la page après confirmation, puis ouvre la page voisine."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Déverrouille la page avant de la supprimer"
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            title="Supprimer la page",
+            message=(
+                f"Supprimer définitivement « {self.page.display_title} » ?\n\n"
+                "Cette action ne pourra pas être annulée."
+            ),
+            icon="warning",
+            parent=self.parent.winfo_toplevel(),
+        )
+
+        if not confirmed:
+            return
+
+        document = self._load_current_document()
+
+        if document is None:
+            self._save_status_text.set(
+                "Suppression impossible : livre introuvable"
+            )
+            return
+
+        page_index = None
+
+        for index, page_info in enumerate(document.pages):
+            same_identifier = (
+                page_info.get("identifiant")
+                and page_info.get("identifiant") == self.page.identifier
+            )
+            same_number = page_info.get("numero") == self.page.number
+
+            if same_identifier or same_number:
+                page_index = index
+                break
+
+        if page_index is None:
+            self._save_status_text.set(
+                "La page n’a pas été retrouvée dans le livre"
+            )
+            return
+
+        page_root = getattr(self.page, "root", None)
+
+        try:
+            if page_root is not None and Path(page_root).exists():
+                shutil.rmtree(Path(page_root))
+
+            document.pages.pop(page_index)
+            document.save()
+
+        except OSError:
+            self._save_status_text.set(
+                "La page n’a pas pu être supprimée"
+            )
+            return
+
+        if document.pages:
+            next_index = min(
+                page_index,
+                len(document.pages) - 1,
+            )
+            next_number = document.pages[next_index].get("numero")
+            next_page = (
+                document.get_page(next_number)
+                if next_number is not None
+                else None
+            )
+
+            if next_page is not None:
+                self.page = next_page
+                self.workspace = None
+                self.status_bar = None
+                self.root = None
+                self.show()
+                return
+
+        self.workspace = None
+        self.status_bar = None
+        self.root = None
+
+        if self.on_back is not None:
+            self.on_back()
+
+    def _new_page(self) -> None:
+        """Crée une page vide dans le même livre et l’ouvre immédiatement."""
+
+        self._save_page_objects()
+        document = self._load_current_document()
+
+        if document is None:
+            self._save_status_text.set(
+                "Création impossible : livre introuvable"
+            )
+            return
+
+        try:
+            new_page = document.add_page(
+                page_type="Page vide",
+            )
+
+            appearance = self._appearance_for_type(
+                "Page vide"
+            )
+            new_page.color = appearance["couleur"]
+            new_page.icon = appearance["icone"]
+            new_page.save(update_history=False)
+            document.update_page_summary(new_page)
+
+        except (
+            OSError,
+            RuntimeError,
+            ValueError,
+        ):
+            self._save_status_text.set(
+                "La nouvelle page n’a pas pu être créée"
+            )
+            return
+
+        self.page = new_page
+        self.workspace = None
+        self.status_bar = None
+        self.root = None
+        self.show()
+
     def back(self) -> None:
 
         self._save_page_objects()
@@ -2270,6 +4969,8 @@ class PageEditorView:
             self.on_back()
 
     def _clear_parent(self) -> None:
+
+        self._unbind_page_context_menu()
 
         for widget in self.parent.winfo_children():
             widget.destroy()

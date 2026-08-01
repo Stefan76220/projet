@@ -3,25 +3,58 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 class Project:
     """
-    Représentation d'un projet.
+    Représentation d'un projet PageMaître.
+
+    Le projet centralise les emplacements nécessaires à :
+    - la conception des pages et des modèles ;
+    - la conservation des fiches et collections de contenus ;
+    - les productions générées ;
+    - les ressources graphiques ;
+    - les exports et fichiers temporaires.
+
+    Les anciens projets sont mis à niveau automatiquement lors du chargement
+    sans supprimer ni déplacer leurs fichiers existants.
     """
 
-    VERSION = "1.0"
+    VERSION = "1.1"
+
+    PROJECT_FOLDERS = (
+        "documents",
+        "ressources",
+        "ressources/images",
+        "ressources/illustrations",
+        "ressources/icones",
+        "ressources/logos",
+        "modeles",
+        "contenus",
+        "contenus/fiches",
+        "contenus/collections",
+        "productions",
+        "exports",
+        "cache",
+    )
 
     def __init__(self) -> None:
-
         self.name = ""
         self.format = "A5"
         self.book_model_id = ""
 
         self.root: Path | None = None
 
-        self.documents: list[dict] = []
-        self.ressources: list[dict] = []
+        self.documents: list[dict[str, Any]] = []
+        self.ressources: list[dict[str, Any]] = []
+
+        # Index légers destinés aux futures bibliothèques.
+        # Les fichiers complets restent stockés dans leurs propres dossiers.
+        self.models: list[dict[str, Any]] = []
+        self.content_sheets: list[dict[str, Any]] = []
+        self.content_collections: list[dict[str, Any]] = []
+        self.productions: list[dict[str, Any]] = []
 
         self.creation_date: str = ""
         self.modification_date: str = ""
@@ -32,8 +65,43 @@ class Project:
 
     @property
     def is_loaded(self) -> bool:
-
         return self.root is not None
+
+    @property
+    def documents_folder(self) -> Path:
+        return self._require_root() / "documents"
+
+    @property
+    def resources_folder(self) -> Path:
+        return self._require_root() / "ressources"
+
+    @property
+    def models_folder(self) -> Path:
+        return self._require_root() / "modeles"
+
+    @property
+    def content_folder(self) -> Path:
+        return self._require_root() / "contenus"
+
+    @property
+    def content_sheets_folder(self) -> Path:
+        return self.content_folder / "fiches"
+
+    @property
+    def content_collections_folder(self) -> Path:
+        return self.content_folder / "collections"
+
+    @property
+    def productions_folder(self) -> Path:
+        return self._require_root() / "productions"
+
+    @property
+    def exports_folder(self) -> Path:
+        return self._require_root() / "exports"
+
+    @property
+    def cache_folder(self) -> Path:
+        return self._require_root() / "cache"
 
     # ==========================================================
     # Création / Chargement
@@ -44,7 +112,6 @@ class Project:
         folder: str,
         name: str,
     ) -> Path:
-
         self.name = name
         self.root = Path(folder) / name
 
@@ -55,21 +122,23 @@ class Project:
 
         self.documents.clear()
         self.ressources.clear()
+        self.models.clear()
+        self.content_sheets.clear()
+        self.content_collections.clear()
+        self.productions.clear()
 
         self._create_folders()
-
         self.save()
 
-        return self.root
+        return self._require_root()
 
     def load(
         self,
         project_folder: str,
     ) -> Project:
-
         self.root = Path(project_folder)
 
-        project_file = self.root / "projet.json"
+        project_file = self._require_root() / "projet.json"
 
         if not project_file.exists():
             raise FileNotFoundError(
@@ -80,30 +149,67 @@ class Project:
             "r",
             encoding="utf-8",
         ) as file:
-
             data = json.load(file)
 
-        self.name = data.get("nom", "")
-        self.format = data.get("format", "A5")
-        self.book_model_id = data.get("book_model", "")
+        self.name = str(data.get("nom", ""))
+        self.format = str(data.get("format", "A5"))
+        self.book_model_id = str(data.get("book_model", ""))
 
-        self.creation_date = data.get(
-            "date_creation",
-            "",
+        self.creation_date = str(
+            data.get(
+                "date_creation",
+                "",
+            )
         )
 
-        self.modification_date = data.get(
-            "date_modification",
-            "",
+        self.modification_date = str(
+            data.get(
+                "date_modification",
+                "",
+            )
         )
 
-        self.documents = list(
+        self.documents = self._normalize_index(
             data.get("documents", [])
         )
 
-        self.ressources = list(
+        self.ressources = self._normalize_index(
             data.get("ressources", [])
         )
+
+        libraries = data.get(
+            "bibliotheques",
+            {},
+        )
+
+        self.models = self._normalize_index(
+            libraries.get(
+                "modeles",
+                data.get("modeles", []),
+            )
+        )
+
+        self.content_sheets = self._normalize_index(
+            libraries.get(
+                "fiches",
+                data.get("fiches", []),
+            )
+        )
+
+        self.content_collections = self._normalize_index(
+            libraries.get(
+                "collections",
+                data.get("collections", []),
+            )
+        )
+
+        self.productions = self._normalize_index(
+            data.get("productions", [])
+        )
+
+        # Mise à niveau silencieuse des anciens projets.
+        self._create_folders()
+        self.save()
 
         return self
 
@@ -112,7 +218,6 @@ class Project:
     # ==========================================================
 
     def save(self) -> None:
-
         self.modification_date = datetime.now().isoformat()
 
         project_file = self._require_root() / "projet.json"
@@ -121,7 +226,6 @@ class Project:
             "w",
             encoding="utf-8",
         ) as file:
-
             json.dump(
                 self._project_data(),
                 file,
@@ -138,7 +242,6 @@ class Project:
         name: str,
         document_type: str = "Livre",
     ) -> None:
-
         self.documents.append(
             {
                 "nom": name,
@@ -149,34 +252,119 @@ class Project:
         self.save()
 
     # ==========================================================
+    # Bibliothèques
+    # ==========================================================
+
+    def register_model(
+        self,
+        summary: dict[str, Any],
+    ) -> None:
+        self._register_summary(
+            self.models,
+            summary,
+        )
+        self.save()
+
+    def register_content_sheet(
+        self,
+        summary: dict[str, Any],
+    ) -> None:
+        self._register_summary(
+            self.content_sheets,
+            summary,
+        )
+        self.save()
+
+    def register_content_collection(
+        self,
+        summary: dict[str, Any],
+    ) -> None:
+        self._register_summary(
+            self.content_collections,
+            summary,
+        )
+        self.save()
+
+    def register_production(
+        self,
+        summary: dict[str, Any],
+    ) -> None:
+        self._register_summary(
+            self.productions,
+            summary,
+        )
+        self.save()
+
+    def unregister_model(
+        self,
+        identifier: str,
+    ) -> bool:
+        removed = self._unregister_summary(
+            self.models,
+            identifier,
+        )
+
+        if removed:
+            self.save()
+
+        return removed
+
+    def unregister_content_sheet(
+        self,
+        identifier: str,
+    ) -> bool:
+        removed = self._unregister_summary(
+            self.content_sheets,
+            identifier,
+        )
+
+        if removed:
+            self.save()
+
+        return removed
+
+    def unregister_content_collection(
+        self,
+        identifier: str,
+    ) -> bool:
+        removed = self._unregister_summary(
+            self.content_collections,
+            identifier,
+        )
+
+        if removed:
+            self.save()
+
+        return removed
+
+    def unregister_production(
+        self,
+        identifier: str,
+    ) -> bool:
+        removed = self._unregister_summary(
+            self.productions,
+            identifier,
+        )
+
+        if removed:
+            self.save()
+
+        return removed
+
+    # ==========================================================
     # Construction
     # ==========================================================
 
     def _create_folders(self) -> None:
-
         root = self._require_root()
 
-        folders = (
-            "documents",
-            "ressources",
-            "ressources/images",
-            "ressources/illustrations",
-            "ressources/icones",
-            "ressources/logos",
-            "modeles",
-            "exports",
-            "cache",
-        )
-
-        for folder in folders:
-
+        for folder in self.PROJECT_FOLDERS:
             (root / folder).mkdir(
                 parents=True,
                 exist_ok=True,
             )
 
-    def _project_data(self) -> dict:
-
+    def _project_data(self) -> dict[str, Any]:
         return {
             "nom": self.name,
             "version": self.VERSION,
@@ -186,10 +374,81 @@ class Project:
             "date_modification": self.modification_date,
             "documents": self.documents,
             "ressources": self.ressources,
+            "bibliotheques": {
+                "modeles": self.models,
+                "fiches": self.content_sheets,
+                "collections": self.content_collections,
+            },
+            "productions": self.productions,
         }
 
-    def _require_root(self) -> Path:
+    # ==========================================================
+    # Index internes
+    # ==========================================================
 
+    @staticmethod
+    def _normalize_index(
+        values: Any,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(values, list):
+            return []
+
+        return [
+            dict(value)
+            for value in values
+            if isinstance(value, dict)
+        ]
+
+    @staticmethod
+    def _register_summary(
+        index: list[dict[str, Any]],
+        summary: dict[str, Any],
+    ) -> None:
+        normalized = dict(summary)
+        identifier = str(
+            normalized.get(
+                "identifiant",
+                "",
+            )
+        ).strip()
+
+        if not identifier:
+            raise ValueError(
+                "Le résumé doit posséder un identifiant."
+            )
+
+        for position, existing in enumerate(index):
+            if str(
+                existing.get(
+                    "identifiant",
+                    "",
+                )
+            ) == identifier:
+                index[position] = normalized
+                return
+
+        index.append(normalized)
+
+    @staticmethod
+    def _unregister_summary(
+        index: list[dict[str, Any]],
+        identifier: str,
+    ) -> bool:
+        normalized_identifier = identifier.strip()
+
+        for position, existing in enumerate(index):
+            if str(
+                existing.get(
+                    "identifiant",
+                    "",
+                )
+            ) == normalized_identifier:
+                index.pop(position)
+                return True
+
+        return False
+
+    def _require_root(self) -> Path:
         if self.root is None:
             raise RuntimeError(
                 "Le projet n'a pas encore de dossier racine."
@@ -202,9 +461,12 @@ class Project:
     # ==========================================================
 
     def __repr__(self) -> str:
-
         return (
             f"{self.__class__.__name__}("
             f"name={self.name!r}, "
-            f"documents={len(self.documents)})"
+            f"documents={len(self.documents)}, "
+            f"models={len(self.models)}, "
+            f"sheets={len(self.content_sheets)}, "
+            f"collections={len(self.content_collections)}, "
+            f"productions={len(self.productions)})"
         )
