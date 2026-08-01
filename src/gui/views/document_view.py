@@ -525,11 +525,14 @@ class DocumentView:
                 corner_radius=12,
                 fg_color=workspace["soft"],
                 hover_color=(
-                    workspace["color"]
+                    self._darken_color(
+                        workspace["soft"],
+                        amount=0.08,
+                    )
                     if enabled
                     else workspace["soft"]
                 ),
-                text_color=workspace["color"],
+                text_color=self.NAVY,
                 border_width=1,
                 border_color=workspace["color"],
                 font=Fonts.NORMAL,

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from math import atan2, cos, degrees, pi, radians, sin
 import tkinter as tk
+from typing import Any, Callable
 
 from customtkinter import CTkCanvas
 
@@ -129,10 +131,12 @@ class EditorCanvas(CTkCanvas):
         self._text_edit_object_index: int | None = None
         self._text_edit_closing = False
 
-        # Historique local du canvas. Il reste indépendant des liaisons
-        # clavier existantes afin de ne jamais les neutraliser.
-        self._undo_history: list[tuple[list[CanvasObject], int | None, set[int]]] = []
-        self._redo_history: list[tuple[list[CanvasObject], int | None, set[int]]] = []
+        # Historique local du canvas. Il peut aussi mémoriser un état
+        # externe fourni par la vue, par exemple l'image de fond de la page.
+        self._history_external_snapshot: Callable[[], Any] | None = None
+        self._history_external_restore: Callable[[Any], None] | None = None
+        self._undo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
+        self._redo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
 
         self._bind_events()
 
@@ -217,16 +221,6 @@ class EditorCanvas(CTkCanvas):
         self.bind(
             "<Key-E>",
             self._activate_ellipse_tool,
-        )
-
-        self.bind(
-            "<Key-t>",
-            self._activate_text_tool,
-        )
-
-        self.bind(
-            "<Key-T>",
-            self._activate_text_tool,
         )
 
         self.bind(
@@ -395,22 +389,43 @@ class EditorCanvas(CTkCanvas):
 
         return "break"
 
+    def set_external_history_state(
+        self,
+        snapshot_callback: Callable[[], Any] | None,
+        restore_callback: Callable[[Any], None] | None,
+    ) -> None:
+        """Associe un état externe aux instantanés d'annulation.
+
+        La vue de page l'utilise pour intégrer le fond de page au même
+        historique que les formes et les autres objets du canvas.
+        """
+
+        self._history_external_snapshot = snapshot_callback
+        self._history_external_restore = restore_callback
+
     def _snapshot_state(
         self,
-    ) -> tuple[list[CanvasObject], int | None, set[int]]:
+    ) -> tuple[list[CanvasObject], int | None, set[int], Any]:
+
+        external_state = None
+        if self._history_external_snapshot is not None:
+            external_state = deepcopy(
+                self._history_external_snapshot()
+            )
 
         return (
             list(self._objects),
             self._selected_object_index,
             set(self._selected_object_indices),
+            external_state,
         )
 
     def _restore_state(
         self,
-        state: tuple[list[CanvasObject], int | None, set[int]],
+        state: tuple[list[CanvasObject], int | None, set[int], Any],
     ) -> None:
 
-        objects, selected_index, selected_indices = state
+        objects, selected_index, selected_indices, external_state = state
         self._objects = list(objects)
         self._selected_object_index = selected_index
         self._selected_object_indices = {
@@ -424,6 +439,12 @@ class EditorCanvas(CTkCanvas):
                 if self._selected_object_indices
                 else None
             )
+
+        if self._history_external_restore is not None:
+            self._history_external_restore(
+                deepcopy(external_state)
+            )
+
         self.redraw()
         self._notify_selection()
 
