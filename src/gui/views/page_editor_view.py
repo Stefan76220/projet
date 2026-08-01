@@ -4,9 +4,11 @@ from dataclasses import replace
 from pathlib import Path
 import shutil
 import tkinter as tk
-from tkinter import colorchooser, font as tkfont, messagebox
+from tkinter import colorchooser, filedialog, font as tkfont, messagebox
 
 import customtkinter as ctk
+
+from PIL import Image, ImageOps, ImageTk
 
 from src.core.document import Document
 from src.engine.foundation import Point, Rect, Size
@@ -1511,6 +1513,590 @@ class PageSetupDialog(ctk.CTkToplevel):
         )
 
 
+class BackgroundImageDialog(ctk.CTkToplevel):
+    """Choix et aperçu de l'image de fond."""
+
+    MODE_LABELS = {
+        "Remplir sans déformation": "remplir",
+        "Ajuster l’image entière": "ajuster",
+        "Étirer librement": "etirer",
+    }
+
+    PREVIEW_WIDTH = 360
+    PREVIEW_HEIGHT = 430
+
+    def __init__(
+        self,
+        parent,
+        *,
+        current_path: Path | None,
+        current_mode: str,
+        keep_aspect_ratio: bool,
+        on_validate,
+        on_remove,
+    ) -> None:
+        super().__init__(parent)
+
+        self.on_validate = on_validate
+        self.on_remove = on_remove
+        self.selected_path = current_path
+        self._preview_photo = None
+
+        self.title("Image de fond")
+        self.geometry("860x600")
+        self.minsize(800, 560)
+        self.resizable(True, True)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+
+        reverse_modes = {
+            mode: label
+            for label, mode in self.MODE_LABELS.items()
+        }
+
+        self.mode_var = tk.StringVar(
+            value=reverse_modes.get(
+                current_mode,
+                "Remplir sans déformation",
+            )
+        )
+        self.keep_ratio_var = tk.BooleanVar(
+            value=bool(keep_aspect_ratio)
+        )
+        self.file_var = tk.StringVar(
+            value=(
+                current_path.name
+                if current_path is not None
+                else "Aucune image sélectionnée"
+            )
+        )
+        self.error_var = tk.StringVar(value="")
+
+        self._build()
+        self._refresh_controls()
+        self._draw_preview()
+        self.after(80, self._center_window)
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=20,
+        )
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=0)
+        container.grid_rowconfigure(2, weight=1)
+
+        ctk.CTkLabel(
+            container,
+            text="Image de fond",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+        )
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                "L’image est placée derrière tous les objets de la page. "
+                "Choisis son mode d’adaptation avant de l’appliquer."
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(4, 14),
+        )
+
+        controls = ctk.CTkFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        controls.grid(
+            row=2,
+            column=0,
+            sticky="nsew",
+            padx=(0, 16),
+        )
+        controls.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            controls,
+            text="Image utilisée",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(16, 6),
+        )
+
+        ctk.CTkLabel(
+            controls,
+            textvariable=self.file_var,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            anchor="w",
+            wraplength=350,
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 10),
+        )
+
+        ctk.CTkButton(
+            controls,
+            text="Choisir ou remplacer l’image…",
+            height=38,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self._choose_image,
+        ).grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 18),
+        )
+
+        ctk.CTkLabel(
+            controls,
+            text="Adaptation à la page",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 6),
+        )
+
+        self.mode_combo = ctk.CTkComboBox(
+            controls,
+            values=list(self.MODE_LABELS.keys()),
+            variable=self.mode_var,
+            state="readonly",
+            command=self._on_mode_changed,
+        )
+        self.mode_combo.grid(
+            row=4,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 12),
+        )
+
+        self.keep_ratio_check = ctk.CTkCheckBox(
+            controls,
+            text="Conserver les proportions",
+            variable=self.keep_ratio_var,
+            command=self._draw_preview,
+        )
+        self.keep_ratio_check.grid(
+            row=5,
+            column=0,
+            sticky="w",
+            padx=16,
+            pady=(0, 18),
+        )
+
+        info = ctk.CTkFrame(
+            controls,
+            fg_color="#F3F5F7",
+            corner_radius=8,
+        )
+        info.grid(
+            row=6,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 16),
+        )
+
+        ctk.CTkLabel(
+            info,
+            text=(
+                "Remplir : toute la page est couverte, avec recadrage.\n"
+                "Ajuster : l’image entière reste visible.\n"
+                "Étirer : l’image prend exactement les dimensions de la page."
+            ),
+            justify="left",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).pack(
+            fill="x",
+            padx=12,
+            pady=10,
+        )
+
+        preview_frame = ctk.CTkFrame(
+            container,
+            width=400,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        preview_frame.grid(
+            row=2,
+            column=1,
+            sticky="ns",
+        )
+        preview_frame.grid_propagate(False)
+
+        ctk.CTkLabel(
+            preview_frame,
+            text="Aperçu",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+        ).pack(
+            pady=(16, 8),
+        )
+
+        self.preview_canvas = tk.Canvas(
+            preview_frame,
+            width=self.PREVIEW_WIDTH,
+            height=self.PREVIEW_HEIGHT,
+            bg="#E7E9EC",
+            highlightthickness=0,
+        )
+        self.preview_canvas.pack(
+            padx=18,
+            pady=(0, 12),
+        )
+
+        footer = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        footer.grid(
+            row=3,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(14, 0),
+        )
+        footer.grid_columnconfigure(1, weight=1)
+
+        remove_button = ctk.CTkButton(
+            footer,
+            text="Supprimer le fond",
+            width=150,
+            height=36,
+            fg_color="#F7E8E8",
+            hover_color="#EFD6D6",
+            text_color="#8C2F2F",
+            command=self._remove,
+        )
+        remove_button.grid(
+            row=0,
+            column=0,
+            sticky="w",
+        )
+
+        ctk.CTkLabel(
+            footer,
+            textvariable=self.error_var,
+            font=Fonts.SMALL,
+            text_color="#B42318",
+            anchor="w",
+        ).grid(
+            row=0,
+            column=1,
+            sticky="ew",
+            padx=12,
+        )
+
+        ctk.CTkButton(
+            footer,
+            text="Annuler",
+            width=110,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.cancel,
+        ).grid(
+            row=0,
+            column=2,
+            padx=(0, 8),
+        )
+
+        ctk.CTkButton(
+            footer,
+            text="Appliquer",
+            width=120,
+            height=36,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self.validate,
+        ).grid(
+            row=0,
+            column=3,
+        )
+
+    def _choose_image(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self,
+            title="Choisir une image de fond",
+            filetypes=(
+                (
+                    "Images",
+                    "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff",
+                ),
+                ("Tous les fichiers", "*.*"),
+            ),
+        )
+
+        if not selected:
+            return
+
+        path = Path(selected)
+
+        try:
+            with Image.open(path) as image:
+                image.verify()
+        except (OSError, ValueError):
+            self.error_var.set(
+                "Le fichier sélectionné n’est pas une image valide."
+            )
+            return
+
+        self.selected_path = path
+        self.file_var.set(path.name)
+        self.error_var.set("")
+        self._draw_preview()
+
+    def _on_mode_changed(self, _value=None) -> None:
+        self._refresh_controls()
+        self._draw_preview()
+
+    def _refresh_controls(self) -> None:
+        is_stretch = (
+            self.MODE_LABELS.get(
+                self.mode_var.get(),
+                "remplir",
+            )
+            == "etirer"
+        )
+
+        if is_stretch:
+            self.keep_ratio_var.set(False)
+            self.keep_ratio_check.configure(
+                state="disabled",
+            )
+        else:
+            self.keep_ratio_check.configure(
+                state="normal",
+            )
+            if not self.keep_ratio_var.get():
+                self.keep_ratio_var.set(True)
+
+    def _draw_preview(self) -> None:
+        canvas = self.preview_canvas
+        canvas.delete("all")
+
+        page_margin = 28
+        page_width = self.PREVIEW_WIDTH - page_margin * 2
+        page_height = self.PREVIEW_HEIGHT - page_margin * 2
+
+        canvas.create_rectangle(
+            page_margin + 5,
+            page_margin + 6,
+            page_margin + page_width + 5,
+            page_margin + page_height + 6,
+            fill="#B7BCC2",
+            outline="",
+        )
+        canvas.create_rectangle(
+            page_margin,
+            page_margin,
+            page_margin + page_width,
+            page_margin + page_height,
+            fill="#FFFFFF",
+            outline="#4B4F55",
+            width=1,
+        )
+
+        path = self.selected_path
+
+        if path is None or not path.exists():
+            canvas.create_text(
+                self.PREVIEW_WIDTH / 2,
+                self.PREVIEW_HEIGHT / 2,
+                text="Aucune image de fond",
+                fill="#6B7077",
+                font=(Fonts.FAMILY, 12),
+            )
+            return
+
+        try:
+            with Image.open(path) as source:
+                image = source.convert("RGBA")
+
+            mode = self.MODE_LABELS.get(
+                self.mode_var.get(),
+                "remplir",
+            )
+
+            if mode == "ajuster":
+                rendered = ImageOps.contain(
+                    image,
+                    (page_width, page_height),
+                    Image.Resampling.LANCZOS,
+                )
+                page_image = Image.new(
+                    "RGBA",
+                    (page_width, page_height),
+                    (255, 255, 255, 255),
+                )
+                paste_x = (
+                    page_width - rendered.width
+                ) // 2
+                paste_y = (
+                    page_height - rendered.height
+                ) // 2
+                page_image.alpha_composite(
+                    rendered,
+                    (paste_x, paste_y),
+                )
+
+            elif mode == "etirer":
+                page_image = image.resize(
+                    (page_width, page_height),
+                    Image.Resampling.LANCZOS,
+                )
+
+            else:
+                page_image = ImageOps.fit(
+                    image,
+                    (page_width, page_height),
+                    Image.Resampling.LANCZOS,
+                    centering=(0.5, 0.5),
+                )
+
+            self._preview_photo = ImageTk.PhotoImage(
+                page_image
+            )
+            canvas.create_image(
+                page_margin,
+                page_margin,
+                anchor="nw",
+                image=self._preview_photo,
+            )
+            canvas.create_rectangle(
+                page_margin,
+                page_margin,
+                page_margin + page_width,
+                page_margin + page_height,
+                fill="",
+                outline="#4B4F55",
+                width=1,
+            )
+
+        except (OSError, ValueError, tk.TclError):
+            canvas.create_text(
+                self.PREVIEW_WIDTH / 2,
+                self.PREVIEW_HEIGHT / 2,
+                text="Aperçu indisponible",
+                fill="#B42318",
+                font=(Fonts.FAMILY, 12),
+            )
+
+    def validate(self) -> None:
+        path = self.selected_path
+
+        if path is None or not path.exists():
+            self.error_var.set(
+                "Choisis une image avant d’appliquer."
+            )
+            return
+
+        mode = self.MODE_LABELS.get(
+            self.mode_var.get(),
+            "remplir",
+        )
+
+        callback = self.on_validate
+        keep_ratio = bool(
+            self.keep_ratio_var.get()
+        )
+
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        self.destroy()
+        self.master.after_idle(
+            lambda: callback(
+                path,
+                mode,
+                keep_ratio,
+            )
+        )
+
+    def _remove(self) -> None:
+        callback = self.on_remove
+
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        self.destroy()
+        self.master.after_idle(callback)
+
+    def cancel(self) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+        self.destroy()
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+
+
 class PageEditorView:
     """
     Vue d'édition d'une page.
@@ -1590,6 +2176,10 @@ class PageEditorView:
         self._properties_rotation_text = tk.StringVar(value="Rotation : —")
         self._page_guide_tag = f"PageGuides_{id(self)}"
         self._workspace_base_redraw = None
+        self._background_canvas_tag = f"PageBackground_{id(self)}"
+        self._background_photo = None
+        self._background_render_cache_key = None
+        self._background_render_cache_image = None
 
     def show(self) -> None:
 
@@ -2466,12 +3056,19 @@ class PageEditorView:
             lambda: self._select_shape_tool("ellipse"),
         )
 
-        _, page = group("Page", 98)
+        _, page = group("Page", 194)
         icon_button(
             page,
             "⛶",
             "Ajuster",
             self._fit_page_to_window,
+        )
+        icon_button(
+            page,
+            "▨",
+            "Image de fond",
+            self._open_background_dialog,
+            width=90,
         )
 
         _, organize = group("Organiser", 270)
@@ -3990,8 +4587,686 @@ class PageEditorView:
         self._refresh_properties_panel()
         self._save_page_objects(show_status=False)
 
+    def _open_background_dialog(self) -> None:
+        """Ouvre les réglages de l'image de fond."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Cette page est verrouillée"
+            )
+            return
+
+        background = getattr(
+            self.page,
+            "background",
+            {},
+        )
+
+        BackgroundImageDialog(
+            parent=self.parent,
+            current_path=self._resolve_background_resource(),
+            current_mode=str(
+                background.get(
+                    "mode",
+                    "remplir",
+                )
+            ),
+            keep_aspect_ratio=bool(
+                background.get(
+                    "conserver_proportions",
+                    True,
+                )
+            ),
+            on_validate=self._apply_background_image,
+            on_remove=self._remove_background_image,
+        )
+
+    def _apply_background_image(
+        self,
+        source_path: Path,
+        mode: str,
+        keep_aspect_ratio: bool,
+    ) -> None:
+        """Copie l'image dans le projet puis l'attache à la page."""
+
+        try:
+            resource_value = self._copy_background_resource(
+                source_path
+            )
+
+            self.page.set_background(
+                resource_value,
+                scope="page",
+                fit_mode=mode,
+                keep_aspect_ratio=keep_aspect_ratio,
+            )
+
+            document = self._load_current_document()
+
+            if document is not None:
+                document.update_page_summary(
+                    self.page
+                )
+
+            self._invalidate_background_cache()
+
+            if self.workspace is not None:
+                self.workspace.redraw()
+
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            self._save_status_text.set(
+                f"Image de fond non appliquée : {error}"
+            )
+            return
+
+        self._save_status_text.set(
+            "Image de fond enregistrée"
+        )
+
+    def _remove_background_image(self) -> None:
+        """Supprime uniquement le lien de fond de la page."""
+
+        try:
+            self.page.clear_background()
+
+            document = self._load_current_document()
+
+            if document is not None:
+                document.update_page_summary(
+                    self.page
+                )
+
+            self._invalidate_background_cache()
+
+            if self.workspace is not None:
+                self.workspace.redraw()
+
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            self._save_status_text.set(
+                f"Fond non supprimé : {error}"
+            )
+            return
+
+        self._save_status_text.set(
+            "Image de fond supprimée"
+        )
+
+    def _project_root(self) -> Path | None:
+        page_root = getattr(
+            self.page,
+            "root",
+            None,
+        )
+
+        if page_root is None:
+            return None
+
+        path = Path(page_root)
+
+        for candidate in (
+            path,
+            *path.parents,
+        ):
+            if (
+                candidate / "projet.json"
+            ).exists():
+                return candidate
+
+        # Compatibilité avec l'arborescence actuelle :
+        # projet/documents/document/pages/page_0001
+        try:
+            return path.parents[3]
+        except IndexError:
+            return None
+
+    def _copy_background_resource(
+        self,
+        source_path: Path,
+    ) -> str:
+        source = Path(source_path).resolve()
+
+        if not source.exists():
+            raise FileNotFoundError(
+                "L’image sélectionnée est introuvable."
+            )
+
+        project_root = self._project_root()
+
+        if project_root is None:
+            return str(source)
+
+        try:
+            relative_existing = source.relative_to(
+                project_root.resolve()
+            )
+            return relative_existing.as_posix()
+        except ValueError:
+            pass
+
+        destination_folder = (
+            project_root
+            / "ressources"
+            / "images"
+        )
+        destination_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        stem = source.stem.strip() or "fond"
+        suffix = source.suffix.lower() or ".png"
+        destination = (
+            destination_folder
+            / f"{stem}{suffix}"
+        )
+
+        index = 2
+
+        while destination.exists():
+            try:
+                if (
+                    destination.resolve()
+                    == source.resolve()
+                ):
+                    break
+            except OSError:
+                pass
+
+            destination = (
+                destination_folder
+                / f"{stem}_{index}{suffix}"
+            )
+            index += 1
+
+        if not destination.exists():
+            shutil.copy2(
+                source,
+                destination,
+            )
+
+        return destination.relative_to(
+            project_root
+        ).as_posix()
+
+    def _resolve_background_resource(
+        self,
+    ) -> Path | None:
+        background = getattr(
+            self.page,
+            "background",
+            {},
+        )
+
+        if not background.get("active"):
+            return None
+
+        resource = str(
+            background.get(
+                "ressource",
+                "",
+            )
+        ).strip()
+
+        if not resource:
+            return None
+
+        path = Path(resource)
+
+        if path.is_absolute():
+            return path if path.exists() else None
+
+        project_root = self._project_root()
+
+        if project_root is None:
+            return None
+
+        resolved = (
+            project_root / path
+        ).resolve()
+
+        return resolved if resolved.exists() else None
+
+    def _invalidate_background_cache(self) -> None:
+        self._background_photo = None
+        self._background_render_cache_key = None
+        self._background_render_cache_image = None
+
+    def _draw_page_background(self, *_args) -> None:
+        """Affiche le fond derrière tous les objets de la page."""
+
+        canvas = self.workspace
+
+        if canvas is None:
+            return
+
+        try:
+            if not canvas.winfo_exists():
+                return
+
+            canvas.delete(
+                self._background_canvas_tag
+            )
+
+            background = getattr(
+                self.page,
+                "background",
+                {},
+            )
+
+            if not (
+                background.get("active")
+                and background.get("ressource")
+            ):
+                self._background_photo = None
+                return
+
+            image_path = self._resolve_background_resource()
+
+            if image_path is None:
+                self._background_photo = None
+                return
+
+            page_width_px = max(
+                1,
+                int(
+                    round(
+                        canvas.viewport.mm_to_px(
+                            canvas.page_format.width_mm
+                        )
+                    )
+                ),
+            )
+            page_height_px = max(
+                1,
+                int(
+                    round(
+                        canvas.viewport.mm_to_px(
+                            canvas.page_format.height_mm
+                        )
+                    )
+                ),
+            )
+
+            cache_key = (
+                str(image_path),
+                image_path.stat().st_mtime_ns,
+                page_width_px,
+                page_height_px,
+                str(
+                    background.get(
+                        "portee",
+                        "page",
+                    )
+                ),
+                str(
+                    background.get(
+                        "mode",
+                        "remplir",
+                    )
+                ),
+                bool(
+                    background.get(
+                        "conserver_proportions",
+                        True,
+                    )
+                ),
+                float(
+                    background.get(
+                        "opacite",
+                        1.0,
+                    )
+                ),
+                float(
+                    background.get(
+                        "x_mm",
+                        0.0,
+                    )
+                ),
+                float(
+                    background.get(
+                        "y_mm",
+                        0.0,
+                    )
+                ),
+                float(
+                    background.get(
+                        "largeur_mm",
+                        canvas.page_format.width_mm,
+                    )
+                ),
+                float(
+                    background.get(
+                        "hauteur_mm",
+                        canvas.page_format.height_mm,
+                    )
+                ),
+            )
+
+            if (
+                cache_key
+                != self._background_render_cache_key
+            ):
+                self._background_render_cache_image = (
+                    self._render_background_page_image(
+                        image_path=image_path,
+                        page_width_px=page_width_px,
+                        page_height_px=page_height_px,
+                    )
+                )
+                self._background_render_cache_key = (
+                    cache_key
+                )
+
+            rendered = (
+                self._background_render_cache_image
+            )
+
+            if rendered is None:
+                return
+
+            existing_items = canvas.find_all()
+
+            self._background_photo = ImageTk.PhotoImage(
+                rendered
+            )
+
+            background_item = canvas.create_image(
+                canvas.page_left,
+                canvas.page_top,
+                anchor="nw",
+                image=self._background_photo,
+                tags=(
+                    self._background_canvas_tag,
+                    "image_de_fond",
+                ),
+            )
+
+            # Ombre et feuille blanche sont les deux premiers éléments.
+            # Le fond est placé juste au-dessus de la feuille, mais sous
+            # les objets de mise en page.
+            if len(existing_items) >= 3:
+                canvas.tag_lower(
+                    background_item,
+                    existing_items[2],
+                )
+
+        except (
+            AttributeError,
+            OSError,
+            RuntimeError,
+            tk.TclError,
+            TypeError,
+            ValueError,
+        ):
+            self._background_photo = None
+
+    def _render_background_page_image(
+        self,
+        *,
+        image_path: Path,
+        page_width_px: int,
+        page_height_px: int,
+    ) -> Image.Image:
+        background = getattr(
+            self.page,
+            "background",
+            {},
+        )
+
+        with Image.open(image_path) as source:
+            original = source.convert("RGBA")
+
+        page_image = Image.new(
+            "RGBA",
+            (
+                page_width_px,
+                page_height_px,
+            ),
+            (255, 255, 255, 0),
+        )
+
+        page_width_mm = float(
+            self.workspace.page_format.width_mm
+        )
+        page_height_mm = float(
+            self.workspace.page_format.height_mm
+        )
+        scale_x = (
+            page_width_px
+            / max(page_width_mm, 0.001)
+        )
+        scale_y = (
+            page_height_px
+            / max(page_height_mm, 0.001)
+        )
+
+        scope = str(
+            background.get(
+                "portee",
+                "page",
+            )
+        )
+
+        if (
+            scope == "surface_composition"
+            and hasattr(
+                self.page,
+                "composition_box_mm",
+            )
+        ):
+            is_verso = (
+                int(
+                    getattr(
+                        self.page,
+                        "number",
+                        1,
+                    )
+                ) % 2 == 0
+            )
+            target = self.page.composition_box_mm(
+                verso=is_verso
+            )
+        else:
+            target = {
+                "x": 0.0,
+                "y": 0.0,
+                "largeur": page_width_mm,
+                "hauteur": page_height_mm,
+            }
+
+        target_x = int(
+            round(
+                float(target["x"])
+                * scale_x
+            )
+        )
+        target_y = int(
+            round(
+                float(target["y"])
+                * scale_y
+            )
+        )
+        target_width = max(
+            1,
+            int(
+                round(
+                    float(target["largeur"])
+                    * scale_x
+                )
+            ),
+        )
+        target_height = max(
+            1,
+            int(
+                round(
+                    float(target["hauteur"])
+                    * scale_y
+                )
+            ),
+        )
+
+        mode = str(
+            background.get(
+                "mode",
+                "remplir",
+            )
+        )
+
+        if mode == "manuel":
+            target_x = int(
+                round(
+                    float(
+                        background.get(
+                            "x_mm",
+                            0.0,
+                        )
+                    )
+                    * scale_x
+                )
+            )
+            target_y = int(
+                round(
+                    float(
+                        background.get(
+                            "y_mm",
+                            0.0,
+                        )
+                    )
+                    * scale_y
+                )
+            )
+            target_width = max(
+                1,
+                int(
+                    round(
+                        float(
+                            background.get(
+                                "largeur_mm",
+                                page_width_mm,
+                            )
+                        )
+                        * scale_x
+                    )
+                ),
+            )
+            target_height = max(
+                1,
+                int(
+                    round(
+                        float(
+                            background.get(
+                                "hauteur_mm",
+                                page_height_mm,
+                            )
+                        )
+                        * scale_y
+                    )
+                ),
+            )
+            rendered = original.resize(
+                (
+                    target_width,
+                    target_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+        elif mode == "ajuster":
+            contained = ImageOps.contain(
+                original,
+                (
+                    target_width,
+                    target_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+            rendered = Image.new(
+                "RGBA",
+                (
+                    target_width,
+                    target_height,
+                ),
+                (255, 255, 255, 0),
+            )
+            rendered.alpha_composite(
+                contained,
+                (
+                    (
+                        target_width
+                        - contained.width
+                    )
+                    // 2,
+                    (
+                        target_height
+                        - contained.height
+                    )
+                    // 2,
+                ),
+            )
+
+        elif mode == "etirer":
+            rendered = original.resize(
+                (
+                    target_width,
+                    target_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+        else:
+            rendered = ImageOps.fit(
+                original,
+                (
+                    target_width,
+                    target_height,
+                ),
+                Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+
+        opacity = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    background.get(
+                        "opacite",
+                        1.0,
+                    )
+                ),
+            ),
+        )
+
+        if opacity < 1.0:
+            alpha = rendered.getchannel("A").point(
+                lambda value: int(
+                    value * opacity
+                )
+            )
+            rendered.putalpha(alpha)
+
+        page_image.alpha_composite(
+            rendered,
+            (
+                target_x,
+                target_y,
+            ),
+        )
+
+        return page_image
+
     def _install_page_guides(self) -> None:
-        """Maintient visibles les marges et les fonds perdus sur le canvas."""
+        """Maintient le fond et les repères visibles sur le canvas."""
 
         if self.workspace is None:
             return
@@ -3999,29 +5274,33 @@ class PageEditorView:
         base_redraw = self.workspace.redraw
         self._workspace_base_redraw = base_redraw
 
-        def redraw_with_guides(*args, **kwargs):
+        def redraw_with_overlays(*args, **kwargs):
             result = base_redraw(
                 *args,
                 **kwargs,
             )
-            self._draw_page_guides()
+            self._draw_page_overlays()
             return result
 
-        self.workspace.redraw = redraw_with_guides
+        self.workspace.redraw = redraw_with_overlays
 
         # Le Viewport conserve déjà le redraw d'origine. Ce second écouteur
-        # replace les guides après les déplacements et changements de zoom.
+        # replace ensuite le fond et les guides après le zoom ou le déplacement.
         self.workspace.viewport.add_listener(
-            self._draw_page_guides,
+            self._draw_page_overlays,
         )
 
         self.workspace.bind(
             "<Configure>",
             lambda _event: self.parent.after_idle(
-                self._draw_page_guides
+                self._draw_page_overlays
             ),
             add="+",
         )
+
+    def _draw_page_overlays(self, *_args) -> None:
+        self._draw_page_background()
+        self._draw_page_guides()
 
     def _draw_page_guides(self, *_args) -> None:
         """Dessine les limites de composition et de fond perdu."""
