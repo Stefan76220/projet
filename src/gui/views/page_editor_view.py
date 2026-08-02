@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 import shutil
@@ -2255,6 +2254,7 @@ class PageEditorView:
     EDITOR_TOOL_BUTTON_SIZE = 38
     EDITOR_TOOLS = (
         ("selection", "S", "Sélection"),
+        ("texte", "T", "Texte"),
         ("forme", "F", "Forme"),
     )
 
@@ -2434,6 +2434,16 @@ class PageEditorView:
             self._save_status_text.set("Outil Sélection")
             self._show_editor_feedback("Sélection active")
 
+        elif tool_key == "texte":
+            self.workspace.set_tool("text")
+            self._set_active_editor_tool("texte")
+            self._save_status_text.set(
+                "Tracez une zone de texte sur la page",
+            )
+            self._show_editor_feedback(
+                "Texte actif — tracez une zone sur la page",
+            )
+
         elif tool_key == "forme":
             self._show_shape_menu()
             return
@@ -2520,7 +2530,7 @@ class PageEditorView:
     def _set_active_editor_tool(self, tool_key: str) -> None:
 
         self._active_editor_tool = tool_key
-        active_key = tool_key if tool_key in {"rectangle", "ellipse"} else None
+        active_key = tool_key if tool_key in {"texte", "rectangle", "ellipse"} else None
 
         for key, button in self._editor_tool_buttons.items():
             if key == active_key:
@@ -2542,7 +2552,9 @@ class PageEditorView:
             return
 
         active_tool = self.workspace.active_tool
-        if active_tool == "rectangle":
+        if active_tool == "text":
+            self._set_active_editor_tool("texte")
+        elif active_tool == "rectangle":
             self._set_active_editor_tool("rectangle")
         elif active_tool == "ellipse":
             self._set_active_editor_tool("ellipse")
@@ -2561,7 +2573,11 @@ class PageEditorView:
 
         active_tool = self.workspace.active_tool
 
-        if active_tool == "rectangle":
+        if active_tool == "text":
+            self._save_status_text.set(
+                "Tracez une zone de texte sur la page",
+            )
+        elif active_tool == "rectangle":
             self._save_status_text.set(
                 "Tracez un rectangle sur la page",
             )
@@ -3173,7 +3189,30 @@ class PageEditorView:
 
         self._editor_tool_buttons.clear()
 
-        _, add = group("Ajouter", 190)
+        _, page = group("Page", 176)
+        icon_button(
+            page,
+            "▤",
+            "Format",
+            self._open_page_setup,
+        )
+        icon_button(
+            page,
+            "⛶",
+            "Ajuster",
+            self._fit_page_to_window,
+        )
+
+        _, background = group("Fond", 104)
+        icon_button(
+            background,
+            "▨",
+            "Modifier",
+            self._open_background_dialog,
+            width=84,
+        )
+
+        _, add = group("Ajouter une zone", 194)
         self._editor_tool_buttons["rectangle"] = icon_button(
             add,
             "▭",
@@ -3188,27 +3227,12 @@ class PageEditorView:
             lambda: self._select_shape_tool("ellipse"),
         )
 
-        _, page = group("Page", 194)
-        icon_button(
-            page,
-            "⛶",
-            "Ajuster",
-            self._fit_page_to_window,
-        )
-        icon_button(
-            page,
-            "▨",
-            "Image de fond",
-            self._open_background_dialog,
-            width=90,
-        )
-
-        _, organize = group("Organiser", 270)
+        _, organize = group("Organisation", 270)
         icon_button(
             organize,
             "≡",
             "Aligner",
-            lambda: self._align_selection("left"),
+            self._open_alignment_menu,
         )
         icon_button(
             organize,
@@ -3225,26 +3249,9 @@ class PageEditorView:
             state="disabled",
         )
 
-        _, style = group("Style", 190)
-        self._fill_color_button = icon_button(
-            style,
-            "▨",
-            "Remplissage",
-            self._choose_fill_color,
-            width=86,
-            state="disabled",
-        )
-        self._outline_color_button = icon_button(
-            style,
-            "□",
-            "Contour",
-            self._choose_outline_color,
-            state="disabled",
-        )
-        self._shape_controls = [
-            self._fill_color_button,
-            self._outline_color_button,
-        ]
+        self._fill_color_button = None
+        self._outline_color_button = None
+        self._shape_controls = []
 
         _, panel = group("Affichage", 108)
         self._toggle_panel_button = icon_button(
@@ -3258,6 +3265,29 @@ class PageEditorView:
         self._refresh_group_controls()
         self._sync_editor_tool_state()
         self._refresh_panel_toggle_state()
+
+    def _open_alignment_menu(self) -> None:
+        """Affiche les alignements utiles pour les zones sélectionnées."""
+        menu = tk.Menu(self, tearoff=False)
+        options = (
+            ("Aligner à gauche", "left"),
+            ("Centrer horizontalement", "center_horizontal"),
+            ("Aligner à droite", "right"),
+            ("Aligner en haut", "top"),
+            ("Centrer verticalement", "center_vertical"),
+            ("Aligner en bas", "bottom"),
+        )
+        for label, mode in options:
+            menu.add_command(
+                label=label,
+                command=lambda value=mode: self._align_selection(value),
+            )
+        x = self.winfo_pointerx()
+        y = self.winfo_pointery()
+        try:
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
 
     def _create_properties_panel(self, parent) -> None:
 
@@ -4653,10 +4683,6 @@ class PageEditorView:
         )
 
         self.workspace = EditorCanvas(canvas_container)
-        self.workspace.set_external_history_state(
-            self._snapshot_editor_history_state,
-            self._restore_editor_history_state,
-        )
         self.workspace.pack(
             fill="both",
             expand=True,
@@ -4723,43 +4749,6 @@ class PageEditorView:
         self._refresh_properties_panel()
         self._save_page_objects(show_status=False)
 
-    def _snapshot_editor_history_state(self) -> dict:
-        """Mémorise le fond avec l'état courant du canvas."""
-
-        return {
-            "background": deepcopy(
-                getattr(self.page, "background", {})
-            ),
-            "background_selected": bool(self._background_selected),
-        }
-
-    def _restore_editor_history_state(self, state) -> None:
-        """Restaure le fond lors d'un Ctrl+Z ou d'un Ctrl+Y."""
-
-        if not isinstance(state, dict):
-            return
-
-        background = state.get("background")
-        if isinstance(background, dict):
-            self.page.background = deepcopy(background)
-
-        current_background = getattr(self.page, "background", {})
-        self._background_selected = bool(
-            state.get("background_selected", False)
-            and current_background.get("active")
-            and current_background.get("ressource")
-        )
-        self._background_interaction_mode = None
-        self._background_interaction_handle = None
-        self._background_interaction_start_mm = None
-        self._background_original_frame = None
-        self._background_drag_changed = False
-        self._invalidate_background_cache()
-
-        document = self._load_current_document()
-        if document is not None:
-            document.update_page_summary(self.page)
-
     def _open_background_dialog(self) -> None:
         """Ouvre les réglages de l'image de fond."""
 
@@ -4820,7 +4809,7 @@ class PageEditorView:
         """Copie l'image dans le projet puis l'attache à la page."""
 
         try:
-            previous = deepcopy(
+            previous = dict(
                 getattr(
                     self.page,
                     "background",
@@ -4837,9 +4826,6 @@ class PageEditorView:
             resource_value = self._copy_background_resource(
                 source_path
             )
-
-            if self.workspace is not None:
-                self.workspace._remember_current_state()
 
             self.page.set_background(
                 resource_value,
@@ -4895,7 +4881,6 @@ class PageEditorView:
 
             if self.workspace is not None:
                 self.workspace.redraw()
-                self.workspace.focus_set()
 
         except (
             OSError,
@@ -4952,9 +4937,6 @@ class PageEditorView:
         """Supprime uniquement le lien de fond de la page."""
 
         try:
-            if self.workspace is not None:
-                self.workspace._remember_current_state()
-
             self.page.clear_background()
             self._background_selected = False
             self._background_interaction_mode = None
@@ -4971,7 +4953,6 @@ class PageEditorView:
 
             if self.workspace is not None:
                 self.workspace.redraw()
-                self.workspace.focus_set()
 
         except (
             OSError,
@@ -5479,9 +5460,6 @@ class PageEditorView:
                 ),
             )
 
-        if not self._background_drag_changed:
-            canvas._remember_current_state()
-
         background = self.page.background
         background.update(
             {
@@ -5582,79 +5560,6 @@ class PageEditorView:
             "largeur": new_width,
             "hauteur": new_height,
         }
-
-    def _move_background_with_keyboard(self, event):
-        """Déplace le fond sélectionné comme les autres objets."""
-
-        if not self._background_selected or self.workspace is None:
-            return None
-
-        background = getattr(self.page, "background", {})
-        if not (background.get("active") and background.get("ressource")):
-            return None
-
-        step = 10.0 if event.state & 0x0001 else 1.0
-        dx = 0.0
-        dy = 0.0
-        if event.keysym == "Left":
-            dx = -step
-        elif event.keysym == "Right":
-            dx = step
-        elif event.keysym == "Up":
-            dy = -step
-        elif event.keysym == "Down":
-            dy = step
-        else:
-            return None
-
-        frame = self._background_effective_frame_mm(background)
-        scope = self._background_scope_box_mm(
-            str(background.get("portee", "page"))
-        )
-        minimum_visible = min(5.0, frame["largeur"], frame["hauteur"])
-        new_x = min(
-            scope["x"] + scope["largeur"] - minimum_visible,
-            max(
-                scope["x"] - frame["largeur"] + minimum_visible,
-                frame["x"] + dx,
-            ),
-        )
-        new_y = min(
-            scope["y"] + scope["hauteur"] - minimum_visible,
-            max(
-                scope["y"] - frame["hauteur"] + minimum_visible,
-                frame["y"] + dy,
-            ),
-        )
-
-        if (
-            abs(new_x - frame["x"]) < 0.001
-            and abs(new_y - frame["y"]) < 0.001
-        ):
-            return "break"
-
-        self.workspace._remember_current_state()
-        try:
-            self.page.set_background_transform(
-                x_mm=new_x,
-                y_mm=new_y,
-                width_mm=frame["largeur"],
-                height_mm=frame["hauteur"],
-                keep_aspect_ratio=bool(
-                    background.get("conserver_proportions", True)
-                ),
-            )
-            document = self._load_current_document()
-            if document is not None:
-                document.update_page_summary(self.page)
-            self._invalidate_background_cache()
-            self.workspace.redraw()
-            self.workspace.focus_set()
-            self._save_status_text.set("Image de fond déplacée")
-        except (OSError, RuntimeError, TypeError, ValueError) as error:
-            self._save_status_text.set(f"Fond non déplacé : {error}")
-
-        return "break"
 
     def _on_background_release(self, _event):
         if self._background_interaction_mode is None:
@@ -6292,17 +6197,6 @@ class PageEditorView:
             "<ButtonRelease-1>",
             self._on_background_release,
         )
-        for key_sequence in (
-            "<Left>",
-            "<Right>",
-            "<Up>",
-            "<Down>",
-        ):
-            self.workspace.bind_class(
-                self._background_bindtag,
-                key_sequence,
-                self._move_background_with_keyboard,
-            )
 
     def _draw_page_overlays(self, *_args) -> None:
         self._draw_page_background()
