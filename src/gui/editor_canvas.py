@@ -3,10 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from math import atan2, cos, degrees, pi, radians, sin
+from pathlib import Path
 import tkinter as tk
 from typing import Any, Callable
 
 from customtkinter import CTkCanvas
+from PIL import Image, ImageDraw, ImageOps, ImageTk
 
 from src.engine.camera.viewport import Viewport
 from src.engine.document import Document
@@ -23,6 +25,13 @@ class CanvasObject:
     kind: str
     bounds: Rect
     content_type: str = ""
+    content_mode: str = "variable"
+    content_label: str = ""
+    image_path: str = ""
+    image_fit: str = "cover"
+    image_zoom: float = 1.0
+    image_focus_x: float = 0.5
+    image_focus_y: float = 0.5
     fill: str = "#F4F4F4"
     outline: str = "#222222"
     line_width: int = 2
@@ -133,6 +142,12 @@ class EditorCanvas(CTkCanvas):
         self._text_editor_window_id: int | None = None
         self._text_edit_object_index: int | None = None
         self._text_edit_closing = False
+
+        # Les images de contenu sont conservées en mémoire pendant le rendu
+        # afin que Tkinter ne les supprime pas après create_image().
+        self._rendered_object_images: list[ImageTk.PhotoImage] = []
+        self._source_image_cache: dict[str, tuple[int, int, Image.Image]] = {}
+        self._image_path_resolver: Callable[[str], Path | None] | None = None
 
         # Historique local du canvas. Il peut aussi mémoriser un état
         # externe fourni par la vue, par exemple l'image de fond de la page.
@@ -402,6 +417,16 @@ class EditorCanvas(CTkCanvas):
         self.focus_set()
 
         return "break"
+
+    def set_image_path_resolver(
+        self,
+        resolver: Callable[[str], Path | None] | None,
+    ) -> None:
+        """Associe un résolveur aux chemins d’images enregistrés dans les zones."""
+
+        self._image_path_resolver = resolver
+        self._source_image_cache.clear()
+        self.redraw()
 
     def set_external_history_state(
         self,
@@ -1353,6 +1378,7 @@ class EditorCanvas(CTkCanvas):
         self.delete(
             "all",
         )
+        self._rendered_object_images.clear()
 
         page_width = self.viewport.mm_to_px(
             self.page_format.width_mm,
@@ -1486,12 +1512,300 @@ class EditorCanvas(CTkCanvas):
 
     @staticmethod
     def _has_text_content(graphic_object: CanvasObject) -> bool:
-        """Indique si la zone contient du texte, y compris les anciens objets texte."""
+        """Indique si la zone est destinée à recevoir du texte."""
 
         return (
             graphic_object.kind == "text"
             or graphic_object.content_type == "text"
         )
+
+    @staticmethod
+    def _has_image_content(graphic_object: CanvasObject) -> bool:
+        return graphic_object.content_type == "image"
+
+    @staticmethod
+    def _content_is_fixed(graphic_object: CanvasObject) -> bool:
+        return getattr(graphic_object, "content_mode", "variable") == "fixed"
+
+    @staticmethod
+    def _content_label(graphic_object: CanvasObject) -> str:
+        label = getattr(graphic_object, "content_label", "").strip()
+        if label:
+            return label
+        if graphic_object.content_type == "image":
+            return "IMAGE"
+        if graphic_object.content_type == "text" or graphic_object.kind == "text":
+            return "TEXTE"
+        return "CONTENU"
+
+    def _draw_placeholder_line(
+        self,
+        graphic_object: CanvasObject,
+        start: Point,
+        end: Point,
+        *,
+        width: int = 2,
+    ) -> None:
+        center = self._object_center(graphic_object)
+        rotation = self._normalize_rotation(graphic_object.rotation)
+        rotated_start = self._rotate_point(start, center, rotation)
+        rotated_end = self._rotate_point(end, center, rotation)
+        start_x, start_y = self._point_to_canvas_px(rotated_start)
+        end_x, end_y = self._point_to_canvas_px(rotated_end)
+        self.create_line(
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            fill="#8A8A8A",
+            width=width,
+            capstyle="round",
+        )
+
+    def _draw_content_placeholder(self, graphic_object: CanvasObject) -> None:
+        """Dessine la balise visuelle d'un contenu variable de gabarit."""
+
+        bounds = graphic_object.bounds
+        center = self._object_center(graphic_object)
+        padding = min(bounds.width, bounds.height) * 0.16
+        padding = max(2.0, min(8.0, padding))
+        inner_left = bounds.left + padding
+        inner_right = bounds.right - padding
+        inner_top = bounds.top + padding
+        inner_bottom = bounds.bottom - padding
+
+        if inner_right <= inner_left or inner_bottom <= inner_top:
+            return
+
+        if graphic_object.content_type == "image":
+            image_top = inner_top
+            image_bottom = inner_bottom - min(7.0, bounds.height * 0.22)
+            if image_bottom > image_top:
+                self._draw_placeholder_line(
+                    graphic_object,
+                    Point(inner_left, image_bottom),
+                    Point(inner_left + (inner_right - inner_left) * 0.32, image_top + (image_bottom - image_top) * 0.56),
+                )
+                self._draw_placeholder_line(
+                    graphic_object,
+                    Point(inner_left + (inner_right - inner_left) * 0.32, image_top + (image_bottom - image_top) * 0.56),
+                    Point(inner_left + (inner_right - inner_left) * 0.52, image_top + (image_bottom - image_top) * 0.76),
+                )
+                self._draw_placeholder_line(
+                    graphic_object,
+                    Point(inner_left + (inner_right - inner_left) * 0.52, image_top + (image_bottom - image_top) * 0.76),
+                    Point(inner_right, image_top + (image_bottom - image_top) * 0.28),
+                )
+
+                sun_center = Point(
+                    inner_left + (inner_right - inner_left) * 0.72,
+                    image_top + (image_bottom - image_top) * 0.24,
+                )
+                radius = min(bounds.width, bounds.height) * 0.045
+                radius = max(1.0, min(3.0, radius))
+                points: list[float] = []
+                rotation = self._normalize_rotation(graphic_object.rotation)
+                for step in range(20):
+                    angle = 2 * pi * step / 20
+                    point = Point(
+                        sun_center.x + radius * cos(angle),
+                        sun_center.y + radius * sin(angle),
+                    )
+                    point = self._rotate_point(point, center, rotation)
+                    x_px, y_px = self._point_to_canvas_px(point)
+                    points.extend((x_px, y_px))
+                self.create_polygon(
+                    *points,
+                    fill="",
+                    outline="#8A8A8A",
+                    width=2,
+                    smooth=True,
+                )
+        else:
+            available_height = inner_bottom - inner_top
+            line_count = 4
+            line_gap = available_height / max(1, line_count - 1)
+            for line_index in range(line_count):
+                y = inner_top + line_index * line_gap
+                end_ratio = 0.68 if line_index == line_count - 1 else 1.0
+                self._draw_placeholder_line(
+                    graphic_object,
+                    Point(inner_left, y),
+                    Point(
+                        inner_left + (inner_right - inner_left) * end_ratio,
+                        y,
+                    ),
+                    width=2,
+                )
+
+        label_point = self._rotate_point(
+            Point(center.x, inner_bottom),
+            center,
+            self._normalize_rotation(graphic_object.rotation),
+        )
+        label_x, label_y = self._point_to_canvas_px(label_point)
+        self.create_text(
+            label_x,
+            label_y,
+            text=self._content_label(graphic_object),
+            fill="#666666",
+            font=("Arial", 9, "bold"),
+            anchor="s",
+            angle=-self._normalize_rotation(graphic_object.rotation),
+        )
+
+    def _resolve_object_image_path(
+        self,
+        graphic_object: CanvasObject,
+    ) -> Path | None:
+        raw_path = graphic_object.image_path.strip()
+        if not raw_path:
+            return None
+
+        if self._image_path_resolver is not None:
+            try:
+                resolved = self._image_path_resolver(raw_path)
+            except (OSError, RuntimeError, TypeError, ValueError):
+                resolved = None
+            if resolved is not None:
+                path = Path(resolved)
+                return path if path.is_file() else None
+
+        path = Path(raw_path)
+        return path if path.is_file() else None
+
+    def _load_source_image(
+        self,
+        path: Path,
+    ) -> Image.Image | None:
+        try:
+            stat = path.stat()
+            cache_key = str(path.resolve())
+            signature = (stat.st_mtime_ns, stat.st_size)
+            cached = self._source_image_cache.get(cache_key)
+            if cached is not None and cached[:2] == signature:
+                return cached[2]
+
+            with Image.open(path) as source:
+                loaded = ImageOps.exif_transpose(source).convert("RGBA")
+                loaded.load()
+
+            self._source_image_cache[cache_key] = (
+                signature[0],
+                signature[1],
+                loaded,
+            )
+            return loaded
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _clamp(value: float, minimum: float, maximum: float) -> float:
+        return max(minimum, min(maximum, float(value)))
+
+    def _prepare_zone_image(
+        self,
+        graphic_object: CanvasObject,
+        source: Image.Image,
+        width_px: int,
+        height_px: int,
+    ) -> Image.Image:
+        source_width, source_height = source.size
+        if source_width <= 0 or source_height <= 0:
+            return Image.new("RGBA", (width_px, height_px), (0, 0, 0, 0))
+
+        fit_mode = graphic_object.image_fit.strip().lower()
+        if fit_mode not in {"cover", "contain"}:
+            fit_mode = "cover"
+
+        base_scale = (
+            min(width_px / source_width, height_px / source_height)
+            if fit_mode == "contain"
+            else max(width_px / source_width, height_px / source_height)
+        )
+        zoom = max(0.05, float(graphic_object.image_zoom))
+        scale = max(0.001, base_scale * zoom)
+        resized_width = max(1, round(source_width * scale))
+        resized_height = max(1, round(source_height * scale))
+        resized = source.resize(
+            (resized_width, resized_height),
+            Image.Resampling.LANCZOS,
+        )
+
+        focus_x = self._clamp(graphic_object.image_focus_x, 0.0, 1.0)
+        focus_y = self._clamp(graphic_object.image_focus_y, 0.0, 1.0)
+        overflow_x = max(0, resized_width - width_px)
+        overflow_y = max(0, resized_height - height_px)
+        free_x = max(0, width_px - resized_width)
+        free_y = max(0, height_px - resized_height)
+
+        paste_x = (
+            -round(overflow_x * focus_x)
+            if overflow_x
+            else round(free_x * focus_x)
+        )
+        paste_y = (
+            -round(overflow_y * focus_y)
+            if overflow_y
+            else round(free_y * focus_y)
+        )
+
+        prepared = Image.new(
+            "RGBA",
+            (width_px, height_px),
+            (0, 0, 0, 0),
+        )
+        prepared.alpha_composite(resized, (paste_x, paste_y))
+
+        if graphic_object.kind == "ellipse":
+            mask = Image.new("L", (width_px, height_px), 0)
+            ImageDraw.Draw(mask).ellipse(
+                (0, 0, width_px - 1, height_px - 1),
+                fill=255,
+            )
+            prepared.putalpha(
+                Image.composite(prepared.getchannel("A"), mask, mask)
+            )
+
+        return prepared
+
+    def _draw_zone_image(self, graphic_object: CanvasObject) -> bool:
+        path = self._resolve_object_image_path(graphic_object)
+        if path is None:
+            return False
+
+        source = self._load_source_image(path)
+        if source is None:
+            return False
+
+        width_px = max(1, round(self.viewport.mm_to_px(graphic_object.bounds.width)))
+        height_px = max(1, round(self.viewport.mm_to_px(graphic_object.bounds.height)))
+        prepared = self._prepare_zone_image(
+            graphic_object,
+            source,
+            width_px,
+            height_px,
+        )
+
+        rotation = self._normalize_rotation(graphic_object.rotation)
+        if rotation:
+            prepared = prepared.rotate(
+                -rotation,
+                resample=Image.Resampling.BICUBIC,
+                expand=True,
+            )
+
+        tk_image = ImageTk.PhotoImage(prepared)
+        self._rendered_object_images.append(tk_image)
+        center = self._object_center(graphic_object)
+        center_x, center_y = self._point_to_canvas_px(center)
+        self.create_image(
+            center_x,
+            center_y,
+            image=tk_image,
+            anchor="center",
+        )
+        return True
 
     def _draw_objects(self) -> None:
 
@@ -1529,17 +1843,45 @@ class EditorCanvas(CTkCanvas):
                 else self._object_polygon_points_px(graphic_object)
             )
 
+            has_image = self._has_image_content(graphic_object)
+            content_is_fixed = self._content_is_fixed(graphic_object)
+            has_fixed_image = (
+                has_image
+                and content_is_fixed
+                and bool(graphic_object.image_path.strip())
+            )
+            has_variable_content = (
+                bool(graphic_object.content_type)
+                and not content_is_fixed
+            )
+
             self.create_polygon(
                 *points,
                 fill=graphic_object.fill,
-                outline=outline,
-                width=line_width,
+                outline=("" if has_fixed_image else outline),
+                width=(0 if has_fixed_image else line_width),
                 smooth=(graphic_object.kind == "ellipse"),
                 splinesteps=24,
             )
 
-            if self._has_text_content(graphic_object):
+            if has_fixed_image:
+                self._draw_zone_image(graphic_object)
+                self.create_polygon(
+                    *points,
+                    fill="",
+                    outline=outline,
+                    width=line_width,
+                    smooth=(graphic_object.kind == "ellipse"),
+                    splinesteps=24,
+                )
+
+            if (
+                self._has_text_content(graphic_object)
+                and content_is_fixed
+            ):
                 self._draw_rotated_text(graphic_object)
+            elif has_variable_content:
+                self._draw_content_placeholder(graphic_object)
 
             if graphic_object.locked:
                 self._draw_lock_indicator(
@@ -1951,7 +2293,10 @@ class EditorCanvas(CTkCanvas):
         if object_index is None:
             return None
 
-        if not self._has_text_content(self._objects[object_index]):
+        if (
+            not self._has_text_content(self._objects[object_index])
+            or not self._content_is_fixed(self._objects[object_index])
+        ):
             return None
 
         if (
@@ -1982,6 +2327,7 @@ class EditorCanvas(CTkCanvas):
 
         if (
             not self._has_text_content(graphic_object)
+            or not self._content_is_fixed(graphic_object)
             or graphic_object.locked
             or graphic_object.group_id is not None
         ):

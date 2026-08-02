@@ -2054,7 +2054,11 @@ class PageEditorView:
         self._updating_text_controls = False
         self._content_type_text = tk.StringVar(value="Aucun contenu")
         self._content_text_button = None
+        self._content_image_button = None
         self._content_edit_button = None
+        self._content_replace_image_button = None
+        self._content_image_cover_button = None
+        self._content_image_contain_button = None
         self._content_clear_button = None
         self._fill_color_button = None
         self._outline_color_button = None
@@ -3163,7 +3167,7 @@ class PageEditorView:
 
         self._content_text_button = ctk.CTkButton(
             content_actions,
-            text="Ajouter du texte",
+            text="Texte",
             height=30,
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
@@ -3172,7 +3176,22 @@ class PageEditorView:
         self._content_text_button.grid(
             row=0,
             column=0,
-            columnspan=2,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_image_button = ctk.CTkButton(
+            content_actions,
+            text="Image",
+            height=30,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self._set_selected_zone_content_to_image,
+        )
+        self._content_image_button.grid(
+            row=0,
+            column=1,
             sticky="ew",
             padx=2,
             pady=2,
@@ -3180,7 +3199,7 @@ class PageEditorView:
 
         self._content_edit_button = ctk.CTkButton(
             content_actions,
-            text="Modifier",
+            text="Modifier le texte",
             height=30,
             fg_color="#FFFFFF",
             hover_color=Colors.BUTTON_HOVER,
@@ -3192,6 +3211,65 @@ class PageEditorView:
         self._content_edit_button.grid(
             row=1,
             column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_replace_image_button = ctk.CTkButton(
+            content_actions,
+            text="Remplacer l’image",
+            height=30,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=self._replace_selected_zone_image,
+        )
+        self._content_replace_image_button.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_image_cover_button = ctk.CTkButton(
+            content_actions,
+            text="Remplir",
+            height=30,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=lambda: self._set_selected_zone_image_fit("cover"),
+        )
+        self._content_image_cover_button.grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_image_contain_button = ctk.CTkButton(
+            content_actions,
+            text="Image entière",
+            height=30,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=lambda: self._set_selected_zone_image_fit("contain"),
+        )
+        self._content_image_contain_button.grid(
+            row=3,
+            column=1,
             sticky="ew",
             padx=2,
             pady=2,
@@ -3199,7 +3277,7 @@ class PageEditorView:
 
         self._content_clear_button = ctk.CTkButton(
             content_actions,
-            text="Retirer",
+            text="Retirer le contenu",
             height=30,
             fg_color="#FFFFFF",
             hover_color=Colors.BUTTON_HOVER,
@@ -3209,8 +3287,9 @@ class PageEditorView:
             command=self._clear_selected_zone_content,
         )
         self._content_clear_button.grid(
-            row=1,
-            column=1,
+            row=4,
+            column=0,
+            columnspan=2,
             sticky="ew",
             padx=2,
             pady=2,
@@ -3249,6 +3328,13 @@ class PageEditorView:
             or getattr(graphic_object, "content_type", "") == "text"
         )
 
+    @staticmethod
+    def _zone_has_image_content(graphic_object: CanvasObject) -> bool:
+        return (
+            getattr(graphic_object, "content_type", "") == "image"
+            and bool(getattr(graphic_object, "image_path", "").strip())
+        )
+
     def _single_selected_zone_index(self) -> int | None:
         if self.workspace is None:
             return None
@@ -3283,7 +3369,11 @@ class PageEditorView:
     def _refresh_content_controls(self) -> None:
         buttons = (
             self._content_text_button,
+            self._content_image_button,
             self._content_edit_button,
+            self._content_replace_image_button,
+            self._content_image_cover_button,
+            self._content_image_contain_button,
             self._content_clear_button,
         )
 
@@ -3310,27 +3400,66 @@ class PageEditorView:
 
         graphic_object = self.workspace._objects[index]
         has_text = self._zone_has_text_content(graphic_object)
+        has_image = self._zone_has_image_content(graphic_object)
 
-        self._content_type_text.set(
-            "Type actuel : texte"
-            if has_text
-            else "Type actuel : vide"
-        )
+        if has_text:
+            content_label = "Type actuel : texte"
+        elif has_image:
+            content_label = "Type actuel : image"
+        else:
+            content_label = "Type actuel : vide"
+        self._content_type_text.set(content_label)
 
         if self._content_text_button is not None:
             self._content_text_button.configure(
                 state="disabled" if has_text else "normal",
-                text="Texte déjà présent" if has_text else "Ajouter du texte",
+                text="Texte présent" if has_text else "Texte",
             )
+
+        if self._content_image_button is not None:
+            self._content_image_button.configure(
+                state="disabled" if has_image else "normal",
+                text="Image présente" if has_image else "Image",
+            )
+
         if self._content_edit_button is not None:
             self._content_edit_button.configure(
                 state="normal" if has_text else "disabled",
             )
+
+        if self._content_replace_image_button is not None:
+            self._content_replace_image_button.configure(
+                state="normal" if has_image else "disabled",
+            )
+
+        fit_mode = str(getattr(graphic_object, "image_fit", "cover")).lower()
+        image_controls = (
+            (self._content_image_cover_button, "cover"),
+            (self._content_image_contain_button, "contain"),
+        )
+        for button, mode in image_controls:
+            if button is None:
+                continue
+            active = has_image and fit_mode == mode
+            button.configure(
+                state="normal" if has_image else "disabled",
+                fg_color=Colors.PRIMARY if active else "#FFFFFF",
+                hover_color=(
+                    Colors.PRIMARY_HOVER
+                    if active
+                    else Colors.BUTTON_HOVER
+                ),
+                text_color="#FFFFFF" if active else Colors.TEXT,
+            )
+
         if self._content_clear_button is not None:
             self._content_clear_button.configure(
                 state=(
                     "normal"
-                    if has_text and graphic_object.kind != "text"
+                    if (
+                        (has_text or has_image)
+                        and graphic_object.kind != "text"
+                    )
                     else "disabled"
                 ),
             )
@@ -3355,6 +3484,11 @@ class PageEditorView:
             graphic_object,
             content_type="text",
             text="Saisissez votre texte",
+            image_path="",
+            image_fit="cover",
+            image_zoom=1.0,
+            image_focus_x=0.5,
+            image_focus_y=0.5,
         )
         self.workspace.redraw()
         self.workspace._notify_selection()
@@ -3378,6 +3512,143 @@ class PageEditorView:
 
         self.workspace._start_text_editing(index)
 
+    @staticmethod
+    def _zone_image_filetypes() -> tuple[tuple[str, str], ...]:
+        return (
+            ("Images PNG", "*.png"),
+            ("Images JPEG", "*.jpg *.jpeg"),
+            ("Images WebP", "*.webp"),
+            ("Images BMP", "*.bmp"),
+            ("Images TIFF", "*.tif *.tiff"),
+            ("Tous les fichiers", "*.*"),
+        )
+
+    def _choose_zone_image(self) -> Path | None:
+        selected = filedialog.askopenfilename(
+            parent=self.parent.winfo_toplevel(),
+            title="Choisir une image pour la zone",
+            filetypes=self._zone_image_filetypes(),
+        )
+        return Path(selected) if selected else None
+
+    def _set_selected_zone_content_to_image(self) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            self._save_status_text.set("Sélectionner une seule zone déverrouillée")
+            return
+
+        selected_path = self._choose_zone_image()
+        if selected_path is None:
+            return
+
+        try:
+            resource_value = self._copy_background_resource(selected_path)
+        except (OSError, RuntimeError, ValueError) as exc:
+            messagebox.showerror(
+                "Image impossible à ajouter",
+                str(exc),
+                parent=self.parent.winfo_toplevel(),
+            )
+            return
+
+        graphic_object = self.workspace._objects[index]
+        self.workspace.commit_active_text_edit()
+        self.workspace._remember_current_state()
+        self.workspace._objects[index] = replace(
+            graphic_object,
+            content_type="image",
+            image_path=resource_value,
+            image_fit="cover",
+            image_zoom=1.0,
+            image_focus_x=0.5,
+            image_focus_y=0.5,
+            text="",
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self._save_page_objects(show_status=False)
+        self._save_status_text.set("Image ajoutée à la zone")
+        self.workspace.focus_set()
+
+    def _replace_selected_zone_image(self) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            self._save_status_text.set("Sélectionner une seule zone contenant une image")
+            return
+
+        graphic_object = self.workspace._objects[index]
+        if not self._zone_has_image_content(graphic_object):
+            self._save_status_text.set("Cette zone ne contient pas d’image")
+            return
+
+        selected_path = self._choose_zone_image()
+        if selected_path is None:
+            return
+
+        try:
+            resource_value = self._copy_background_resource(selected_path)
+        except (OSError, RuntimeError, ValueError) as exc:
+            messagebox.showerror(
+                "Image impossible à remplacer",
+                str(exc),
+                parent=self.parent.winfo_toplevel(),
+            )
+            return
+
+        self.workspace._remember_current_state()
+        self.workspace._objects[index] = replace(
+            graphic_object,
+            image_path=resource_value,
+            image_zoom=1.0,
+            image_focus_x=0.5,
+            image_focus_y=0.5,
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self._save_page_objects(show_status=False)
+        self._save_status_text.set("Image remplacée")
+        self.workspace.focus_set()
+
+    def _set_selected_zone_image_fit(self, fit_mode: str) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            return
+
+        graphic_object = self.workspace._objects[index]
+        if not self._zone_has_image_content(graphic_object):
+            return
+
+        normalized_mode = "contain" if fit_mode == "contain" else "cover"
+        if str(getattr(graphic_object, "image_fit", "cover")) == normalized_mode:
+            return
+
+        self.workspace._remember_current_state()
+        self.workspace._objects[index] = replace(
+            graphic_object,
+            image_fit=normalized_mode,
+            image_zoom=1.0,
+            image_focus_x=0.5,
+            image_focus_y=0.5,
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self._save_page_objects(show_status=False)
+        self._save_status_text.set(
+            "Image entière affichée"
+            if normalized_mode == "contain"
+            else "La zone est remplie par l’image"
+        )
+        self.workspace.focus_set()
+
     def _clear_selected_zone_content(self) -> None:
         if self.workspace is None:
             return
@@ -3392,7 +3663,9 @@ class PageEditorView:
             self._save_status_text.set("Cet ancien objet texte ne peut pas être vidé ici")
             return
 
-        if not self._zone_has_text_content(graphic_object):
+        has_text = self._zone_has_text_content(graphic_object)
+        has_image = self._zone_has_image_content(graphic_object)
+        if not has_text and not has_image:
             return
 
         self.workspace.commit_active_text_edit()
@@ -3401,6 +3674,11 @@ class PageEditorView:
             graphic_object,
             content_type="",
             text="",
+            image_path="",
+            image_fit="cover",
+            image_zoom=1.0,
+            image_focus_x=0.5,
+            image_focus_y=0.5,
         )
         self.workspace.redraw()
         self.workspace._notify_selection()
@@ -4895,6 +5173,9 @@ class PageEditorView:
         self.workspace.set_page_format(
             self._resolve_page_format(),
         )
+        self.workspace.set_image_path_resolver(
+            self._resolve_zone_image_resource,
+        )
 
         saved_objects = self._load_page_objects()
 
@@ -5387,6 +5668,25 @@ class PageEditorView:
             widget = getattr(widget, "master", None)
 
         return None
+
+    def _resolve_zone_image_resource(
+        self,
+        resource: str,
+    ) -> Path | None:
+        value = str(resource or "").strip()
+        if not value:
+            return None
+
+        path = Path(value)
+        if path.is_absolute():
+            return path if path.is_file() else None
+
+        project_root = self._project_root()
+        if project_root is None:
+            return None
+
+        resolved = (project_root / path).resolve()
+        return resolved if resolved.is_file() else None
 
     def _copy_background_resource(
         self,
@@ -6812,6 +7112,11 @@ class PageEditorView:
                                 ),
                             )
                         ),
+                        image_path=str(element.get("image_path", "")),
+                        image_fit=str(element.get("image_fit", "cover")),
+                        image_zoom=float(element.get("image_zoom", 1.0)),
+                        image_focus_x=float(element.get("image_focus_x", 0.5)),
+                        image_focus_y=float(element.get("image_focus_y", 0.5)),
                         bounds=Rect(
                             Point(
                                 float(bounds.get("x", 0.0)),
@@ -6862,6 +7167,11 @@ class PageEditorView:
             "type": "canvas_object",
             "kind": canvas_object.kind,
             "content_type": getattr(canvas_object, "content_type", ""),
+            "image_path": getattr(canvas_object, "image_path", ""),
+            "image_fit": getattr(canvas_object, "image_fit", "cover"),
+            "image_zoom": getattr(canvas_object, "image_zoom", 1.0),
+            "image_focus_x": getattr(canvas_object, "image_focus_x", 0.5),
+            "image_focus_y": getattr(canvas_object, "image_focus_y", 0.5),
             "bounds": {
                 "x": canvas_object.bounds.left,
                 "y": canvas_object.bounds.top,
