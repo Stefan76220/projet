@@ -232,8 +232,8 @@ class PageSetupDialog(ctk.CTkToplevel):
     """Réglages visuels du format, des marges et des fonds perdus."""
 
     FREE_FORMAT_LABEL = "Format libre"
-    PREVIEW_WIDTH = 250
-    PREVIEW_HEIGHT = 320
+    PREVIEW_WIDTH = 280
+    PREVIEW_HEIGHT = 360
 
     def __init__(
         self,
@@ -249,8 +249,8 @@ class PageSetupDialog(ctk.CTkToplevel):
         self._dimension_widgets: dict[str, list[object]] = {}
 
         self.title("Format de la page")
-        self.geometry("1080x680")
-        self.minsize(1000, 640)
+        self.geometry("940x630")
+        self.minsize(860, 590)
         self.resizable(True, True)
         self.configure(fg_color=Colors.WINDOW)
         self.transient(parent.winfo_toplevel())
@@ -442,8 +442,8 @@ class PageSetupDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             container,
             text=(
-                "Tous les réglages sont visibles sur une seule fenêtre. "
-                "La vignette se met à jour immédiatement."
+                "Utilise les flèches pour ajuster les valeurs. "
+                "La vignette montre immédiatement la surface obtenue."
             ),
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
@@ -468,7 +468,7 @@ class PageSetupDialog(ctk.CTkToplevel):
         body.grid_columnconfigure(1, weight=0)
         body.grid_rowconfigure(0, weight=1)
 
-        controls = ctk.CTkFrame(
+        controls = ctk.CTkScrollableFrame(
             body,
             fg_color="#FFFFFF",
             corner_radius=12,
@@ -482,39 +482,10 @@ class PageSetupDialog(ctk.CTkToplevel):
             padx=(0, 16),
         )
         controls.grid_columnconfigure(0, weight=1)
-        controls.grid_rowconfigure(1, weight=1)
 
-        self._build_format_section(
-            controls,
-            row=0,
-            column=0,
-        )
-
-        lower_controls = ctk.CTkFrame(
-            controls,
-            fg_color="transparent",
-        )
-        lower_controls.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-            padx=6,
-            pady=(0, 6),
-        )
-        lower_controls.grid_columnconfigure(0, weight=1, uniform="page_setup")
-        lower_controls.grid_columnconfigure(1, weight=1, uniform="page_setup")
-        lower_controls.grid_rowconfigure(0, weight=1)
-
-        self._build_margins_section(
-            lower_controls,
-            row=0,
-            column=0,
-        )
-        self._build_bleed_section(
-            lower_controls,
-            row=0,
-            column=1,
-        )
+        self._build_format_section(controls)
+        self._build_margins_section(controls)
+        self._build_bleed_section(controls)
 
         self._build_preview(body)
 
@@ -571,18 +542,11 @@ class PageSetupDialog(ctk.CTkToplevel):
             column=2,
         )
 
-    def _build_format_section(
-        self,
-        parent,
-        *,
-        row: int = 0,
-        column: int = 0,
-    ) -> None:
+    def _build_format_section(self, parent) -> None:
         section = self._section(
             parent,
             "Format de la page",
-            row,
-            column,
+            0,
         )
 
         self._combo_control(
@@ -625,18 +589,11 @@ class PageSetupDialog(ctk.CTkToplevel):
             step=1.0,
         )
 
-    def _build_margins_section(
-        self,
-        parent,
-        *,
-        row: int = 0,
-        column: int = 0,
-    ) -> None:
+    def _build_margins_section(self, parent) -> None:
         section = self._section(
             parent,
             "Marges de composition",
-            row,
-            column,
+            1,
         )
 
         values = (
@@ -658,18 +615,11 @@ class PageSetupDialog(ctk.CTkToplevel):
                 step=1.0,
             )
 
-    def _build_bleed_section(
-        self,
-        parent,
-        *,
-        row: int = 0,
-        column: int = 0,
-    ) -> None:
+    def _build_bleed_section(self, parent) -> None:
         section = self._section(
             parent,
             "Fonds perdus",
-            row,
-            column,
+            2,
         )
 
         values = (
@@ -694,7 +644,7 @@ class PageSetupDialog(ctk.CTkToplevel):
     def _build_preview(self, parent) -> None:
         preview_frame = ctk.CTkFrame(
             parent,
-            width=290,
+            width=320,
             fg_color="#FFFFFF",
             corner_radius=12,
             border_width=1,
@@ -765,7 +715,6 @@ class PageSetupDialog(ctk.CTkToplevel):
         parent,
         title: str,
         row: int,
-        column: int = 0,
     ) -> ctk.CTkFrame:
         section = ctk.CTkFrame(
             parent,
@@ -774,10 +723,10 @@ class PageSetupDialog(ctk.CTkToplevel):
         )
         section.grid(
             row=row,
-            column=column,
-            sticky="nsew",
-            padx=6,
-            pady=6,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12 if row == 0 else 6, 6),
         )
         section.grid_columnconfigure(0, weight=1)
         section.grid_columnconfigure(1, weight=1)
@@ -2103,6 +2052,10 @@ class PageEditorView:
         self._text_align_buttons: dict[str, object] = {}
         self._text_controls: list[object] = []
         self._updating_text_controls = False
+        self._content_type_text = tk.StringVar(value="Aucun contenu")
+        self._content_text_button = None
+        self._content_edit_button = None
+        self._content_clear_button = None
         self._fill_color_button = None
         self._outline_color_button = None
         self._line_width_var = tk.StringVar(value="2")
@@ -3179,17 +3132,281 @@ class PageEditorView:
         ctk.CTkLabel(info, textvariable=self._properties_size_text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=2)
         ctk.CTkLabel(info, textvariable=self._properties_rotation_text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=(2, 12))
 
-        for title, text in (
+        content_card = ctk.CTkFrame(
+            self._right_panel,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+        )
+        content_card.pack(fill="x", padx=10, pady=6)
+
+        ctk.CTkLabel(
+            content_card,
+            text="Contenu",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+        ).pack(anchor="w", padx=12, pady=(10, 2))
+
+        ctk.CTkLabel(
+            content_card,
+            textvariable=self._content_type_text,
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(anchor="w", padx=12, pady=(0, 8))
+
+        content_actions = ctk.CTkFrame(
+            content_card,
+            fg_color="transparent",
+        )
+        content_actions.pack(fill="x", padx=10, pady=(0, 10))
+        content_actions.grid_columnconfigure(0, weight=1)
+        content_actions.grid_columnconfigure(1, weight=1)
+
+        self._content_text_button = ctk.CTkButton(
+            content_actions,
+            text="Ajouter du texte",
+            height=30,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self._set_selected_zone_content_to_text,
+        )
+        self._content_text_button.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_edit_button = ctk.CTkButton(
+            content_actions,
+            text="Modifier",
+            height=30,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=self._edit_selected_zone_text,
+        )
+        self._content_edit_button.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        self._content_clear_button = ctk.CTkButton(
+            content_actions,
+            text="Retirer",
+            height=30,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=self._clear_selected_zone_content,
+        )
+        self._content_clear_button.grid(
+            row=1,
+            column=1,
+            sticky="ew",
+            padx=2,
+            pady=2,
+        )
+
+        for title, description in (
             ("Dimensions", "Position, taille et rotation"),
-            ("Apparence", "Remplissage et contour"),
-            ("Texte", "Police, taille et alignement"),
+            ("Apparence", "Fond et contour de la zone"),
         ):
-            card = ctk.CTkFrame(self._right_panel, fg_color="#FFFFFF", corner_radius=10)
+            card = ctk.CTkFrame(
+                self._right_panel,
+                fg_color="#FFFFFF",
+                corner_radius=10,
+            )
             card.pack(fill="x", padx=10, pady=6)
-            ctk.CTkLabel(card, text=title, font=Fonts.H2, text_color=Colors.TEXT).pack(anchor="w", padx=12, pady=(10, 2))
-            ctk.CTkLabel(card, text=text, font=Fonts.SMALL, text_color=Colors.TEXT_LIGHT).pack(anchor="w", padx=12, pady=(0, 10))
+            ctk.CTkLabel(
+                card,
+                text=title,
+                font=Fonts.H2,
+                text_color=Colors.TEXT,
+            ).pack(anchor="w", padx=12, pady=(10, 2))
+            ctk.CTkLabel(
+                card,
+                text=description,
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+            ).pack(anchor="w", padx=12, pady=(0, 10))
 
         self._refresh_properties_panel()
+        self._refresh_content_controls()
+
+    @staticmethod
+    def _zone_has_text_content(graphic_object: CanvasObject) -> bool:
+        return (
+            graphic_object.kind == "text"
+            or getattr(graphic_object, "content_type", "") == "text"
+        )
+
+    def _single_selected_zone_index(self) -> int | None:
+        if self.workspace is None:
+            return None
+
+        selected_indices = {
+            index
+            for index in self.workspace._selected_object_indices
+            if 0 <= index < len(self.workspace._objects)
+        }
+
+        primary_index = self.workspace._selected_object_index
+        if (
+            primary_index is not None
+            and 0 <= primary_index < len(self.workspace._objects)
+        ):
+            selected_indices.add(primary_index)
+
+        if len(selected_indices) != 1:
+            return None
+
+        index = next(iter(selected_indices))
+        graphic_object = self.workspace._objects[index]
+
+        if graphic_object.locked or graphic_object.group_id is not None:
+            return None
+
+        if graphic_object.kind not in {"rectangle", "ellipse", "text"}:
+            return None
+
+        return index
+
+    def _refresh_content_controls(self) -> None:
+        buttons = (
+            self._content_text_button,
+            self._content_edit_button,
+            self._content_clear_button,
+        )
+
+        if self.workspace is None:
+            self._content_type_text.set("Aucun contenu")
+            for button in buttons:
+                if button is not None:
+                    button.configure(state="disabled")
+            return
+
+        index = self._single_selected_zone_index()
+
+        if index is None:
+            selected_count = len(self.workspace._selected_object_indices)
+            self._content_type_text.set(
+                "Sélectionnez une seule zone"
+                if selected_count != 1
+                else "Zone groupée ou verrouillée"
+            )
+            for button in buttons:
+                if button is not None:
+                    button.configure(state="disabled")
+            return
+
+        graphic_object = self.workspace._objects[index]
+        has_text = self._zone_has_text_content(graphic_object)
+
+        self._content_type_text.set(
+            "Type actuel : texte"
+            if has_text
+            else "Type actuel : vide"
+        )
+
+        if self._content_text_button is not None:
+            self._content_text_button.configure(
+                state="disabled" if has_text else "normal",
+                text="Texte déjà présent" if has_text else "Ajouter du texte",
+            )
+        if self._content_edit_button is not None:
+            self._content_edit_button.configure(
+                state="normal" if has_text else "disabled",
+            )
+        if self._content_clear_button is not None:
+            self._content_clear_button.configure(
+                state=(
+                    "normal"
+                    if has_text and graphic_object.kind != "text"
+                    else "disabled"
+                ),
+            )
+
+    def _set_selected_zone_content_to_text(self) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            self._save_status_text.set("Sélectionner une seule zone déverrouillée")
+            return
+
+        graphic_object = self.workspace._objects[index]
+        if self._zone_has_text_content(graphic_object):
+            self._edit_selected_zone_text()
+            return
+
+        self.workspace.commit_active_text_edit()
+        self.workspace._remember_current_state()
+        self.workspace._objects[index] = replace(
+            graphic_object,
+            content_type="text",
+            text="Saisissez votre texte",
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self._save_page_objects(show_status=False)
+        self._save_status_text.set("La zone peut maintenant recevoir du texte")
+        self.workspace.focus_set()
+
+    def _edit_selected_zone_text(self) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            self._save_status_text.set("Sélectionner une seule zone de texte")
+            return
+
+        graphic_object = self.workspace._objects[index]
+        if not self._zone_has_text_content(graphic_object):
+            self._save_status_text.set("Cette zone ne contient pas de texte")
+            return
+
+        self.workspace._start_text_editing(index)
+
+    def _clear_selected_zone_content(self) -> None:
+        if self.workspace is None:
+            return
+
+        index = self._single_selected_zone_index()
+        if index is None:
+            self._save_status_text.set("Sélectionner une seule zone déverrouillée")
+            return
+
+        graphic_object = self.workspace._objects[index]
+        if graphic_object.kind == "text":
+            self._save_status_text.set("Cet ancien objet texte ne peut pas être vidé ici")
+            return
+
+        if not self._zone_has_text_content(graphic_object):
+            return
+
+        self.workspace.commit_active_text_edit()
+        self.workspace._remember_current_state()
+        self.workspace._objects[index] = replace(
+            graphic_object,
+            content_type="",
+            text="",
+        )
+        self.workspace.redraw()
+        self.workspace._notify_selection()
+        self._save_page_objects(show_status=False)
+        self._save_status_text.set("Contenu retiré de la zone")
+        self.workspace.focus_set()
 
     def _toggle_properties_panel(self) -> None:
         if self._right_panel is None:
@@ -3268,8 +3485,14 @@ class PageEditorView:
                 "ellipse": "Ellipse",
                 "text": "Texte",
             }
+            type_label = labels.get(
+                selected.kind,
+                selected.kind.capitalize(),
+            )
+            if self._zone_has_text_content(selected):
+                type_label = f"{type_label} • Texte"
             self._properties_type_text.set(
-                f"Type : {labels.get(selected.kind, selected.kind.capitalize())}"
+                f"Type : {type_label}"
             )
             bounds = self.workspace._object_visual_bounds(selected)
         else:
@@ -3774,7 +3997,9 @@ class PageEditorView:
             for index in sorted(selected_indices)
             if (
                 0 <= index < len(self.workspace._objects)
-                and self.workspace._objects[index].kind == "text"
+                and self._zone_has_text_content(
+                    self.workspace._objects[index]
+                )
                 and not self.workspace._objects[index].locked
             )
         ]
@@ -4726,6 +4951,7 @@ class PageEditorView:
 
         self._refresh_shape_controls()
         self._refresh_text_controls()
+        self._refresh_content_controls()
         self._refresh_lock_control()
         self._refresh_group_controls()
         self._sync_editor_tool_state()
@@ -6576,6 +6802,16 @@ class PageEditorView:
                 objects.append(
                     CanvasObject(
                         kind=str(element.get("kind", "rectangle")),
+                        content_type=str(
+                            element.get(
+                                "content_type",
+                                (
+                                    "text"
+                                    if element.get("kind") == "text"
+                                    else ""
+                                ),
+                            )
+                        ),
                         bounds=Rect(
                             Point(
                                 float(bounds.get("x", 0.0)),
@@ -6625,6 +6861,7 @@ class PageEditorView:
         return {
             "type": "canvas_object",
             "kind": canvas_object.kind,
+            "content_type": getattr(canvas_object, "content_type", ""),
             "bounds": {
                 "x": canvas_object.bounds.left,
                 "y": canvas_object.bounds.top,

@@ -22,6 +22,7 @@ class CanvasObject:
 
     kind: str
     bounds: Rect
+    content_type: str = ""
     fill: str = "#F4F4F4"
     outline: str = "#222222"
     line_width: int = 2
@@ -1483,6 +1484,15 @@ class EditorCanvas(CTkCanvas):
 
         return points
 
+    @staticmethod
+    def _has_text_content(graphic_object: CanvasObject) -> bool:
+        """Indique si la zone contient du texte, y compris les anciens objets texte."""
+
+        return (
+            graphic_object.kind == "text"
+            or graphic_object.content_type == "text"
+        )
+
     def _draw_objects(self) -> None:
 
         for index, graphic_object in enumerate(self._objects):
@@ -1528,7 +1538,7 @@ class EditorCanvas(CTkCanvas):
                 splinesteps=24,
             )
 
-            if graphic_object.kind == "text":
+            if self._has_text_content(graphic_object):
                 self._draw_rotated_text(graphic_object)
 
             if graphic_object.locked:
@@ -1941,7 +1951,7 @@ class EditorCanvas(CTkCanvas):
         if object_index is None:
             return None
 
-        if self._objects[object_index].kind != "text":
+        if not self._has_text_content(self._objects[object_index]):
             return None
 
         if (
@@ -1971,7 +1981,7 @@ class EditorCanvas(CTkCanvas):
         graphic_object = self._objects[object_index]
 
         if (
-            graphic_object.kind != "text"
+            not self._has_text_content(graphic_object)
             or graphic_object.locked
             or graphic_object.group_id is not None
         ):
@@ -2012,7 +2022,11 @@ class EditorCanvas(CTkCanvas):
         )
 
         self._text_editor.bind(
-            "<Return>",
+            "<Control-Return>",
+            self._validate_text_edit,
+        )
+        self._text_editor.bind(
+            "<Control-KP_Enter>",
             self._validate_text_edit,
         )
         self._text_editor.bind(
@@ -2593,6 +2607,11 @@ class EditorCanvas(CTkCanvas):
             graphic_object = CanvasObject(
                 kind=self._active_tool,
                 bounds=bounds,
+                content_type=(
+                    "text"
+                    if self._active_tool == "text"
+                    else ""
+                ),
             )
 
             self._objects.append(
