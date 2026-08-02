@@ -1520,6 +1520,7 @@ class BackgroundTypeDialog(ctk.CTkToplevel):
     MODE_LABELS = {
         "Remplir sans déformation": "remplir",
         "Afficher l’image entière": "ajuster",
+        "Dimensions et position du fond": "manuel",
     }
 
     SCOPE_LABELS = {
@@ -2042,6 +2043,196 @@ class VariableBackgroundDialog(ctk.CTkToplevel):
             (parent.winfo_height() - self.winfo_height()) // 2,
         )
 
+        self.geometry(f"+{x}+{y}")
+        self.lift()
+        self.focus_force()
+
+
+class VisualReferenceGuideDialog(ctk.CTkToplevel):
+    """Réglage simple du visuel témoin affiché sur la page."""
+
+    SCOPE_LABELS = {
+        "Surface entre les marges": "surface_composition",
+        "Page entière": "page",
+        "Page avec fonds perdus": "fonds_perdus",
+    }
+
+    MODE_LABELS = {
+        "Remplir sans déformation": "remplir",
+        "Afficher l’image entière": "ajuster",
+    }
+
+    def __init__(self, parent, *, summaries: list[dict], initial_state: dict, on_apply, on_hide, on_close) -> None:
+        super().__init__(parent)
+        self._summaries = list(summaries)
+        self._on_apply = on_apply
+        self._on_hide = on_hide
+        self._on_close = on_close
+        self._closing = False
+
+        self.reference_var = tk.StringVar(value=str(initial_state.get("reference_id", "")))
+        self.scope_var = tk.StringVar(value=self._label_for_scope(str(initial_state.get("scope", "page"))))
+        self.mode_var = tk.StringVar(value=self._label_for_mode(str(initial_state.get("mode", "remplir"))))
+        self.opacity_var = tk.DoubleVar(value=float(initial_state.get("opacity", 0.35)))
+        self.info_var = tk.StringVar(value="")
+
+        self.title("Visuel témoin sur la page")
+        self.geometry("620x470")
+        self.minsize(600, 450)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        self._build()
+        self.after(50, self._center_window)
+
+    def _label_for_scope(self, scope: str) -> str:
+        reverse = {value: label for label, value in self.SCOPE_LABELS.items()}
+        return reverse.get(scope, "Page entière")
+
+    def _label_for_mode(self, mode: str) -> str:
+        reverse = {value: label for label, value in self.MODE_LABELS.items()}
+        return reverse.get(mode, "Remplir sans déformation")
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=18, pady=18)
+        container.grid_rowconfigure(1, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(container, text="Visuel témoin", font=Fonts.H1, text_color=Colors.TEXT, anchor="w").grid(row=0, column=0, columnspan=2, sticky="ew")
+        ctk.CTkLabel(container, text="Le visuel témoin sert uniquement de guide visuel sur la page et n’est jamais exporté.", font=Fonts.NORMAL, text_color=Colors.TEXT_LIGHT, anchor="w", justify="left", wraplength=560).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(28, 0))
+
+        left = ctk.CTkFrame(container, fg_color="#FFFFFF", corner_radius=12, border_width=1, border_color=Colors.BORDER)
+        left.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(14, 0))
+        left.grid_rowconfigure(1, weight=1)
+        left.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(left, text="Références associées", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 6))
+        self._listbox = tk.Listbox(left, activestyle="dotbox", exportselection=False, height=12, font=(Fonts.FAMILY, 11), selectmode="browse")
+        self._listbox.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        for summary in self._summaries:
+            self._listbox.insert("end", f"{summary.get('identifiant', '')} — {summary.get('nom', '')}")
+        target_index = 0
+        selected_id = self.reference_var.get().strip()
+        for index, summary in enumerate(self._summaries):
+            if str(summary.get("identifiant", "")).strip() == selected_id:
+                target_index = index
+                break
+        if self._summaries:
+            self._listbox.selection_set(target_index)
+            self._listbox.see(target_index)
+            self.reference_var.set(str(self._summaries[target_index].get("identifiant", "")))
+        self._listbox.bind("<<ListboxSelect>>", self._on_list_selection)
+        self._listbox.bind("<Double-Button-1>", self._open_selected)
+
+        right = ctk.CTkFrame(container, fg_color="#FFFFFF", corner_radius=12, border_width=1, border_color=Colors.BORDER)
+        right.grid(row=1, column=1, sticky="nsew", padx=(8, 0), pady=(14, 0))
+        right.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(right, text="Portée", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 4))
+        ctk.CTkComboBox(right, values=list(self.SCOPE_LABELS.keys()), variable=self.scope_var, state="readonly").grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
+
+        ctk.CTkLabel(right, text="Adaptation", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 4))
+        ctk.CTkComboBox(right, values=list(self.MODE_LABELS.keys()), variable=self.mode_var, state="readonly").grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 12))
+
+        ctk.CTkLabel(right, text="Transparence", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 4))
+        self._opacity_slider = ctk.CTkSlider(right, from_=0.1, to=1.0, number_of_steps=18, variable=self.opacity_var, command=self._on_opacity_changed)
+        self._opacity_slider.grid(row=5, column=0, sticky="ew", padx=14, pady=(0, 4))
+        self._opacity_label = ctk.CTkLabel(right, text=self._opacity_text(), font=Fonts.NORMAL, text_color=Colors.TEXT, anchor="e")
+        self._opacity_label.grid(row=6, column=0, sticky="ew", padx=14, pady=(0, 12))
+
+        ctk.CTkLabel(right, textvariable=self.info_var, font=Fonts.SMALL, text_color="#8C2F2F", anchor="w", justify="left", wraplength=250).grid(row=7, column=0, sticky="ew", padx=14, pady=(0, 10))
+
+        footer = ctk.CTkFrame(container, fg_color="transparent")
+        footer.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
+        footer.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(footer, text="Masquer", width=100, height=36, fg_color="#FFFFFF", hover_color=Colors.BUTTON_HOVER, text_color=Colors.TEXT, border_width=1, border_color=Colors.BORDER, command=self._hide).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(footer, text="Ouvrir", width=110, height=36, fg_color="#6B7F91", hover_color="#5A6D7D", command=self._open_selected).grid(row=0, column=1, sticky="e", padx=(0, 8))
+        ctk.CTkButton(footer, text="Fermer", width=110, height=36, fg_color=Colors.BUTTON, hover_color=Colors.BUTTON_HOVER, text_color=Colors.TEXT, command=self.close).grid(row=0, column=2, sticky="e")
+
+    def _opacity_text(self) -> str:
+        return f"{int(round(self.opacity_var.get() * 100))} %"
+
+    def _on_opacity_changed(self, _value=None) -> None:
+        self._opacity_label.configure(text=self._opacity_text())
+
+        reference_id = self.reference_var.get().strip()
+        if not reference_id:
+            return
+
+        self._on_apply({
+            "active": True,
+            "reference_id": reference_id,
+            "scope": self.SCOPE_LABELS.get(
+                self.scope_var.get(),
+                "page",
+            ),
+            "mode": self.MODE_LABELS.get(
+                self.mode_var.get(),
+                "remplir",
+            ),
+            "opacity": float(self.opacity_var.get()),
+        })
+        self.info_var.set("Transparence appliquée instantanément.")
+
+    def _on_list_selection(self, _event=None) -> None:
+        selection = self._listbox.curselection()
+        if not selection:
+            return
+        summary = self._summaries[int(selection[0])]
+        self.reference_var.set(str(summary.get("identifiant", "")))
+
+    def _open_selected(self, event=None) -> None:
+        if event is not None and self._summaries:
+            index = int(self._listbox.nearest(event.y))
+            index = max(0, min(index, len(self._summaries) - 1))
+            self._listbox.selection_clear(0, "end")
+            self._listbox.selection_set(index)
+            self._listbox.see(index)
+            self.reference_var.set(
+                str(
+                    self._summaries[index].get(
+                        "identifiant",
+                        "",
+                    )
+                )
+            )
+
+        self._apply()
+
+    def _apply(self) -> None:
+        if not self.reference_var.get().strip():
+            self.info_var.set("Sélectionne un visuel témoin.")
+            return
+        self._on_apply({
+            "active": True,
+            "reference_id": self.reference_var.get().strip(),
+            "scope": self.SCOPE_LABELS.get(self.scope_var.get(), "page"),
+            "mode": self.MODE_LABELS.get(self.mode_var.get(), "remplir"),
+            "opacity": float(self.opacity_var.get()),
+        })
+        self.info_var.set("Visuel témoin ouvert sur la page.")
+
+    def _hide(self) -> None:
+        self._on_hide()
+        self.info_var.set("Visuel témoin masqué sur la page.")
+
+    def close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self.destroy()
+        finally:
+            self._on_close()
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(0, (parent.winfo_width() - self.winfo_width()) // 2)
+        y = parent.winfo_y() + max(0, (parent.winfo_height() - self.winfo_height()) // 2)
         self.geometry(f"+{x}+{y}")
         self.lift()
         self.focus_force()
@@ -2611,7 +2802,13 @@ class PageEditorView:
         self._right_panel_visible = True
         self._toggle_panel_button: ctk.CTkButton | None = None
         self._visual_reference_view_button: ctk.CTkButton | None = None
+        self._visual_reference_overlay_button: ctk.CTkButton | None = None
         self._visual_reference_window: ctk.CTkToplevel | None = None
+        self._visual_reference_guide_dialog: VisualReferenceGuideDialog | None = None
+        self._visual_reference_guide_canvas_tag = f"VisualReferenceGuide_{id(self)}"
+        self._visual_reference_guide_photo = None
+        self._visual_reference_guide_render_cache_key = None
+        self._visual_reference_guide_render_cache_image = None
         self._visual_reference_window_listbox: tk.Listbox | None = None
         self._visual_reference_window_image_label: tk.Label | None = None
         self._visual_reference_window_title_var = tk.StringVar(value="")
@@ -3575,7 +3772,7 @@ class PageEditorView:
         remove_background_button.pack(fill="x")
         self._ribbon_action_buttons.append(remove_background_button)
 
-        _, visual_reference = group("Visuel témoin", 176)
+        _, visual_reference = group("Visuel témoin", 264)
 
         icon_button(
             visual_reference,
@@ -3589,6 +3786,18 @@ class PageEditorView:
             "◉",
             "Consulter",
             self._view_visual_reference,
+            width=76,
+            state=(
+                "normal"
+                if self._current_visual_reference_summaries()
+                else "disabled"
+            ),
+        )
+        self._visual_reference_overlay_button = icon_button(
+            visual_reference,
+            "◎",
+            "Guide",
+            self._open_visual_reference_guide_dialog,
             width=76,
             state=(
                 "normal"
@@ -6372,21 +6581,415 @@ class PageEditorView:
 
     def _refresh_visual_reference_button(self) -> None:
         button = self._visual_reference_view_button
-
-        if button is None:
-            return
+        guide_button = self._visual_reference_overlay_button
 
         count = len(
             self._current_visual_reference_summaries()
         )
-        button.configure(
-            state="normal" if count else "disabled",
-            text=(
-                f"◉ Consulter ({count})"
-                if count
-                else "◉ Consulter"
+        if button is not None:
+            button.configure(
+                state="normal" if count else "disabled",
+                text=(
+                    f"◉ Consulter ({count})"
+                    if count
+                    else "◉ Consulter"
+                ),
+            )
+        if guide_button is not None:
+            guide_button.configure(
+                state="normal" if count else "disabled"
+            )
+
+    def _default_visual_reference_guide_state(self) -> dict[str, float | str | bool]:
+        target = self._background_scope_box_mm("page")
+        return {
+            "active": False,
+            "initialized": False,
+            "reference_id": "",
+            "scope": "page",
+            "mode": "remplir",
+            "opacity": 0.35,
+            "x_mm": target["x"],
+            "y_mm": target["y"],
+            "largeur_mm": target["largeur"],
+            "hauteur_mm": target["hauteur"],
+        }
+
+    def _visual_reference_guide_state(self) -> dict[str, float | str | bool]:
+        content = getattr(self.page, "content", {})
+        state = content.get("visuel_temoin_guide", {})
+        if not isinstance(state, dict):
+            state = {}
+        normalized = self._default_visual_reference_guide_state()
+        normalized.update(state)
+        normalized["active"] = bool(normalized.get("active"))
+        normalized["initialized"] = bool(normalized.get("initialized"))
+        normalized["reference_id"] = str(normalized.get("reference_id", "")).strip()
+        normalized["scope"] = str(normalized.get("scope", "page")).strip().lower()
+        if normalized["scope"] not in {"surface_composition", "page", "fonds_perdus"}:
+            normalized["scope"] = "page"
+        normalized["mode"] = str(normalized.get("mode", "remplir")).strip().lower()
+        if normalized["mode"] not in {"remplir", "ajuster", "manuel"}:
+            normalized["mode"] = "remplir"
+        normalized["opacity"] = max(0.1, min(1.0, float(normalized.get("opacity", 0.35))))
+
+        target = self._background_scope_box_mm(normalized["scope"])
+        normalized["x_mm"] = float(normalized.get("x_mm", target["x"]))
+        normalized["y_mm"] = float(normalized.get("y_mm", target["y"]))
+        normalized["largeur_mm"] = max(
+            1.0,
+            float(normalized.get("largeur_mm", target["largeur"])),
+        )
+        normalized["hauteur_mm"] = max(
+            1.0,
+            float(normalized.get("hauteur_mm", target["hauteur"])),
+        )
+
+        content["visuel_temoin_guide"] = normalized
+        return normalized
+
+    def _set_visual_reference_guide_state(self, payload: dict) -> None:
+        state = self._visual_reference_guide_state()
+        state.update(
+            {
+                "active": bool(payload.get("active", True)),
+                "initialized": True,
+                "reference_id": str(payload.get("reference_id", state.get("reference_id", ""))).strip(),
+                "scope": str(payload.get("scope", state.get("scope", "page"))).strip().lower(),
+                "mode": str(payload.get("mode", state.get("mode", "remplir"))).strip().lower(),
+                "opacity": float(payload.get("opacity", state.get("opacity", 0.35))),
+            }
+        )
+        self.page.content["visuel_temoin_guide"] = self._visual_reference_guide_state()
+        self.page.save(update_history=False)
+        document = self._load_current_document()
+        if document is not None:
+            document.update_page_summary(self.page)
+        self._invalidate_visual_reference_guide_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+
+    def _hide_visual_reference_guide(self) -> None:
+        state = self._visual_reference_guide_state()
+        state["active"] = False
+        self.page.content["visuel_temoin_guide"] = state
+        self.page.save(update_history=False)
+        self._invalidate_visual_reference_guide_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+
+    def _open_visual_reference_guide_dialog(self) -> None:
+        summaries = self._current_visual_reference_summaries()
+        if not summaries:
+            self._save_status_text.set("Aucun visuel témoin n’est associé à cette page")
+            return
+        existing = self._visual_reference_guide_dialog
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_force()
+                    return
+            except tk.TclError:
+                self._visual_reference_guide_dialog = None
+        current_state = self._visual_reference_guide_state()
+
+        if not current_state.get("initialized"):
+            background = dict(
+                getattr(
+                    self.page,
+                    "background",
+                    {},
+                )
+            )
+            scope = str(
+                background.get(
+                    "portee",
+                    "page",
+                )
+            ).strip().lower()
+            if scope not in {
+                "surface_composition",
+                "page",
+                "fonds_perdus",
+            }:
+                scope = "page"
+
+            mode = str(
+                background.get(
+                    "mode",
+                    "remplir",
+                )
+            ).strip().lower()
+            if mode not in {
+                "remplir",
+                "ajuster",
+                "manuel",
+            }:
+                mode = "remplir"
+
+            target = self._background_scope_box_mm(scope)
+            current_state.update(
+                {
+                    "scope": scope,
+                    "mode": mode,
+                    "x_mm": float(
+                        background.get(
+                            "x_mm",
+                            target["x"],
+                        )
+                    ),
+                    "y_mm": float(
+                        background.get(
+                            "y_mm",
+                            target["y"],
+                        )
+                    ),
+                    "largeur_mm": max(
+                        1.0,
+                        float(
+                            background.get(
+                                "largeur_mm",
+                                target["largeur"],
+                            )
+                        ),
+                    ),
+                    "hauteur_mm": max(
+                        1.0,
+                        float(
+                            background.get(
+                                "hauteur_mm",
+                                target["hauteur"],
+                            )
+                        ),
+                    ),
+                }
+            )
+
+        if not current_state.get("reference_id"):
+            current_state["reference_id"] = str(summaries[0].get("identifiant", ""))
+        parent = self.root.winfo_toplevel() if self.root is not None else self.parent.winfo_toplevel()
+        def _close_dialog() -> None:
+            self._visual_reference_guide_dialog = None
+        self._visual_reference_guide_dialog = VisualReferenceGuideDialog(
+            parent,
+            summaries=summaries,
+            initial_state=current_state,
+            on_apply=self._set_visual_reference_guide_state,
+            on_hide=self._hide_visual_reference_guide,
+            on_close=_close_dialog,
+        )
+
+    def _current_visual_reference_guide_summary(self) -> dict | None:
+        state = self._visual_reference_guide_state()
+        reference_id = str(state.get("reference_id", "")).strip()
+        if not reference_id:
+            return None
+        for summary in self._current_visual_reference_summaries():
+            if str(summary.get("identifiant", "")).strip() == reference_id:
+                return dict(summary)
+        return None
+
+    def _resolve_visual_reference_path_from_summary(self, summary: dict) -> Path | None:
+        project_root = self._project_root()
+        resource = str(summary.get("fichier", "")).strip()
+        if project_root is None or not resource:
+            return None
+        path = (project_root / resource).resolve()
+        return path if path.is_file() else None
+
+    def _invalidate_visual_reference_guide_cache(self) -> None:
+        self._visual_reference_guide_photo = None
+        self._visual_reference_guide_render_cache_key = None
+        self._visual_reference_guide_render_cache_image = None
+
+    def _draw_visual_reference_guide(self, *_args) -> None:
+        canvas = self.workspace
+        if canvas is None:
+            return
+        try:
+            if not canvas.winfo_exists():
+                return
+            canvas.delete(self._visual_reference_guide_canvas_tag)
+            state = self._visual_reference_guide_state()
+            if not state.get("active"):
+                self._visual_reference_guide_photo = None
+                return
+            summary = self._current_visual_reference_guide_summary()
+            if summary is None:
+                self._visual_reference_guide_photo = None
+                return
+            image_path = self._resolve_visual_reference_path_from_summary(summary)
+            if image_path is None:
+                self._visual_reference_guide_photo = None
+                return
+            scope_box = self._background_scope_box_mm(str(state.get("scope", "page")))
+            scope_width_px = max(1, int(round(canvas.viewport.mm_to_px(scope_box["largeur"]))))
+            scope_height_px = max(1, int(round(canvas.viewport.mm_to_px(scope_box["hauteur"]))))
+            cache_key = (
+                str(image_path),
+                image_path.stat().st_mtime_ns,
+                scope_width_px,
+                scope_height_px,
+                tuple(sorted((key, float(value)) for key, value in scope_box.items())),
+                str(state.get("mode", "remplir")),
+                float(state.get("opacity", 0.35)),
+                float(state.get("x_mm", scope_box["x"])),
+                float(state.get("y_mm", scope_box["y"])),
+                float(state.get("largeur_mm", scope_box["largeur"])),
+                float(state.get("hauteur_mm", scope_box["hauteur"])),
+            )
+            if cache_key != self._visual_reference_guide_render_cache_key:
+                self._visual_reference_guide_render_cache_image = self._render_visual_reference_guide_image(
+                    image_path=image_path,
+                    guide_state=state,
+                    scope_box_mm=scope_box,
+                    output_width_px=scope_width_px,
+                    output_height_px=scope_height_px,
+                )
+                self._visual_reference_guide_render_cache_key = cache_key
+            rendered = self._visual_reference_guide_render_cache_image
+            if rendered is None:
+                return
+            existing_items = canvas.find_all()
+            self._visual_reference_guide_photo = ImageTk.PhotoImage(rendered)
+            item = canvas.create_image(
+                canvas.page_left + canvas.viewport.mm_to_px(scope_box["x"]),
+                canvas.page_top + canvas.viewport.mm_to_px(scope_box["y"]),
+                anchor="nw",
+                image=self._visual_reference_guide_photo,
+                tags=(self._visual_reference_guide_canvas_tag, "visuel_temoin_guide"),
+            )
+            background_items = canvas.find_withtag(
+                self._background_canvas_tag
+            )
+            if background_items:
+                canvas.tag_raise(
+                    item,
+                    background_items[-1],
+                )
+            elif len(existing_items) >= 3:
+                canvas.tag_lower(
+                    item,
+                    existing_items[2],
+                )
+        except (AttributeError, OSError, RuntimeError, tk.TclError, TypeError, ValueError):
+            self._visual_reference_guide_photo = None
+
+    def _render_visual_reference_guide_image(
+        self,
+        *,
+        image_path: Path,
+        guide_state: dict,
+        scope_box_mm: dict[str, float],
+        output_width_px: int,
+        output_height_px: int,
+    ) -> Image.Image:
+        with Image.open(image_path) as source:
+            original = source.convert("RGBA")
+
+        output = Image.new(
+            "RGBA",
+            (output_width_px, output_height_px),
+            (255, 255, 255, 0),
+        )
+        mode = str(guide_state.get("mode", "remplir"))
+
+        if mode == "manuel":
+            scale_x = output_width_px / max(
+                float(scope_box_mm["largeur"]),
+                0.001,
+            )
+            scale_y = output_height_px / max(
+                float(scope_box_mm["hauteur"]),
+                0.001,
+            )
+            frame_x = float(
+                guide_state.get(
+                    "x_mm",
+                    scope_box_mm["x"],
+                )
+            )
+            frame_y = float(
+                guide_state.get(
+                    "y_mm",
+                    scope_box_mm["y"],
+                )
+            )
+            frame_width = max(
+                1.0,
+                float(
+                    guide_state.get(
+                        "largeur_mm",
+                        scope_box_mm["largeur"],
+                    )
+                ),
+            )
+            frame_height = max(
+                1.0,
+                float(
+                    guide_state.get(
+                        "hauteur_mm",
+                        scope_box_mm["hauteur"],
+                    )
+                ),
+            )
+            x = int(
+                round(
+                    (frame_x - scope_box_mm["x"])
+                    * scale_x
+                )
+            )
+            y = int(
+                round(
+                    (frame_y - scope_box_mm["y"])
+                    * scale_y
+                )
+            )
+            width = max(
+                1,
+                int(round(frame_width * scale_x)),
+            )
+            height = max(
+                1,
+                int(round(frame_height * scale_y)),
+            )
+            rendered = original.resize(
+                (width, height),
+                Image.Resampling.LANCZOS,
+            )
+        elif mode == "ajuster":
+            rendered = ImageOps.contain(
+                original,
+                (output_width_px, output_height_px),
+                Image.Resampling.LANCZOS,
+            )
+            x = (output_width_px - rendered.width) // 2
+            y = (output_height_px - rendered.height) // 2
+        else:
+            rendered = ImageOps.fit(
+                original,
+                (output_width_px, output_height_px),
+                Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+            x = 0
+            y = 0
+
+        opacity = max(
+            0.1,
+            min(
+                1.0,
+                float(guide_state.get("opacity", 0.35)),
             ),
         )
+        alpha = rendered.getchannel("A").point(
+            lambda value: int(value * opacity)
+        )
+        rendered.putalpha(alpha)
+        output.alpha_composite(rendered, (x, y))
+        return output
 
     def _close_visual_reference_window(self) -> None:
         window = self._visual_reference_window
@@ -7860,6 +8463,7 @@ class PageEditorView:
 
     def _draw_page_overlays(self, *_args) -> None:
         self._draw_page_background()
+        self._draw_visual_reference_guide()
         self._draw_page_guides()
         self._draw_background_controls()
 
