@@ -1810,6 +1810,7 @@ class VariableBackgroundDialog(ctk.CTkToplevel):
     MODE_LABELS = {
         "Remplir sans déformation": "remplir",
         "Afficher l’image entière": "ajuster",
+        "Dimensions et position libres": "manuel",
     }
 
     SCOPE_LABELS = {
@@ -2060,6 +2061,7 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
     MODE_LABELS = {
         "Remplir sans déformation": "remplir",
         "Afficher l’image entière": "ajuster",
+        "Dimensions et position libres": "manuel",
     }
 
     def __init__(self, parent, *, summaries: list[dict], initial_state: dict, on_apply, on_hide, on_close) -> None:
@@ -2132,10 +2134,10 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
         right.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(right, text="Portée", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 4))
-        ctk.CTkComboBox(right, values=list(self.SCOPE_LABELS.keys()), variable=self.scope_var, state="readonly").grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
+        ctk.CTkComboBox(right, values=list(self.SCOPE_LABELS.keys()), variable=self.scope_var, state="readonly", command=self._on_setting_changed).grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
 
         ctk.CTkLabel(right, text="Adaptation", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=2, column=0, sticky="ew", padx=14, pady=(0, 4))
-        ctk.CTkComboBox(right, values=list(self.MODE_LABELS.keys()), variable=self.mode_var, state="readonly").grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 12))
+        ctk.CTkComboBox(right, values=list(self.MODE_LABELS.keys()), variable=self.mode_var, state="readonly", command=self._on_setting_changed).grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 12))
 
         ctk.CTkLabel(right, text="Transparence", font=Fonts.H2, text_color=Colors.TEXT, anchor="w").grid(row=4, column=0, sticky="ew", padx=14, pady=(0, 4))
         self._opacity_slider = ctk.CTkSlider(right, from_=0.1, to=1.0, number_of_steps=18, variable=self.opacity_var, command=self._on_opacity_changed)
@@ -2143,7 +2145,20 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
         self._opacity_label = ctk.CTkLabel(right, text=self._opacity_text(), font=Fonts.NORMAL, text_color=Colors.TEXT, anchor="e")
         self._opacity_label.grid(row=6, column=0, sticky="ew", padx=14, pady=(0, 12))
 
-        ctk.CTkLabel(right, textvariable=self.info_var, font=Fonts.SMALL, text_color="#8C2F2F", anchor="w", justify="left", wraplength=250).grid(row=7, column=0, sticky="ew", padx=14, pady=(0, 10))
+        ctk.CTkLabel(
+            right,
+            text=(
+                "Tous les réglages sont visibles immédiatement sur la page. "
+                "En mode libre, déplace le visuel ou utilise ses poignées."
+            ),
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+            justify="left",
+            wraplength=250,
+        ).grid(row=7, column=0, sticky="ew", padx=14, pady=(0, 8))
+
+        ctk.CTkLabel(right, textvariable=self.info_var, font=Fonts.SMALL, text_color="#8C2F2F", anchor="w", justify="left", wraplength=250).grid(row=8, column=0, sticky="ew", padx=14, pady=(0, 10))
 
         footer = ctk.CTkFrame(container, fg_color="transparent")
         footer.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(14, 0))
@@ -2155,14 +2170,12 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
     def _opacity_text(self) -> str:
         return f"{int(round(self.opacity_var.get() * 100))} %"
 
-    def _on_opacity_changed(self, _value=None) -> None:
-        self._opacity_label.configure(text=self._opacity_text())
-
+    def _current_payload(self) -> dict | None:
         reference_id = self.reference_var.get().strip()
         if not reference_id:
-            return
+            return None
 
-        self._on_apply({
+        return {
             "active": True,
             "reference_id": reference_id,
             "scope": self.SCOPE_LABELS.get(
@@ -2174,15 +2187,34 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
                 "remplir",
             ),
             "opacity": float(self.opacity_var.get()),
-        })
-        self.info_var.set("Transparence appliquée instantanément.")
+        }
+
+    def _apply_live(self, message: str) -> None:
+        payload = self._current_payload()
+        if payload is None:
+            self.info_var.set("Sélectionne un visuel témoin.")
+            return
+
+        self._on_apply(payload)
+        self.info_var.set(message)
+
+    def _on_opacity_changed(self, _value=None) -> None:
+        self._opacity_label.configure(text=self._opacity_text())
+        self._apply_live("Transparence appliquée instantanément.")
+
+    def _on_setting_changed(self, _value=None) -> None:
+        self._apply_live("Cadrage appliqué instantanément.")
 
     def _on_list_selection(self, _event=None) -> None:
         selection = self._listbox.curselection()
         if not selection:
             return
+
         summary = self._summaries[int(selection[0])]
-        self.reference_var.set(str(summary.get("identifiant", "")))
+        self.reference_var.set(
+            str(summary.get("identifiant", ""))
+        )
+        self._apply_live("Visuel témoin affiché instantanément.")
 
     def _open_selected(self, event=None) -> None:
         if event is not None and self._summaries:
@@ -2203,17 +2235,7 @@ class VisualReferenceGuideDialog(ctk.CTkToplevel):
         self._apply()
 
     def _apply(self) -> None:
-        if not self.reference_var.get().strip():
-            self.info_var.set("Sélectionne un visuel témoin.")
-            return
-        self._on_apply({
-            "active": True,
-            "reference_id": self.reference_var.get().strip(),
-            "scope": self.SCOPE_LABELS.get(self.scope_var.get(), "page"),
-            "mode": self.MODE_LABELS.get(self.mode_var.get(), "remplir"),
-            "opacity": float(self.opacity_var.get()),
-        })
-        self.info_var.set("Visuel témoin ouvert sur la page.")
+        self._apply_live("Visuel témoin affiché sur la page.")
 
     def _hide(self) -> None:
         self._on_hide()
@@ -2806,9 +2828,19 @@ class PageEditorView:
         self._visual_reference_window: ctk.CTkToplevel | None = None
         self._visual_reference_guide_dialog: VisualReferenceGuideDialog | None = None
         self._visual_reference_guide_canvas_tag = f"VisualReferenceGuide_{id(self)}"
+        self._visual_reference_guide_selection_tag = f"VisualReferenceGuideSelection_{id(self)}"
+        self._visual_reference_guide_frame_tag = f"VisualReferenceGuideFrame_{id(self)}"
+        self._visual_reference_guide_handle_tag = f"VisualReferenceGuideHandle_{id(self)}"
         self._visual_reference_guide_photo = None
         self._visual_reference_guide_render_cache_key = None
         self._visual_reference_guide_render_cache_image = None
+        self._visual_reference_guide_edit_mode = False
+        self._visual_reference_guide_selected = False
+        self._visual_reference_guide_interaction_mode: str | None = None
+        self._visual_reference_guide_interaction_handle: str | None = None
+        self._visual_reference_guide_interaction_start_mm: Point | None = None
+        self._visual_reference_guide_original_frame: dict[str, float] | None = None
+        self._visual_reference_guide_drag_changed = False
         self._visual_reference_window_listbox: tk.Listbox | None = None
         self._visual_reference_window_image_label: tk.Label | None = None
         self._visual_reference_window_title_var = tk.StringVar(value="")
@@ -6650,21 +6682,58 @@ class PageEditorView:
 
     def _set_visual_reference_guide_state(self, payload: dict) -> None:
         state = self._visual_reference_guide_state()
+        previous_scope = str(state.get("scope", "page"))
+        previous_mode = str(state.get("mode", "remplir"))
+        new_scope = str(
+            payload.get(
+                "scope",
+                state.get("scope", "page"),
+            )
+        ).strip().lower()
+        new_mode = str(
+            payload.get(
+                "mode",
+                state.get("mode", "remplir"),
+            )
+        ).strip().lower()
+
         state.update(
             {
                 "active": bool(payload.get("active", True)),
                 "initialized": True,
                 "reference_id": str(payload.get("reference_id", state.get("reference_id", ""))).strip(),
-                "scope": str(payload.get("scope", state.get("scope", "page"))).strip().lower(),
-                "mode": str(payload.get("mode", state.get("mode", "remplir"))).strip().lower(),
+                "scope": new_scope,
+                "mode": new_mode,
                 "opacity": float(payload.get("opacity", state.get("opacity", 0.35))),
             }
         )
-        self.page.content["visuel_temoin_guide"] = self._visual_reference_guide_state()
+
+        if (
+            new_scope != previous_scope
+            or (
+                new_mode == "manuel"
+                and previous_mode != "manuel"
+            )
+        ):
+            target = self._background_scope_box_mm(new_scope)
+            state.update(
+                {
+                    "x_mm": target["x"],
+                    "y_mm": target["y"],
+                    "largeur_mm": target["largeur"],
+                    "hauteur_mm": target["hauteur"],
+                }
+            )
+
+        self.page.content["visuel_temoin_guide"] = state
         self.page.save(update_history=False)
         document = self._load_current_document()
         if document is not None:
             document.update_page_summary(self.page)
+        self._visual_reference_guide_selected = bool(
+            state.get("active")
+            and new_mode == "manuel"
+        )
         self._invalidate_visual_reference_guide_cache()
         if self.workspace is not None:
             self.workspace.redraw()
@@ -6772,6 +6841,16 @@ class PageEditorView:
         parent = self.root.winfo_toplevel() if self.root is not None else self.parent.winfo_toplevel()
         def _close_dialog() -> None:
             self._visual_reference_guide_dialog = None
+            self._visual_reference_guide_edit_mode = False
+            self._visual_reference_guide_selected = False
+            if self.workspace is not None:
+                self.workspace.redraw()
+
+        self._visual_reference_guide_edit_mode = True
+        self._visual_reference_guide_selected = bool(
+            current_state.get("active")
+            and str(current_state.get("mode", "remplir")) == "manuel"
+        )
         self._visual_reference_guide_dialog = VisualReferenceGuideDialog(
             parent,
             summaries=summaries,
@@ -6990,6 +7069,341 @@ class PageEditorView:
         rendered.putalpha(alpha)
         output.alpha_composite(rendered, (x, y))
         return output
+
+    def _visual_reference_guide_frame_mm(self) -> dict[str, float]:
+        state = self._visual_reference_guide_state()
+        target = self._background_scope_box_mm(
+            str(state.get("scope", "page"))
+        )
+        if str(state.get("mode", "remplir")) != "manuel":
+            return dict(target)
+        return {
+            "x": float(state.get("x_mm", target["x"])),
+            "y": float(state.get("y_mm", target["y"])),
+            "largeur": max(
+                1.0,
+                float(
+                    state.get(
+                        "largeur_mm",
+                        target["largeur"],
+                    )
+                ),
+            ),
+            "hauteur": max(
+                1.0,
+                float(
+                    state.get(
+                        "hauteur_mm",
+                        target["hauteur"],
+                    )
+                ),
+            ),
+        }
+
+    def _draw_visual_reference_guide_controls(self) -> None:
+        canvas = self.workspace
+        if canvas is None:
+            return
+
+        try:
+            canvas.delete(
+                self._visual_reference_guide_selection_tag
+            )
+        except tk.TclError:
+            return
+
+        state = self._visual_reference_guide_state()
+        if not (
+            self._visual_reference_guide_edit_mode
+            and self._visual_reference_guide_selected
+            and state.get("active")
+            and str(state.get("mode", "remplir")) == "manuel"
+        ):
+            return
+
+        frame = self._visual_reference_guide_frame_mm()
+        left = canvas.page_left + canvas.viewport.mm_to_px(
+            frame["x"]
+        )
+        top = canvas.page_top + canvas.viewport.mm_to_px(
+            frame["y"]
+        )
+        right = left + canvas.viewport.mm_to_px(
+            frame["largeur"]
+        )
+        bottom = top + canvas.viewport.mm_to_px(
+            frame["hauteur"]
+        )
+
+        canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
+            fill="",
+            outline="#8B5CF6",
+            width=2,
+            tags=(
+                self._visual_reference_guide_selection_tag,
+                self._visual_reference_guide_frame_tag,
+            ),
+        )
+
+        middle_x = (left + right) / 2
+        middle_y = (top + bottom) / 2
+        positions = {
+            "nw": (left, top),
+            "n": (middle_x, top),
+            "ne": (right, top),
+            "e": (right, middle_y),
+            "se": (right, bottom),
+            "s": (middle_x, bottom),
+            "sw": (left, bottom),
+            "w": (left, middle_y),
+        }
+        half = 5
+        for handle, (x, y) in positions.items():
+            canvas.create_rectangle(
+                x - half,
+                y - half,
+                x + half,
+                y + half,
+                fill="#FFFFFF",
+                outline="#8B5CF6",
+                width=2,
+                tags=(
+                    self._visual_reference_guide_selection_tag,
+                    self._visual_reference_guide_handle_tag,
+                    f"visual_reference_guide_handle:{handle}",
+                ),
+            )
+
+        canvas.tag_raise(
+            self._visual_reference_guide_selection_tag
+        )
+
+    def _begin_visual_reference_guide_interaction(
+        self,
+        event,
+        *,
+        mode: str,
+        handle: str | None = None,
+    ) -> str | None:
+        canvas = self.workspace
+        state = self._visual_reference_guide_state()
+        if (
+            canvas is None
+            or getattr(self.page, "locked", False)
+            or not self._visual_reference_guide_edit_mode
+            or not state.get("active")
+            or str(state.get("mode", "remplir")) != "manuel"
+        ):
+            return None
+
+        self._visual_reference_guide_selected = True
+        self._visual_reference_guide_interaction_mode = mode
+        self._visual_reference_guide_interaction_handle = handle
+        self._visual_reference_guide_interaction_start_mm = (
+            self._background_event_point_mm(event)
+        )
+        self._visual_reference_guide_original_frame = dict(
+            self._visual_reference_guide_frame_mm()
+        )
+        self._visual_reference_guide_drag_changed = False
+        canvas.focus_set()
+        self._draw_visual_reference_guide_controls()
+        return "break"
+
+    def _on_visual_reference_guide_press(self, event):
+        canvas = self.workspace
+        state = self._visual_reference_guide_state()
+        if (
+            canvas is None
+            or not self._visual_reference_guide_edit_mode
+            or not state.get("active")
+            or str(state.get("mode", "remplir")) != "manuel"
+        ):
+            return None
+
+        current = canvas.find_withtag("current")
+        tags = (
+            set(canvas.gettags(current[-1]))
+            if current
+            else set()
+        )
+
+        if self._visual_reference_guide_handle_tag in tags:
+            handle = None
+            for tag in tags:
+                if tag.startswith(
+                    "visual_reference_guide_handle:"
+                ):
+                    handle = tag.split(":", 1)[1]
+                    break
+            if handle:
+                return self._begin_visual_reference_guide_interaction(
+                    event,
+                    mode="resize",
+                    handle=handle,
+                )
+
+        if (
+            self._visual_reference_guide_frame_tag in tags
+            or self._visual_reference_guide_canvas_tag in tags
+        ):
+            return self._begin_visual_reference_guide_interaction(
+                event,
+                mode="move",
+            )
+
+        return "break"
+
+    def _on_visual_reference_guide_drag(self, event):
+        if (
+            self._visual_reference_guide_interaction_mode is None
+            or self._visual_reference_guide_interaction_start_mm is None
+            or self._visual_reference_guide_original_frame is None
+        ):
+            return None
+
+        canvas = self.workspace
+        if canvas is None:
+            return None
+
+        current = self._background_event_point_mm(event)
+        start = self._visual_reference_guide_interaction_start_mm
+        dx = current.x - start.x
+        dy = current.y - start.y
+        original = self._visual_reference_guide_original_frame
+
+        if abs(dx) < 0.001 and abs(dy) < 0.001:
+            return "break"
+
+        if self._visual_reference_guide_interaction_mode == "move":
+            scope = self._background_scope_box_mm(
+                str(
+                    self._visual_reference_guide_state().get(
+                        "scope",
+                        "page",
+                    )
+                )
+            )
+            minimum_visible = min(
+                5.0,
+                original["largeur"],
+                original["hauteur"],
+            )
+            new_x = min(
+                scope["x"] + scope["largeur"] - minimum_visible,
+                max(
+                    scope["x"] - original["largeur"] + minimum_visible,
+                    original["x"] + dx,
+                ),
+            )
+            new_y = min(
+                scope["y"] + scope["hauteur"] - minimum_visible,
+                max(
+                    scope["y"] - original["hauteur"] + minimum_visible,
+                    original["y"] + dy,
+                ),
+            )
+            frame = {
+                "x": new_x,
+                "y": new_y,
+                "largeur": original["largeur"],
+                "hauteur": original["hauteur"],
+            }
+        else:
+            frame = self._resize_background_frame(
+                original,
+                self._visual_reference_guide_interaction_handle
+                or "se",
+                dx,
+                dy,
+                True,
+            )
+
+        state = self._visual_reference_guide_state()
+        state.update(
+            {
+                "x_mm": frame["x"],
+                "y_mm": frame["y"],
+                "largeur_mm": frame["largeur"],
+                "hauteur_mm": frame["hauteur"],
+            }
+        )
+        self.page.content["visuel_temoin_guide"] = state
+        self._visual_reference_guide_drag_changed = True
+        self._invalidate_visual_reference_guide_cache()
+        canvas.redraw()
+        return "break"
+
+    def _on_visual_reference_guide_release(self, _event):
+        if self._visual_reference_guide_interaction_mode is None:
+            return None
+
+        changed = self._visual_reference_guide_drag_changed
+        self._visual_reference_guide_interaction_mode = None
+        self._visual_reference_guide_interaction_handle = None
+        self._visual_reference_guide_interaction_start_mm = None
+        self._visual_reference_guide_original_frame = None
+        self._visual_reference_guide_drag_changed = False
+
+        if not changed:
+            self._draw_visual_reference_guide_controls()
+            return "break"
+
+        self.page.save(update_history=False)
+        document = self._load_current_document()
+        if document is not None:
+            document.update_page_summary(self.page)
+        self._invalidate_visual_reference_guide_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        self._save_status_text.set(
+            "Position du visuel témoin enregistrée"
+        )
+        return "break"
+
+    def _move_visual_reference_guide_with_keyboard(
+        self,
+        event,
+    ):
+        state = self._visual_reference_guide_state()
+        if not (
+            self._visual_reference_guide_edit_mode
+            and self._visual_reference_guide_selected
+            and state.get("active")
+            and str(state.get("mode", "remplir")) == "manuel"
+        ):
+            return None
+
+        frame = self._visual_reference_guide_frame_mm()
+        step = 10.0 if (event.state & 0x0001) else 1.0
+        dx = dy = 0.0
+        if event.keysym == "Left":
+            dx = -step
+        elif event.keysym == "Right":
+            dx = step
+        elif event.keysym == "Up":
+            dy = -step
+        elif event.keysym == "Down":
+            dy = step
+        else:
+            return None
+
+        state.update(
+            {
+                "x_mm": frame["x"] + dx,
+                "y_mm": frame["y"] + dy,
+            }
+        )
+        self.page.content["visuel_temoin_guide"] = state
+        self.page.save(update_history=False)
+        self._invalidate_visual_reference_guide_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        return "break"
 
     def _close_visual_reference_window(self) -> None:
         window = self._visual_reference_window
@@ -7735,7 +8149,16 @@ class PageEditorView:
 
     def _on_background_pre_press(self, event):
         canvas = self.workspace
-        if canvas is None or not self._background_edit_mode:
+        if canvas is None:
+            return None
+
+        guide_result = self._on_visual_reference_guide_press(
+            event
+        )
+        if guide_result is not None:
+            return guide_result
+
+        if not self._background_edit_mode:
             return None
 
         if self._background_edit_locked:
@@ -7838,6 +8261,9 @@ class PageEditorView:
             self._draw_background_controls()
 
     def _on_background_drag(self, event):
+        if self._visual_reference_guide_interaction_mode is not None:
+            return self._on_visual_reference_guide_drag(event)
+
         if (
             not self._background_edit_mode
             or self._background_edit_locked
@@ -8019,6 +8445,9 @@ class PageEditorView:
         }
 
     def _on_background_release(self, _event):
+        if self._visual_reference_guide_interaction_mode is not None:
+            return self._on_visual_reference_guide_release(_event)
+
         if self._background_interaction_mode is None:
             return None
 
@@ -8072,6 +8501,12 @@ class PageEditorView:
         return "break"
 
     def _move_background_with_keyboard(self, event):
+        guide_result = self._move_visual_reference_guide_with_keyboard(
+            event
+        )
+        if guide_result is not None:
+            return guide_result
+
         if not self._background_edit_mode:
             return None
         background = getattr(self.page, "background", {})
@@ -8466,6 +8901,7 @@ class PageEditorView:
         self._draw_visual_reference_guide()
         self._draw_page_guides()
         self._draw_background_controls()
+        self._draw_visual_reference_guide_controls()
 
     def _draw_page_guides(self, *_args) -> None:
         """Dessine les limites de composition et de fond perdu."""

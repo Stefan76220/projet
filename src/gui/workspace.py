@@ -24,6 +24,7 @@ class Workspace:
 
         self.application = application
         self.current_project = None
+        self._documents_transitioning = False
 
         self.frame = ctk.CTkFrame(
             parent,
@@ -62,18 +63,44 @@ class Workspace:
         project,
     ) -> None:
 
+        if self._documents_transitioning:
+            return
+
+        self._documents_transitioning = True
         self.current_project = project
-        self._set_navigation_visible(True)
 
-        self.clear()
+        # La vue est construite hors écran puis affichée une seule fois.
+        # Cela évite le double rafraîchissement visible à l'ouverture
+        # du Centre du projet.
+        self.frame.grid_remove()
 
-        DocumentView(
-            self.frame,
-            project,
-            self.application,
-            on_open_document=self.show_document,
-            on_refresh=self.back_to_documents,
-        ).show()
+        try:
+            self._set_navigation_visible(True)
+            self.clear()
+
+            DocumentView(
+                self.frame,
+                project,
+                self.application,
+                on_open_document=self.show_document,
+                on_refresh=self.back_to_documents,
+            ).show()
+
+            self.frame.update_idletasks()
+
+        finally:
+            self.frame.grid(
+                row=0,
+                column=1,
+                sticky="nsew",
+            )
+            self.frame.after_idle(
+                self._finish_documents_transition
+            )
+
+    def _finish_documents_transition(self) -> None:
+
+        self._documents_transitioning = False
 
     def show_document(
         self,
