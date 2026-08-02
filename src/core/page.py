@@ -956,6 +956,7 @@ class Page:
         target = self._background_target_box(normalized_scope)
 
         self.background = {
+            "nature": "fixe",
             "active": True,
             "ressource": resource.strip(),
             "portee": normalized_scope,
@@ -973,6 +974,48 @@ class Page:
         self._add_history(
             action="fond_page",
             description="Image de fond définie.",
+        )
+
+        self.save(
+            update_history=False,
+        )
+
+    def set_variable_background(
+        self,
+        *,
+        scope: str = "page",
+        fit_mode: str = "remplir",
+        keep_aspect_ratio: bool = True,
+    ) -> None:
+        """Déclare un emplacement de fond variable pour la Production."""
+
+        self._ensure_editable()
+
+        normalized_scope = self._normalize_background_scope(scope)
+        normalized_fit_mode = self._normalize_background_fit_mode(
+            fit_mode
+        )
+        target = self._background_target_box(normalized_scope)
+
+        self.background = {
+            "nature": "variable",
+            "active": False,
+            "ressource": "",
+            "portee": normalized_scope,
+            "mode": normalized_fit_mode,
+            "conserver_proportions": bool(keep_aspect_ratio),
+            "opacite": 1.0,
+            "cadre_automatique": True,
+            "x_mm": target["x"],
+            "y_mm": target["y"],
+            "largeur_mm": target["largeur"],
+            "hauteur_mm": target["hauteur"],
+            "rotation": 0.0,
+        }
+
+        self._add_history(
+            action="fond_variable",
+            description="Emplacement de fond variable défini.",
         )
 
         self.save(
@@ -1085,7 +1128,10 @@ class Page:
     def clear_background(self) -> None:
         self._ensure_editable()
 
-        if not self.background.get("active"):
+        if (
+            not self.background.get("active")
+            and self.background.get("nature", "aucun") == "aucun"
+        ):
             return
 
         self.background = self._default_background()
@@ -1680,6 +1726,7 @@ class Page:
 
     def _default_background(self) -> dict[str, Any]:
         return {
+            "nature": "aucun",
             "active": False,
             "ressource": "",
             "portee": "page",
@@ -1717,13 +1764,29 @@ class Page:
 
         target = self._background_target_box(scope)
 
+        raw_nature = str(
+            background.get(
+                "nature",
+                "fixe" if background.get("active") else "aucun",
+            )
+        ).strip().lower()
+        nature = (
+            raw_nature
+            if raw_nature in {"aucun", "fixe", "variable"}
+            else "aucun"
+        )
+        active = bool(
+            background.get(
+                "active",
+                False,
+            )
+        )
+        if nature != "fixe":
+            active = False
+
         return {
-            "active": bool(
-                background.get(
-                    "active",
-                    False,
-                )
-            ),
+            "nature": nature,
+            "active": active,
             "ressource": str(
                 background.get(
                     "ressource",
@@ -1809,7 +1872,10 @@ class Page:
         }
 
     def _reset_background_frame_if_automatic(self) -> None:
-        if not self.background.get("active"):
+        if (
+            not self.background.get("active")
+            and self.background.get("nature", "aucun") != "variable"
+        ):
             return
 
         if not self.background.get("cadre_automatique", True):

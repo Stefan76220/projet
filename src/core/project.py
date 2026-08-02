@@ -21,7 +21,7 @@ class Project:
     sans supprimer ni déplacer leurs fichiers existants.
     """
 
-    VERSION = "1.1"
+    VERSION = "1.2"
 
     PROJECT_FOLDERS = (
         "documents",
@@ -30,6 +30,7 @@ class Project:
         "ressources/illustrations",
         "ressources/icones",
         "ressources/logos",
+        "ressources/visuels_temoins",
         "modeles",
         "contenus",
         "contenus/fiches",
@@ -54,6 +55,7 @@ class Project:
         self.models: list[dict[str, Any]] = []
         self.content_sheets: list[dict[str, Any]] = []
         self.content_collections: list[dict[str, Any]] = []
+        self.visual_references: list[dict[str, Any]] = []
         self.productions: list[dict[str, Any]] = []
 
         self.creation_date: str = ""
@@ -74,6 +76,10 @@ class Project:
     @property
     def resources_folder(self) -> Path:
         return self._require_root() / "ressources"
+
+    @property
+    def visual_references_folder(self) -> Path:
+        return self.resources_folder / "visuels_temoins"
 
     @property
     def models_folder(self) -> Path:
@@ -125,6 +131,7 @@ class Project:
         self.models.clear()
         self.content_sheets.clear()
         self.content_collections.clear()
+        self.visual_references.clear()
         self.productions.clear()
 
         self._create_folders()
@@ -200,6 +207,13 @@ class Project:
             libraries.get(
                 "collections",
                 data.get("collections", []),
+            )
+        )
+
+        self.visual_references = self._normalize_index(
+            libraries.get(
+                "visuels_temoins",
+                data.get("visuels_temoins", []),
             )
         )
 
@@ -285,6 +299,18 @@ class Project:
         )
         self.save()
 
+    def register_visual_reference(
+        self,
+        summary: dict[str, Any],
+    ) -> None:
+        """Ajoute ou met à jour un visuel témoin du projet."""
+
+        self._register_summary(
+            self.visual_references,
+            summary,
+        )
+        self.save()
+
     def register_production(
         self,
         summary: dict[str, Any],
@@ -337,6 +363,22 @@ class Project:
 
         return removed
 
+    def unregister_visual_reference(
+        self,
+        identifier: str,
+    ) -> bool:
+        """Retire un visuel témoin de l'index du projet."""
+
+        removed = self._unregister_summary(
+            self.visual_references,
+            identifier,
+        )
+
+        if removed:
+            self.save()
+
+        return removed
+
     def unregister_production(
         self,
         identifier: str,
@@ -378,6 +420,7 @@ class Project:
                 "modeles": self.models,
                 "fiches": self.content_sheets,
                 "collections": self.content_collections,
+                "visuels_temoins": self.visual_references,
             },
             "productions": self.productions,
         }
@@ -468,5 +511,6 @@ class Project:
             f"models={len(self.models)}, "
             f"sheets={len(self.content_sheets)}, "
             f"collections={len(self.content_collections)}, "
+            f"visual_references={len(self.visual_references)}, "
             f"productions={len(self.productions)})"
         )

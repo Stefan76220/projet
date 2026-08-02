@@ -11,6 +11,7 @@ import customtkinter as ctk
 from PIL import Image, ImageOps, ImageTk
 
 from src.core.document import Document
+from src.core.project import Project
 from src.engine.foundation import Point, Rect, Size
 from src.engine.page_format import A4, A5, BOOK_16X24, BOOK_17X24
 from src.gui.editor_canvas import CanvasObject, EditorCanvas
@@ -1513,6 +1514,538 @@ class PageSetupDialog(ctk.CTkToplevel):
         )
 
 
+class BackgroundTypeDialog(ctk.CTkToplevel):
+    """Choix simple de la nature du fond du gabarit."""
+
+    MODE_LABELS = {
+        "Remplir sans déformation": "remplir",
+        "Afficher l’image entière": "ajuster",
+    }
+
+    SCOPE_LABELS = {
+        "Surface entre les marges": "surface_composition",
+        "Page entière": "page",
+        "Page avec fonds perdus": "fonds_perdus",
+    }
+
+    NATURE_LABELS = {
+        "aucun": "Aucun fond",
+        "fixe": "Fond fixe du gabarit",
+        "variable": "Fond variable à fournir en Production",
+    }
+
+    def __init__(
+        self,
+        parent,
+        *,
+        current_nature: str,
+        current_scope: str,
+        current_mode: str,
+        on_none,
+        on_fixed,
+        on_variable,
+    ) -> None:
+        super().__init__(parent)
+
+        self.on_none = on_none
+        self.on_fixed = on_fixed
+        self.on_variable = on_variable
+        self._closing = False
+
+        self.title("Nature du fond")
+        self.geometry("520x520")
+        self.minsize(500, 500)
+        self.resizable(False, False)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        reverse_scopes = {
+            value: label
+            for label, value in self.SCOPE_LABELS.items()
+        }
+        reverse_modes = {
+            value: label
+            for label, value in self.MODE_LABELS.items()
+        }
+
+        normalized_nature = str(current_nature or "aucun").strip().lower()
+        if normalized_nature not in self.NATURE_LABELS:
+            normalized_nature = "aucun"
+
+        self.current_nature_var = tk.StringVar(
+            value=self.NATURE_LABELS[normalized_nature]
+        )
+        self.scope_var = tk.StringVar(
+            value=reverse_scopes.get(current_scope, "Page entière")
+        )
+        self.mode_var = tk.StringVar(
+            value=reverse_modes.get(
+                current_mode,
+                "Remplir sans déformation",
+            )
+        )
+        self.error_var = tk.StringVar(value="")
+
+        self._build()
+        self.after(80, self._center_window)
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=22, pady=20)
+
+        ctk.CTkLabel(
+            container,
+            text="Nature du fond",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                "Choisis ce qui appartient au gabarit. "
+                "Un fond variable restera vide dans le modèle et sera "
+                "fourni page par page dans le Bureau de conception."
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            justify="left",
+            anchor="w",
+            wraplength=460,
+        ).pack(fill="x", pady=(5, 12))
+
+        status = ctk.CTkFrame(
+            container,
+            fg_color="#EEF2F5",
+            corner_radius=9,
+        )
+        status.pack(fill="x", pady=(0, 12))
+        ctk.CTkLabel(
+            status,
+            text="État actuel :",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(side="left", padx=(12, 5), pady=9)
+        ctk.CTkLabel(
+            status,
+            textvariable=self.current_nature_var,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+        ).pack(side="left", pady=9)
+
+        choices = ctk.CTkFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        choices.pack(fill="x")
+        choices.grid_columnconfigure(0, weight=1)
+        choices.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            choices,
+            text="Aucun fond",
+            height=42,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
+            command=self._choose_none,
+        ).grid(row=0, column=0, sticky="ew", padx=(14, 6), pady=(14, 8))
+
+        ctk.CTkButton(
+            choices,
+            text="Fond fixe du gabarit",
+            height=42,
+            fg_color=Colors.PRIMARY,
+            hover_color=Colors.PRIMARY_HOVER,
+            command=self._choose_fixed,
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 14), pady=(14, 8))
+
+        ctk.CTkLabel(
+            choices,
+            text=(
+                "Le fond fixe est enregistré dans le gabarit et arrive "
+                "déjà prêt dans le Bureau de conception."
+            ),
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            justify="left",
+            anchor="w",
+            wraplength=425,
+        ).grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(0, 12))
+
+        variable = ctk.CTkFrame(
+            choices,
+            fg_color="#F4F7FA",
+            corner_radius=9,
+        )
+        variable.grid(row=2, column=0, columnspan=2, sticky="ew", padx=14, pady=(0, 14))
+        variable.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            variable,
+            text="Fond variable",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 2))
+
+        ctk.CTkLabel(
+            variable,
+            text="Surface prévue",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", padx=12, pady=(4, 2))
+
+        ctk.CTkComboBox(
+            variable,
+            values=list(self.SCOPE_LABELS.keys()),
+            variable=self.scope_var,
+            state="readonly",
+        ).grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+        ctk.CTkLabel(
+            variable,
+            text="Adaptation prévue",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(row=3, column=0, sticky="ew", padx=12, pady=(2, 2))
+
+        ctk.CTkComboBox(
+            variable,
+            values=list(self.MODE_LABELS.keys()),
+            variable=self.mode_var,
+            state="readonly",
+        ).grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 10))
+
+        ctk.CTkButton(
+            variable,
+            text="Définir comme fond variable",
+            height=38,
+            fg_color="#6B7F91",
+            hover_color="#5A6D7D",
+            command=self._choose_variable,
+        ).grid(row=5, column=0, sticky="ew", padx=12, pady=(0, 12))
+
+        ctk.CTkLabel(
+            container,
+            textvariable=self.error_var,
+            font=Fonts.SMALL,
+            text_color="#B42318",
+            anchor="w",
+        ).pack(fill="x", pady=(8, 0))
+
+        ctk.CTkButton(
+            container,
+            text="Fermer",
+            width=110,
+            height=34,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.close,
+        ).pack(anchor="e", pady=(8, 0))
+
+    def _choose_none(self) -> None:
+        try:
+            self.on_none()
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self.error_var.set(str(error))
+            return
+        self.close()
+
+    def _choose_fixed(self) -> None:
+        callback = self.on_fixed
+        self.close()
+        self.master.after_idle(callback)
+
+    def _choose_variable(self) -> None:
+        scope = self.SCOPE_LABELS.get(self.scope_var.get(), "page")
+        mode = self.MODE_LABELS.get(self.mode_var.get(), "remplir")
+        try:
+            self.on_variable(scope, mode)
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self.error_var.set(str(error))
+            return
+        self.close()
+
+    def close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        try:
+            self.destroy()
+        except tk.TclError:
+            pass
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+        self.geometry(f"+{x}+{y}")
+        self.lift()
+        self.focus_force()
+
+
+
+class VariableBackgroundDialog(ctk.CTkToplevel):
+    """Réglage compact de l'emplacement d'un fond fourni en Production."""
+
+    MODE_LABELS = {
+        "Remplir sans déformation": "remplir",
+        "Afficher l’image entière": "ajuster",
+    }
+
+    SCOPE_LABELS = {
+        "Surface entre les marges": "surface_composition",
+        "Page entière": "page",
+        "Page avec fonds perdus": "fonds_perdus",
+    }
+
+    def __init__(
+        self,
+        parent,
+        *,
+        current_scope: str,
+        current_mode: str,
+        on_validate,
+        on_close,
+    ) -> None:
+        super().__init__(parent)
+
+        self.on_validate = on_validate
+        self.on_close = on_close
+        self._closing = False
+
+        reverse_scopes = {
+            value: label
+            for label, value in self.SCOPE_LABELS.items()
+        }
+        reverse_modes = {
+            value: label
+            for label, value in self.MODE_LABELS.items()
+        }
+
+        self.scope_var = tk.StringVar(
+            value=reverse_scopes.get(
+                current_scope,
+                "Page entière",
+            )
+        )
+        self.mode_var = tk.StringVar(
+            value=reverse_modes.get(
+                current_mode,
+                "Remplir sans déformation",
+            )
+        )
+        self.error_var = tk.StringVar(value="")
+
+        self.title("Fond variable")
+        self.geometry("470x390")
+        self.minsize(440, 360)
+        self.resizable(False, False)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent.winfo_toplevel())
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        self._build()
+        self.after(80, self._center_window)
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=22,
+            pady=20,
+        )
+
+        ctk.CTkLabel(
+            container,
+            text="Fond variable",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                "Le gabarit conserve uniquement l’emplacement prévu. "
+                "L’image réelle sera choisie page par page dans le "
+                "Bureau de conception."
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            justify="left",
+            anchor="w",
+            wraplength=420,
+        ).pack(fill="x", pady=(5, 14))
+
+        controls = ctk.CTkFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        controls.pack(fill="x")
+        controls.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            controls,
+            text="Surface prévue",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(14, 4),
+        )
+
+        ctk.CTkComboBox(
+            controls,
+            values=list(self.SCOPE_LABELS.keys()),
+            variable=self.scope_var,
+            state="readonly",
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 12),
+        )
+
+        ctk.CTkLabel(
+            controls,
+            text="Adaptation prévue",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 4),
+        )
+
+        ctk.CTkComboBox(
+            controls,
+            values=list(self.MODE_LABELS.keys()),
+            variable=self.mode_var,
+            state="readonly",
+        ).grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            padx=16,
+            pady=(0, 16),
+        )
+
+        ctk.CTkLabel(
+            container,
+            textvariable=self.error_var,
+            font=Fonts.SMALL,
+            text_color="#B42318",
+            anchor="w",
+        ).pack(fill="x", pady=(8, 0))
+
+        footer = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        footer.pack(fill="x", pady=(10, 0))
+        footer.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(
+            footer,
+            text="Annuler",
+            width=110,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.close,
+        ).grid(row=0, column=0, sticky="w")
+
+        ctk.CTkButton(
+            footer,
+            text="Définir le fond variable",
+            width=190,
+            height=36,
+            fg_color="#6B7F91",
+            hover_color="#5A6D7D",
+            command=self._validate,
+        ).grid(row=0, column=1, sticky="e")
+
+    def _validate(self) -> None:
+        scope = self.SCOPE_LABELS.get(
+            self.scope_var.get(),
+            "page",
+        )
+        mode = self.MODE_LABELS.get(
+            self.mode_var.get(),
+            "remplir",
+        )
+
+        try:
+            self.on_validate(scope, mode)
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self.error_var.set(str(error))
+            return
+
+        self.close()
+
+    def close(self) -> None:
+        if self._closing:
+            return
+
+        self._closing = True
+
+        try:
+            self.destroy()
+        finally:
+            self.on_close()
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+        parent = self.master.winfo_toplevel()
+
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+        self.lift()
+        self.focus_force()
+
 class BackgroundImageDialog(ctk.CTkToplevel):
     """Fenêtre flottante de réglage direct du fond sur la page de travail."""
 
@@ -2052,13 +2585,9 @@ class PageEditorView:
         self._text_align_buttons: dict[str, object] = {}
         self._text_controls: list[object] = []
         self._updating_text_controls = False
-        self._content_type_text = tk.StringVar(value="Aucun contenu")
+        self._content_type_text = tk.StringVar(value="Aucune fonction")
         self._content_text_button = None
         self._content_image_button = None
-        self._content_edit_button = None
-        self._content_replace_image_button = None
-        self._content_image_cover_button = None
-        self._content_image_contain_button = None
         self._content_clear_button = None
         self._fill_color_button = None
         self._outline_color_button = None
@@ -2081,6 +2610,14 @@ class PageEditorView:
         self._right_panel: ctk.CTkFrame | None = None
         self._right_panel_visible = True
         self._toggle_panel_button: ctk.CTkButton | None = None
+        self._visual_reference_view_button: ctk.CTkButton | None = None
+        self._visual_reference_window: ctk.CTkToplevel | None = None
+        self._visual_reference_window_listbox: tk.Listbox | None = None
+        self._visual_reference_window_image_label: tk.Label | None = None
+        self._visual_reference_window_title_var = tk.StringVar(value="")
+        self._visual_reference_window_info_var = tk.StringVar(value="")
+        self._visual_reference_window_photo = None
+        self._visual_reference_window_summaries: list[dict] = []
         self._properties_type_text = tk.StringVar(value="Aucune sélection")
         self._properties_position_text = tk.StringVar(value="Position : —")
         self._properties_size_text = tk.StringVar(value="Taille : —")
@@ -2105,6 +2642,7 @@ class PageEditorView:
         self._background_edit_mode = False
         self._background_edit_locked = True
         self._background_dialog: BackgroundImageDialog | None = None
+        self._background_type_dialog: VariableBackgroundDialog | None = None
         self._ribbon_action_buttons: list[ctk.CTkButton] = []
         self._ribbon_previous_states: list[tuple[ctk.CTkButton, str]] = []
 
@@ -2982,13 +3520,81 @@ class PageEditorView:
             self._fit_page_to_window,
         )
 
-        _, background = group("Fond", 104)
+        _, background = group("Fond", 194)
+
         icon_button(
             background,
             "▨",
-            "Modifier",
+            "Image fixe",
             self._open_background_dialog,
             width=84,
+        )
+
+        background_secondary = ctk.CTkFrame(
+            background,
+            fg_color="transparent",
+        )
+        background_secondary.pack(
+            side="left",
+            fill="y",
+            padx=(3, 0),
+            pady=2,
+        )
+
+        variable_button = ctk.CTkButton(
+            background_secondary,
+            text="Fond variable",
+            width=84,
+            height=27,
+            corner_radius=7,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color="#D5D9DE",
+            font=(Fonts.FAMILY, 11),
+            command=self._open_variable_background_dialog,
+        )
+        variable_button.pack(fill="x", pady=(0, 4))
+        self._ribbon_action_buttons.append(variable_button)
+
+        remove_background_button = ctk.CTkButton(
+            background_secondary,
+            text="Retirer",
+            width=84,
+            height=27,
+            corner_radius=7,
+            fg_color="#FFFFFF",
+            hover_color="#F3E4E4",
+            text_color="#8C2F2F",
+            border_width=1,
+            border_color="#E7CACA",
+            font=(Fonts.FAMILY, 11),
+            command=self._set_no_background,
+        )
+        remove_background_button.pack(fill="x")
+        self._ribbon_action_buttons.append(remove_background_button)
+
+        _, visual_reference = group("Visuel témoin", 176)
+
+        icon_button(
+            visual_reference,
+            "＋",
+            "Importer",
+            self._import_visual_reference,
+            width=76,
+        )
+        self._visual_reference_view_button = icon_button(
+            visual_reference,
+            "◉",
+            "Consulter",
+            self._view_visual_reference,
+            width=76,
+            state=(
+                "normal"
+                if self._current_visual_reference_summaries()
+                else "disabled"
+            ),
         )
 
         _, add = group("Ajouter une zone", 194)
@@ -3145,7 +3751,7 @@ class PageEditorView:
 
         ctk.CTkLabel(
             content_card,
-            text="Contenu",
+            text="Fonction de la zone",
             font=Fonts.H2,
             text_color=Colors.TEXT,
         ).pack(anchor="w", padx=12, pady=(10, 2))
@@ -3161,7 +3767,7 @@ class PageEditorView:
             content_card,
             fg_color="transparent",
         )
-        content_actions.pack(fill="x", padx=10, pady=(0, 10))
+        content_actions.pack(fill="x", padx=10, pady=(0, 6))
         content_actions.grid_columnconfigure(0, weight=1)
         content_actions.grid_columnconfigure(1, weight=1)
 
@@ -3169,8 +3775,11 @@ class PageEditorView:
             content_actions,
             text="Texte",
             height=30,
-            fg_color=Colors.PRIMARY,
-            hover_color=Colors.PRIMARY_HOVER,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
             command=self._set_selected_zone_content_to_text,
         )
         self._content_text_button.grid(
@@ -3185,8 +3794,11 @@ class PageEditorView:
             content_actions,
             text="Image",
             height=30,
-            fg_color=Colors.PRIMARY,
-            hover_color=Colors.PRIMARY_HOVER,
+            fg_color="#FFFFFF",
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            border_width=1,
+            border_color=Colors.BORDER,
             command=self._set_selected_zone_content_to_image,
         )
         self._content_image_button.grid(
@@ -3197,87 +3809,9 @@ class PageEditorView:
             pady=2,
         )
 
-        self._content_edit_button = ctk.CTkButton(
-            content_actions,
-            text="Modifier le texte",
-            height=30,
-            fg_color="#FFFFFF",
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            border_width=1,
-            border_color=Colors.BORDER,
-            command=self._edit_selected_zone_text,
-        )
-        self._content_edit_button.grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=2,
-            pady=2,
-        )
-
-        self._content_replace_image_button = ctk.CTkButton(
-            content_actions,
-            text="Remplacer l’image",
-            height=30,
-            fg_color="#FFFFFF",
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            border_width=1,
-            border_color=Colors.BORDER,
-            command=self._replace_selected_zone_image,
-        )
-        self._content_replace_image_button.grid(
-            row=2,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=2,
-            pady=2,
-        )
-
-        self._content_image_cover_button = ctk.CTkButton(
-            content_actions,
-            text="Remplir",
-            height=30,
-            fg_color="#FFFFFF",
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            border_width=1,
-            border_color=Colors.BORDER,
-            command=lambda: self._set_selected_zone_image_fit("cover"),
-        )
-        self._content_image_cover_button.grid(
-            row=3,
-            column=0,
-            sticky="ew",
-            padx=2,
-            pady=2,
-        )
-
-        self._content_image_contain_button = ctk.CTkButton(
-            content_actions,
-            text="Image entière",
-            height=30,
-            fg_color="#FFFFFF",
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            border_width=1,
-            border_color=Colors.BORDER,
-            command=lambda: self._set_selected_zone_image_fit("contain"),
-        )
-        self._content_image_contain_button.grid(
-            row=3,
-            column=1,
-            sticky="ew",
-            padx=2,
-            pady=2,
-        )
-
         self._content_clear_button = ctk.CTkButton(
             content_actions,
-            text="Retirer le contenu",
+            text="Aucune fonction",
             height=30,
             fg_color="#FFFFFF",
             hover_color=Colors.BUTTON_HOVER,
@@ -3287,13 +3821,22 @@ class PageEditorView:
             command=self._clear_selected_zone_content,
         )
         self._content_clear_button.grid(
-            row=4,
+            row=1,
             column=0,
             columnspan=2,
             sticky="ew",
             padx=2,
             pady=2,
         )
+
+        ctk.CTkLabel(
+            content_card,
+            text="Le contenu réel sera ajouté dans le Bureau de conception.",
+            wraplength=250,
+            justify="left",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+        ).pack(anchor="w", padx=12, pady=(0, 10))
 
         for title, description in (
             ("Dimensions", "Position, taille et rotation"),
@@ -3330,10 +3873,7 @@ class PageEditorView:
 
     @staticmethod
     def _zone_has_image_content(graphic_object: CanvasObject) -> bool:
-        return (
-            getattr(graphic_object, "content_type", "") == "image"
-            and bool(getattr(graphic_object, "image_path", "").strip())
-        )
+        return getattr(graphic_object, "content_type", "") == "image"
 
     def _single_selected_zone_index(self) -> int | None:
         if self.workspace is None:
@@ -3366,19 +3906,36 @@ class PageEditorView:
 
         return index
 
+    @staticmethod
+    def _configure_function_button(
+        button,
+        *,
+        active: bool,
+        enabled: bool,
+    ) -> None:
+        if button is None:
+            return
+
+        button.configure(
+            state="normal" if enabled else "disabled",
+            fg_color=Colors.PRIMARY if active else "#FFFFFF",
+            hover_color=(
+                Colors.PRIMARY_HOVER
+                if active
+                else Colors.BUTTON_HOVER
+            ),
+            text_color="#FFFFFF" if active else Colors.TEXT,
+        )
+
     def _refresh_content_controls(self) -> None:
         buttons = (
             self._content_text_button,
             self._content_image_button,
-            self._content_edit_button,
-            self._content_replace_image_button,
-            self._content_image_cover_button,
-            self._content_image_contain_button,
             self._content_clear_button,
         )
 
         if self.workspace is None:
-            self._content_type_text.set("Aucun contenu")
+            self._content_type_text.set("Aucune fonction")
             for button in buttons:
                 if button is not None:
                     button.configure(state="disabled")
@@ -3401,70 +3958,32 @@ class PageEditorView:
         graphic_object = self.workspace._objects[index]
         has_text = self._zone_has_text_content(graphic_object)
         has_image = self._zone_has_image_content(graphic_object)
+        has_function = has_text or has_image
 
         if has_text:
-            content_label = "Type actuel : texte"
+            self._content_type_text.set("Fonction actuelle : texte")
         elif has_image:
-            content_label = "Type actuel : image"
+            self._content_type_text.set("Fonction actuelle : image")
         else:
-            content_label = "Type actuel : vide"
-        self._content_type_text.set(content_label)
+            self._content_type_text.set("Fonction actuelle : non définie")
 
-        if self._content_text_button is not None:
-            self._content_text_button.configure(
-                state="disabled" if has_text else "normal",
-                text="Texte présent" if has_text else "Texte",
-            )
-
-        if self._content_image_button is not None:
-            self._content_image_button.configure(
-                state="disabled" if has_image else "normal",
-                text="Image présente" if has_image else "Image",
-            )
-
-        if self._content_edit_button is not None:
-            self._content_edit_button.configure(
-                state="normal" if has_text else "disabled",
-            )
-
-        if self._content_replace_image_button is not None:
-            self._content_replace_image_button.configure(
-                state="normal" if has_image else "disabled",
-            )
-
-        fit_mode = str(getattr(graphic_object, "image_fit", "cover")).lower()
-        image_controls = (
-            (self._content_image_cover_button, "cover"),
-            (self._content_image_contain_button, "contain"),
+        self._configure_function_button(
+            self._content_text_button,
+            active=has_text,
+            enabled=True,
         )
-        for button, mode in image_controls:
-            if button is None:
-                continue
-            active = has_image and fit_mode == mode
-            button.configure(
-                state="normal" if has_image else "disabled",
-                fg_color=Colors.PRIMARY if active else "#FFFFFF",
-                hover_color=(
-                    Colors.PRIMARY_HOVER
-                    if active
-                    else Colors.BUTTON_HOVER
-                ),
-                text_color="#FFFFFF" if active else Colors.TEXT,
-            )
+        self._configure_function_button(
+            self._content_image_button,
+            active=has_image,
+            enabled=True,
+        )
+        self._configure_function_button(
+            self._content_clear_button,
+            active=not has_function,
+            enabled=has_function,
+        )
 
-        if self._content_clear_button is not None:
-            self._content_clear_button.configure(
-                state=(
-                    "normal"
-                    if (
-                        (has_text or has_image)
-                        and graphic_object.kind != "text"
-                    )
-                    else "disabled"
-                ),
-            )
-
-    def _set_selected_zone_content_to_text(self) -> None:
+    def _set_selected_zone_function(self, content_type: str) -> None:
         if self.workspace is None:
             return
 
@@ -3473,17 +3992,24 @@ class PageEditorView:
             self._save_status_text.set("Sélectionner une seule zone déverrouillée")
             return
 
+        normalized_type = content_type if content_type in {"text", "image"} else ""
         graphic_object = self.workspace._objects[index]
-        if self._zone_has_text_content(graphic_object):
-            self._edit_selected_zone_text()
+        current_type = getattr(graphic_object, "content_type", "")
+
+        if graphic_object.kind == "text" and normalized_type == "text":
+            current_type = "text"
+
+        if current_type == normalized_type:
             return
 
         self.workspace.commit_active_text_edit()
         self.workspace._remember_current_state()
         self.workspace._objects[index] = replace(
             graphic_object,
-            content_type="text",
-            text="Saisissez votre texte",
+            content_type=normalized_type,
+            content_mode="variable",
+            content_label="",
+            text="",
             image_path="",
             image_fit="cover",
             image_zoom=1.0,
@@ -3493,161 +4019,20 @@ class PageEditorView:
         self.workspace.redraw()
         self.workspace._notify_selection()
         self._save_page_objects(show_status=False)
-        self._save_status_text.set("La zone peut maintenant recevoir du texte")
+
+        status_by_type = {
+            "text": "Zone qualifiée pour recevoir du texte",
+            "image": "Zone qualifiée pour recevoir une image",
+            "": "Fonction retirée de la zone",
+        }
+        self._save_status_text.set(status_by_type[normalized_type])
         self.workspace.focus_set()
 
-    def _edit_selected_zone_text(self) -> None:
-        if self.workspace is None:
-            return
-
-        index = self._single_selected_zone_index()
-        if index is None:
-            self._save_status_text.set("Sélectionner une seule zone de texte")
-            return
-
-        graphic_object = self.workspace._objects[index]
-        if not self._zone_has_text_content(graphic_object):
-            self._save_status_text.set("Cette zone ne contient pas de texte")
-            return
-
-        self.workspace._start_text_editing(index)
-
-    @staticmethod
-    def _zone_image_filetypes() -> tuple[tuple[str, str], ...]:
-        return (
-            ("Images PNG", "*.png"),
-            ("Images JPEG", "*.jpg *.jpeg"),
-            ("Images WebP", "*.webp"),
-            ("Images BMP", "*.bmp"),
-            ("Images TIFF", "*.tif *.tiff"),
-            ("Tous les fichiers", "*.*"),
-        )
-
-    def _choose_zone_image(self) -> Path | None:
-        selected = filedialog.askopenfilename(
-            parent=self.parent.winfo_toplevel(),
-            title="Choisir une image pour la zone",
-            filetypes=self._zone_image_filetypes(),
-        )
-        return Path(selected) if selected else None
+    def _set_selected_zone_content_to_text(self) -> None:
+        self._set_selected_zone_function("text")
 
     def _set_selected_zone_content_to_image(self) -> None:
-        if self.workspace is None:
-            return
-
-        index = self._single_selected_zone_index()
-        if index is None:
-            self._save_status_text.set("Sélectionner une seule zone déverrouillée")
-            return
-
-        selected_path = self._choose_zone_image()
-        if selected_path is None:
-            return
-
-        try:
-            resource_value = self._copy_background_resource(selected_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            messagebox.showerror(
-                "Image impossible à ajouter",
-                str(exc),
-                parent=self.parent.winfo_toplevel(),
-            )
-            return
-
-        graphic_object = self.workspace._objects[index]
-        self.workspace.commit_active_text_edit()
-        self.workspace._remember_current_state()
-        self.workspace._objects[index] = replace(
-            graphic_object,
-            content_type="image",
-            image_path=resource_value,
-            image_fit="cover",
-            image_zoom=1.0,
-            image_focus_x=0.5,
-            image_focus_y=0.5,
-            text="",
-        )
-        self.workspace.redraw()
-        self.workspace._notify_selection()
-        self._save_page_objects(show_status=False)
-        self._save_status_text.set("Image ajoutée à la zone")
-        self.workspace.focus_set()
-
-    def _replace_selected_zone_image(self) -> None:
-        if self.workspace is None:
-            return
-
-        index = self._single_selected_zone_index()
-        if index is None:
-            self._save_status_text.set("Sélectionner une seule zone contenant une image")
-            return
-
-        graphic_object = self.workspace._objects[index]
-        if not self._zone_has_image_content(graphic_object):
-            self._save_status_text.set("Cette zone ne contient pas d’image")
-            return
-
-        selected_path = self._choose_zone_image()
-        if selected_path is None:
-            return
-
-        try:
-            resource_value = self._copy_background_resource(selected_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            messagebox.showerror(
-                "Image impossible à remplacer",
-                str(exc),
-                parent=self.parent.winfo_toplevel(),
-            )
-            return
-
-        self.workspace._remember_current_state()
-        self.workspace._objects[index] = replace(
-            graphic_object,
-            image_path=resource_value,
-            image_zoom=1.0,
-            image_focus_x=0.5,
-            image_focus_y=0.5,
-        )
-        self.workspace.redraw()
-        self.workspace._notify_selection()
-        self._save_page_objects(show_status=False)
-        self._save_status_text.set("Image remplacée")
-        self.workspace.focus_set()
-
-    def _set_selected_zone_image_fit(self, fit_mode: str) -> None:
-        if self.workspace is None:
-            return
-
-        index = self._single_selected_zone_index()
-        if index is None:
-            return
-
-        graphic_object = self.workspace._objects[index]
-        if not self._zone_has_image_content(graphic_object):
-            return
-
-        normalized_mode = "contain" if fit_mode == "contain" else "cover"
-        if str(getattr(graphic_object, "image_fit", "cover")) == normalized_mode:
-            return
-
-        self.workspace._remember_current_state()
-        self.workspace._objects[index] = replace(
-            graphic_object,
-            image_fit=normalized_mode,
-            image_zoom=1.0,
-            image_focus_x=0.5,
-            image_focus_y=0.5,
-        )
-        self.workspace.redraw()
-        self.workspace._notify_selection()
-        self._save_page_objects(show_status=False)
-        self._save_status_text.set(
-            "Image entière affichée"
-            if normalized_mode == "contain"
-            else "La zone est remplie par l’image"
-        )
-        self.workspace.focus_set()
+        self._set_selected_zone_function("image")
 
     def _clear_selected_zone_content(self) -> None:
         if self.workspace is None:
@@ -3660,31 +4045,12 @@ class PageEditorView:
 
         graphic_object = self.workspace._objects[index]
         if graphic_object.kind == "text":
-            self._save_status_text.set("Cet ancien objet texte ne peut pas être vidé ici")
+            self._save_status_text.set(
+                "Cet ancien objet texte doit d’abord être converti en zone"
+            )
             return
 
-        has_text = self._zone_has_text_content(graphic_object)
-        has_image = self._zone_has_image_content(graphic_object)
-        if not has_text and not has_image:
-            return
-
-        self.workspace.commit_active_text_edit()
-        self.workspace._remember_current_state()
-        self.workspace._objects[index] = replace(
-            graphic_object,
-            content_type="",
-            text="",
-            image_path="",
-            image_fit="cover",
-            image_zoom=1.0,
-            image_focus_x=0.5,
-            image_focus_y=0.5,
-        )
-        self.workspace.redraw()
-        self.workspace._notify_selection()
-        self._save_page_objects(show_status=False)
-        self._save_status_text.set("Contenu retiré de la zone")
-        self.workspace.focus_set()
+        self._set_selected_zone_function("")
 
     def _toggle_properties_panel(self) -> None:
         if self._right_panel is None:
@@ -5239,6 +5605,139 @@ class PageEditorView:
         self._refresh_properties_panel()
         self._save_page_objects(show_status=False)
 
+    def _open_variable_background_dialog(self) -> None:
+        """Définit directement l’emplacement d’un fond variable."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set("Cette page est verrouillée")
+            return
+
+        existing = self._background_type_dialog
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_force()
+                    return
+            except tk.TclError:
+                self._background_type_dialog = None
+
+        background = getattr(self.page, "background", {})
+
+        if self.root is not None and self.root.winfo_exists():
+            dialog_parent = self.root.winfo_toplevel()
+        else:
+            dialog_parent = self.parent.winfo_toplevel()
+
+        def clear_reference() -> None:
+            self._background_type_dialog = None
+
+        dialog = VariableBackgroundDialog(
+            dialog_parent,
+            current_scope=str(
+                background.get(
+                    "portee",
+                    "page",
+                )
+            ),
+            current_mode=str(
+                background.get(
+                    "mode",
+                    "remplir",
+                )
+            ),
+            on_validate=self._set_variable_background,
+            on_close=clear_reference,
+        )
+        self._background_type_dialog = dialog
+
+    def _open_background_type_dialog(self) -> None:
+        """Choisit si le gabarit utilise un fond fixe, variable ou aucun fond."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set("Cette page est verrouillée")
+            return
+
+        existing = self._background_type_dialog
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_force()
+                    return
+            except tk.TclError:
+                self._background_type_dialog = None
+
+        background = getattr(self.page, "background", {})
+        nature = str(
+            background.get(
+                "nature",
+                "fixe" if background.get("active") else "aucun",
+            )
+        )
+
+        if self.root is not None and self.root.winfo_exists():
+            dialog_parent = self.root.winfo_toplevel()
+        else:
+            dialog_parent = self.parent.winfo_toplevel()
+
+        dialog = BackgroundTypeDialog(
+            dialog_parent,
+            current_nature=nature,
+            current_scope=str(background.get("portee", "page")),
+            current_mode=str(background.get("mode", "remplir")),
+            on_none=self._set_no_background,
+            on_fixed=self._open_background_dialog,
+            on_variable=self._set_variable_background,
+        )
+        self._background_type_dialog = dialog
+
+        def clear_reference(_event=None) -> None:
+            if self._background_type_dialog is dialog:
+                self._background_type_dialog = None
+
+        dialog.bind("<Destroy>", clear_reference, add="+")
+
+    def _set_no_background(self) -> None:
+        self._remember_background_state()
+        self.page.clear_background()
+        self._background_selected = False
+        self._background_interaction_mode = None
+        self._background_interaction_handle = None
+        document = self._load_current_document()
+        if document is not None:
+            document.update_page_summary(self.page)
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        self._save_status_text.set("Aucun fond défini pour ce gabarit")
+
+    def _set_variable_background(
+        self,
+        scope: str,
+        mode: str,
+    ) -> None:
+        self._remember_background_state()
+        self.page.set_variable_background(
+            scope=scope,
+            fit_mode=mode,
+            keep_aspect_ratio=True,
+        )
+        self._background_selected = False
+        self._background_interaction_mode = None
+        self._background_interaction_handle = None
+        document = self._load_current_document()
+        if document is not None:
+            document.update_page_summary(self.page)
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        self._save_status_text.set(
+            "Fond variable défini — il sera fourni dans le Bureau de conception"
+        )
+
     def _open_background_dialog(self) -> None:
         """Ouvre la fenêtre flottante du fond et sécurise tout échec."""
 
@@ -5621,6 +6120,656 @@ class PageEditorView:
             self.workspace.redraw()
         if self._background_dialog is not None:
             self._background_dialog.set_current_frame(self._background_effective_frame_mm())
+
+    def _load_current_project(self) -> Project:
+        """Charge le projet auquel appartient la page ouverte."""
+
+        project_root = self._project_root()
+
+        if project_root is None:
+            raise RuntimeError(
+                "Le dossier du projet n’a pas pu être identifié."
+            )
+
+        return Project().load(
+            str(project_root)
+        )
+
+    @staticmethod
+    def _next_visual_reference_id(
+        project: Project,
+    ) -> str:
+        """Crée un identifiant stable sans renuméroter l'existant."""
+
+        highest_number = 0
+        prefix = "VISUEL-TEMOIN-"
+
+        for summary in project.visual_references:
+            identifier = str(
+                summary.get(
+                    "identifiant",
+                    "",
+                )
+            ).strip()
+
+            if not identifier.startswith(prefix):
+                continue
+
+            try:
+                number = int(
+                    identifier[len(prefix):]
+                )
+            except ValueError:
+                continue
+
+            highest_number = max(
+                highest_number,
+                number,
+            )
+
+        return f"{prefix}{highest_number + 1:04d}"
+
+    def _import_visual_reference(self) -> None:
+        """Importe une image figée et l'associe à la page courante."""
+
+        if getattr(self.page, "locked", False):
+            self._save_status_text.set(
+                "Cette page est verrouillée"
+            )
+            return
+
+        selected_path = filedialog.askopenfilename(
+            parent=(
+                self.root.winfo_toplevel()
+                if self.root is not None
+                else self.parent.winfo_toplevel()
+            ),
+            title="Importer un visuel témoin",
+            filetypes=(
+                (
+                    "Images prises en charge",
+                    "*.png *.jpg *.jpeg *.tif *.tiff *.webp",
+                ),
+                ("PNG", "*.png"),
+                ("JPEG", "*.jpg *.jpeg"),
+                ("TIFF", "*.tif *.tiff"),
+                ("WebP", "*.webp"),
+                ("Tous les fichiers", "*.*"),
+            ),
+        )
+
+        if not selected_path:
+            return
+
+        source = Path(selected_path)
+
+        try:
+            with Image.open(source) as image:
+                image.verify()
+
+            project = self._load_current_project()
+            identifier = self._next_visual_reference_id(
+                project
+            )
+
+            suffix = source.suffix.lower()
+            if suffix not in {
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".tif",
+                ".tiff",
+                ".webp",
+            }:
+                suffix = ".png"
+
+            destination = (
+                project.visual_references_folder
+                / f"{identifier}{suffix}"
+            )
+            project.visual_references_folder.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            shutil.copy2(
+                source,
+                destination,
+            )
+
+            relative_path = destination.relative_to(
+                project.root
+            ).as_posix()
+
+            project.register_visual_reference(
+                {
+                    "identifiant": identifier,
+                    "nom": source.stem,
+                    "fichier": relative_path,
+                    "format": suffix.lstrip(".").upper(),
+                    "page_associee": str(
+                        getattr(
+                            self.page,
+                            "identifier",
+                            "",
+                        )
+                    ),
+                }
+            )
+
+            existing_identifiers = self._visual_reference_ids_for_page()
+            if identifier not in existing_identifiers:
+                existing_identifiers.append(identifier)
+
+            self.page.content[
+                "visuels_temoins_ids"
+            ] = existing_identifiers
+            # Compatibilité descendante avec les projets ayant une seule
+            # référence enregistrée sous l'ancienne clé.
+            self.page.content.pop(
+                "visuel_temoin_id",
+                None,
+            )
+            self.page.save(
+                update_history=False,
+            )
+
+            self._close_visual_reference_window()
+            self._refresh_visual_reference_button()
+            self._save_status_text.set(
+                f"{identifier} importé — "
+                f"{len(existing_identifiers)} visuel(s) associé(s) à la page"
+            )
+
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as error:
+            messagebox.showerror(
+                "Import impossible",
+                str(error),
+                parent=(
+                    self.root.winfo_toplevel()
+                    if self.root is not None
+                    else self.parent.winfo_toplevel()
+                ),
+            )
+
+    def _visual_reference_ids_for_page(self) -> list[str]:
+        """Retourne toutes les références associées à la page.
+
+        L'ancienne clé ``visuel_temoin_id`` est conservée en lecture pour
+        ouvrir sans perte les projets créés avant la gestion multi-images.
+        """
+
+        content = getattr(
+            self.page,
+            "content",
+            {},
+        )
+
+        raw_identifiers = content.get(
+            "visuels_temoins_ids",
+            [],
+        )
+        identifiers: list[str] = []
+
+        if isinstance(raw_identifiers, (list, tuple)):
+            for value in raw_identifiers:
+                identifier = str(value).strip()
+                if identifier and identifier not in identifiers:
+                    identifiers.append(identifier)
+
+        legacy_identifier = str(
+            content.get(
+                "visuel_temoin_id",
+                "",
+            )
+        ).strip()
+        if (
+            legacy_identifier
+            and legacy_identifier not in identifiers
+        ):
+            identifiers.append(legacy_identifier)
+
+        return identifiers
+
+    def _current_visual_reference_summaries(
+        self,
+    ) -> list[dict]:
+        """Retourne tous les visuels témoins associés à la page."""
+
+        identifiers = self._visual_reference_ids_for_page()
+        if not identifiers:
+            return []
+
+        try:
+            project = self._load_current_project()
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
+            return []
+
+        summaries_by_id = {
+            str(
+                summary.get(
+                    "identifiant",
+                    "",
+                )
+            ).strip(): dict(summary)
+            for summary in project.visual_references
+        }
+
+        return [
+            summaries_by_id[identifier]
+            for identifier in identifiers
+            if identifier in summaries_by_id
+        ]
+
+    def _refresh_visual_reference_button(self) -> None:
+        button = self._visual_reference_view_button
+
+        if button is None:
+            return
+
+        count = len(
+            self._current_visual_reference_summaries()
+        )
+        button.configure(
+            state="normal" if count else "disabled",
+            text=(
+                f"◉ Consulter ({count})"
+                if count
+                else "◉ Consulter"
+            ),
+        )
+
+    def _close_visual_reference_window(self) -> None:
+        window = self._visual_reference_window
+        self._visual_reference_window = None
+        self._visual_reference_window_listbox = None
+        self._visual_reference_window_image_label = None
+        self._visual_reference_window_photo = None
+        self._visual_reference_window_summaries = []
+
+        if window is None:
+            return
+
+        try:
+            if window.winfo_exists():
+                window.destroy()
+        except tk.TclError:
+            pass
+
+    def _view_visual_reference(self) -> None:
+        """Ouvre une seule fenêtre pour toutes les références de la page."""
+
+        summaries = self._current_visual_reference_summaries()
+
+        if not summaries:
+            self._save_status_text.set(
+                "Aucun visuel témoin associé à cette page"
+            )
+            return
+
+        existing = self._visual_reference_window
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.focus_force()
+                    return
+            except tk.TclError:
+                self._visual_reference_window = None
+
+        project_root = self._project_root()
+        if project_root is None:
+            self._save_status_text.set(
+                "Le dossier du projet est introuvable"
+            )
+            return
+
+        valid_summaries: list[dict] = []
+        for summary in summaries:
+            resource = str(
+                summary.get(
+                    "fichier",
+                    "",
+                )
+            ).strip()
+            if not resource:
+                continue
+
+            image_path = (
+                project_root / resource
+            ).resolve()
+            if not image_path.is_file():
+                continue
+
+            item = dict(summary)
+            item["_image_path"] = str(image_path)
+            valid_summaries.append(item)
+
+        if not valid_summaries:
+            self._save_status_text.set(
+                "Les fichiers des visuels témoins sont introuvables"
+            )
+            return
+
+        top_level = (
+            self.root.winfo_toplevel()
+            if self.root is not None
+            else self.parent.winfo_toplevel()
+        )
+
+        window = ctk.CTkToplevel(
+            top_level
+        )
+        self._visual_reference_window = window
+        self._visual_reference_window_summaries = valid_summaries
+
+        window.title(
+            f"Visuels témoins — {len(valid_summaries)} référence(s)"
+        )
+        window.geometry("980x720")
+        window.minsize(760, 540)
+        window.configure(
+            fg_color=Colors.WINDOW
+        )
+        window.transient(
+            top_level
+        )
+        window.protocol(
+            "WM_DELETE_WINDOW",
+            self._close_visual_reference_window,
+        )
+
+        container = ctk.CTkFrame(
+            window,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=16,
+            pady=14,
+        )
+        container.grid_rowconfigure(1, weight=1)
+        container.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            container,
+            text="Visuels témoins associés à cette page",
+            font=Fonts.H1,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(0, 12),
+        )
+
+        list_frame = ctk.CTkFrame(
+            container,
+            width=250,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        list_frame.grid(
+            row=1,
+            column=0,
+            sticky="nsw",
+            padx=(0, 12),
+        )
+        list_frame.grid_propagate(False)
+
+        listbox = tk.Listbox(
+            list_frame,
+            width=31,
+            activestyle="none",
+            exportselection=False,
+            font=(Fonts.FAMILY, 11),
+            bg="#FFFFFF",
+            fg=Colors.TEXT,
+            selectbackground="#DCE6EF",
+            selectforeground=Colors.TEXT,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        listbox.pack(
+            fill="both",
+            expand=True,
+            padx=10,
+            pady=10,
+        )
+        self._visual_reference_window_listbox = listbox
+
+        for summary in valid_summaries:
+            identifier = str(
+                summary.get(
+                    "identifiant",
+                    "",
+                )
+            )
+            name = str(
+                summary.get(
+                    "nom",
+                    "Visuel témoin",
+                )
+            )
+            listbox.insert(
+                "end",
+                f"{identifier} — {name}",
+            )
+
+        preview_frame = ctk.CTkFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        preview_frame.grid(
+            row=1,
+            column=1,
+            sticky="nsew",
+        )
+        preview_frame.grid_rowconfigure(1, weight=1)
+        preview_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            preview_frame,
+            textvariable=self._visual_reference_window_title_var,
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=14,
+            pady=(12, 8),
+        )
+
+        image_area = tk.Frame(
+            preview_frame,
+            bg="#E7EAEE",
+        )
+        image_area.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=14,
+            pady=(0, 8),
+        )
+        image_area.grid_rowconfigure(0, weight=1)
+        image_area.grid_columnconfigure(0, weight=1)
+
+        image_label = tk.Label(
+            image_area,
+            bg="#E7EAEE",
+            anchor="center",
+        )
+        image_label.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+        )
+        self._visual_reference_window_image_label = image_label
+
+        ctk.CTkLabel(
+            preview_frame,
+            textvariable=self._visual_reference_window_info_var,
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=14,
+            pady=(0, 12),
+        )
+
+        listbox.bind(
+            "<<ListboxSelect>>",
+            self._on_visual_reference_selected,
+        )
+        listbox.selection_set(0)
+        listbox.activate(0)
+        self._show_visual_reference_at_index(0)
+
+        window.after(
+            80,
+            lambda: (
+                window.lift(),
+                window.focus_force(),
+            ),
+        )
+
+    def _on_visual_reference_selected(
+        self,
+        event=None,
+    ) -> None:
+        listbox = self._visual_reference_window_listbox
+        if listbox is None:
+            return
+
+        selection = listbox.curselection()
+        if not selection:
+            return
+
+        self._show_visual_reference_at_index(
+            int(selection[0])
+        )
+
+    def _show_visual_reference_at_index(
+        self,
+        index: int,
+    ) -> None:
+        """Affiche la référence sélectionnée dans la fenêtre unique."""
+
+        if not (
+            0 <= index < len(
+                self._visual_reference_window_summaries
+            )
+        ):
+            return
+
+        image_label = self._visual_reference_window_image_label
+        window = self._visual_reference_window
+        if image_label is None or window is None:
+            return
+
+        summary = self._visual_reference_window_summaries[index]
+        image_path = Path(
+            str(
+                summary.get(
+                    "_image_path",
+                    "",
+                )
+            )
+        )
+
+        try:
+            with Image.open(image_path) as source:
+                preview = source.convert("RGBA")
+
+            window.update_idletasks()
+            available_width = max(
+                360,
+                image_label.winfo_width() - 20,
+            )
+            available_height = max(
+                320,
+                image_label.winfo_height() - 20,
+            )
+            preview.thumbnail(
+                (
+                    available_width,
+                    available_height,
+                ),
+                Image.Resampling.LANCZOS,
+            )
+
+            photo = ImageTk.PhotoImage(
+                preview
+            )
+            self._visual_reference_window_photo = photo
+            image_label.configure(
+                image=photo,
+                text="",
+            )
+
+            identifier = str(
+                summary.get(
+                    "identifiant",
+                    "",
+                )
+            )
+            name = str(
+                summary.get(
+                    "nom",
+                    "Visuel témoin",
+                )
+            )
+            image_format = str(
+                summary.get(
+                    "format",
+                    "",
+                )
+            )
+
+            self._visual_reference_window_title_var.set(
+                name
+            )
+            self._visual_reference_window_info_var.set(
+                f"{identifier} — {image_format} — "
+                "référence en lecture seule"
+            )
+
+        except (
+            OSError,
+            RuntimeError,
+            tk.TclError,
+            TypeError,
+            ValueError,
+        ) as error:
+            self._visual_reference_window_photo = None
+            image_label.configure(
+                image="",
+                text=f"Impossible d’afficher l’image.\n{error}",
+            )
 
     def _project_root(self) -> Path | None:
         """Retrouve le dossier racine du projet depuis la page ouverte."""
@@ -6456,6 +7605,71 @@ class PageEditorView:
                 return
             canvas.delete(self._background_canvas_tag)
             background = getattr(self.page, "background", {})
+            nature = str(
+                background.get(
+                    "nature",
+                    "fixe" if background.get("active") else "aucun",
+                )
+            ).strip().lower()
+
+            if nature == "variable":
+                self._background_photo = None
+                scope = str(background.get("portee", "page"))
+                scope_box = self._background_scope_box_mm(scope)
+                left = canvas.page_left + canvas.viewport.mm_to_px(scope_box["x"])
+                top = canvas.page_top + canvas.viewport.mm_to_px(scope_box["y"])
+                right = left + canvas.viewport.mm_to_px(scope_box["largeur"])
+                bottom = top + canvas.viewport.mm_to_px(scope_box["hauteur"])
+
+                existing_items = canvas.find_all()
+                placeholder_items = [
+                    canvas.create_rectangle(
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        fill="#E9EEF2",
+                        outline="#6B7F91",
+                        width=2,
+                        dash=(7, 5),
+                        stipple="gray25",
+                        tags=(self._background_canvas_tag, "fond_variable"),
+                    ),
+                    canvas.create_line(
+                        left,
+                        top,
+                        right,
+                        bottom,
+                        fill="#A4B1BC",
+                        width=1,
+                        dash=(5, 5),
+                        tags=(self._background_canvas_tag, "fond_variable"),
+                    ),
+                    canvas.create_line(
+                        right,
+                        top,
+                        left,
+                        bottom,
+                        fill="#A4B1BC",
+                        width=1,
+                        dash=(5, 5),
+                        tags=(self._background_canvas_tag, "fond_variable"),
+                    ),
+                    canvas.create_text(
+                        (left + right) / 2,
+                        (top + bottom) / 2,
+                        text="FOND VARIABLE\nà fournir en Production",
+                        justify="center",
+                        fill="#415466",
+                        font=(Fonts.FAMILY, 13, "bold"),
+                        tags=(self._background_canvas_tag, "fond_variable"),
+                    ),
+                ]
+                if len(existing_items) >= 3:
+                    for item in placeholder_items:
+                        canvas.tag_lower(item, existing_items[2])
+                return
+
             if not (background.get("active") and background.get("ressource")):
                 self._background_photo = None
                 return
