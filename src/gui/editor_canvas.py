@@ -101,6 +101,8 @@ class EditorCanvas(CTkCanvas):
         self._dragging = False
         self._last_x = 0
         self._last_y = 0
+        self._space_pan_active = False
+        self._left_pan_active = False
 
         self._active_tool = "selection"
         self._page_selected = False
@@ -189,6 +191,17 @@ class EditorCanvas(CTkCanvas):
         self.bind(
             "<ButtonRelease-2>",
             self._stop_pan,
+        )
+
+        # Déplacement de la vue à la manière des logiciels de mise en page :
+        # maintenir Espace puis faire glisser avec le bouton gauche.
+        self.bind(
+            "<KeyPress-space>",
+            self._activate_space_pan,
+        )
+        self.bind(
+            "<KeyRelease-space>",
+            self._deactivate_space_pan,
         )
 
         self.bind(
@@ -2130,6 +2143,12 @@ class EditorCanvas(CTkCanvas):
 
         self.focus_set()
 
+        if self._space_pan_active:
+            self.commit_active_text_edit()
+            self._left_pan_active = True
+            self._start_pan(event)
+            return
+
         start = self._event_to_page_mm(
             event,
         )
@@ -2352,15 +2371,20 @@ class EditorCanvas(CTkCanvas):
 
             else:
 
+                marquee_start = (
+                    start
+                    if start is not None
+                    else self._event_to_page_mm_unbounded(event)
+                )
                 self._interaction_mode = "marquee"
-                self._interaction_start_mm = start
+                self._interaction_start_mm = marquee_start
                 self._interaction_original_bounds = None
                 self._interaction_original_bounds_by_index = {}
                 self._interaction_original_rotations_by_index = {}
                 self._interaction_original_centers_by_index = {}
                 self._interaction_rotation_pivot = None
                 self._interaction_start_angle_deg = None
-                self._marquee_start_mm = start
+                self._marquee_start_mm = marquee_start
                 self._marquee_rectangle_id = self.create_rectangle(
                     event.x,
                     event.y,
@@ -2392,6 +2416,10 @@ class EditorCanvas(CTkCanvas):
         self,
         event,
     ) -> None:
+
+        if self._left_pan_active:
+            self._pan(event)
+            return
 
         if self._drawing:
 
@@ -2450,12 +2478,7 @@ class EditorCanvas(CTkCanvas):
             if self._marquee_start_mm is None or self._marquee_rectangle_id is None:
                 return
 
-            current = self._event_to_page_mm(
-                event,
-                clamp_to_page=True,
-            )
-            if current is None:
-                return
+            current = self._event_to_page_mm_unbounded(event)
 
             start_x = self.page_left + self.viewport.mm_to_px(self._marquee_start_mm.x)
             start_y = self.page_top + self.viewport.mm_to_px(self._marquee_start_mm.y)
@@ -2507,6 +2530,14 @@ class EditorCanvas(CTkCanvas):
         self,
         event,
     ) -> None:
+
+        if self._left_pan_active:
+            self._left_pan_active = False
+            self._stop_pan(event)
+            self.configure(
+                cursor="hand2" if self._space_pan_active else "",
+            )
+            return
 
         if self._drawing:
 
@@ -2583,10 +2614,7 @@ class EditorCanvas(CTkCanvas):
 
         if self._interaction_mode == "marquee":
             start = self._marquee_start_mm
-            current = self._event_to_page_mm(
-                event,
-                clamp_to_page=True,
-            )
+            current = self._event_to_page_mm_unbounded(event)
 
             if self._marquee_rectangle_id is not None:
                 self.delete(self._marquee_rectangle_id)
@@ -3162,12 +3190,36 @@ class EditorCanvas(CTkCanvas):
 
         self._notify_mouse()
 
+    def _activate_space_pan(
+        self,
+        _event=None,
+    ) -> str:
+
+        if self._text_editor is not None:
+            return "break"
+
+        self._space_pan_active = True
+        if not self._dragging:
+            self.configure(cursor="hand2")
+        return "break"
+
+    def _deactivate_space_pan(
+        self,
+        _event=None,
+    ) -> str:
+
+        self._space_pan_active = False
+        if not self._left_pan_active:
+            self.configure(cursor="")
+        return "break"
+
     def _start_pan(
         self,
         event,
     ) -> None:
 
         self._dragging = True
+        self.configure(cursor="fleur")
 
         self._last_x = event.x
         self._last_y = event.y
@@ -3197,6 +3249,9 @@ class EditorCanvas(CTkCanvas):
     ) -> None:
 
         self._dragging = False
+        self.configure(
+            cursor="hand2" if self._space_pan_active else "",
+        )
 
     def _on_mousewheel(
         self,

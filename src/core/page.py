@@ -67,12 +67,12 @@ class Page:
     BACKGROUND_SCOPES = {
         "page",
         "surface_composition",
+        "fonds_perdus",
     }
 
     BACKGROUND_FIT_MODES = {
         "remplir",
         "ajuster",
-        "etirer",
         "manuel",
     }
 
@@ -1793,6 +1793,14 @@ class Page:
         if scope == "surface_composition":
             return self.composition_box_mm()
 
+        if scope == "fonds_perdus":
+            return {
+                "x": -self.bleed_left_mm,
+                "y": -self.bleed_top_mm,
+                "largeur": self.width_mm + self.bleed_left_mm + self.bleed_right_mm,
+                "hauteur": self.height_mm + self.bleed_top_mm + self.bleed_bottom_mm,
+            }
+
         return {
             "x": 0.0,
             "y": 0.0,
@@ -1914,6 +1922,11 @@ class Page:
         fit_mode: str,
     ) -> str:
         normalized = str(fit_mode).strip().lower()
+
+        # Compatibilité avec les premières versions : l'ancien mode
+        # « étirer » devient un cadre manuel couvrant la surface choisie.
+        if normalized == "etirer":
+            return "manuel"
 
         if normalized not in cls.BACKGROUND_FIT_MODES:
             raise ValueError(

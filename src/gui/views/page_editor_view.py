@@ -232,8 +232,8 @@ class PageSetupDialog(ctk.CTkToplevel):
     """Réglages visuels du format, des marges et des fonds perdus."""
 
     FREE_FORMAT_LABEL = "Format libre"
-    PREVIEW_WIDTH = 280
-    PREVIEW_HEIGHT = 360
+    PREVIEW_WIDTH = 250
+    PREVIEW_HEIGHT = 320
 
     def __init__(
         self,
@@ -249,8 +249,8 @@ class PageSetupDialog(ctk.CTkToplevel):
         self._dimension_widgets: dict[str, list[object]] = {}
 
         self.title("Format de la page")
-        self.geometry("940x630")
-        self.minsize(860, 590)
+        self.geometry("1080x680")
+        self.minsize(1000, 640)
         self.resizable(True, True)
         self.configure(fg_color=Colors.WINDOW)
         self.transient(parent.winfo_toplevel())
@@ -442,8 +442,8 @@ class PageSetupDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             container,
             text=(
-                "Utilise les flèches pour ajuster les valeurs. "
-                "La vignette montre immédiatement la surface obtenue."
+                "Tous les réglages sont visibles sur une seule fenêtre. "
+                "La vignette se met à jour immédiatement."
             ),
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
@@ -468,7 +468,7 @@ class PageSetupDialog(ctk.CTkToplevel):
         body.grid_columnconfigure(1, weight=0)
         body.grid_rowconfigure(0, weight=1)
 
-        controls = ctk.CTkScrollableFrame(
+        controls = ctk.CTkFrame(
             body,
             fg_color="#FFFFFF",
             corner_radius=12,
@@ -482,10 +482,39 @@ class PageSetupDialog(ctk.CTkToplevel):
             padx=(0, 16),
         )
         controls.grid_columnconfigure(0, weight=1)
+        controls.grid_rowconfigure(1, weight=1)
 
-        self._build_format_section(controls)
-        self._build_margins_section(controls)
-        self._build_bleed_section(controls)
+        self._build_format_section(
+            controls,
+            row=0,
+            column=0,
+        )
+
+        lower_controls = ctk.CTkFrame(
+            controls,
+            fg_color="transparent",
+        )
+        lower_controls.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=6,
+            pady=(0, 6),
+        )
+        lower_controls.grid_columnconfigure(0, weight=1, uniform="page_setup")
+        lower_controls.grid_columnconfigure(1, weight=1, uniform="page_setup")
+        lower_controls.grid_rowconfigure(0, weight=1)
+
+        self._build_margins_section(
+            lower_controls,
+            row=0,
+            column=0,
+        )
+        self._build_bleed_section(
+            lower_controls,
+            row=0,
+            column=1,
+        )
 
         self._build_preview(body)
 
@@ -542,11 +571,18 @@ class PageSetupDialog(ctk.CTkToplevel):
             column=2,
         )
 
-    def _build_format_section(self, parent) -> None:
+    def _build_format_section(
+        self,
+        parent,
+        *,
+        row: int = 0,
+        column: int = 0,
+    ) -> None:
         section = self._section(
             parent,
             "Format de la page",
-            0,
+            row,
+            column,
         )
 
         self._combo_control(
@@ -589,11 +625,18 @@ class PageSetupDialog(ctk.CTkToplevel):
             step=1.0,
         )
 
-    def _build_margins_section(self, parent) -> None:
+    def _build_margins_section(
+        self,
+        parent,
+        *,
+        row: int = 0,
+        column: int = 0,
+    ) -> None:
         section = self._section(
             parent,
             "Marges de composition",
-            1,
+            row,
+            column,
         )
 
         values = (
@@ -615,11 +658,18 @@ class PageSetupDialog(ctk.CTkToplevel):
                 step=1.0,
             )
 
-    def _build_bleed_section(self, parent) -> None:
+    def _build_bleed_section(
+        self,
+        parent,
+        *,
+        row: int = 0,
+        column: int = 0,
+    ) -> None:
         section = self._section(
             parent,
             "Fonds perdus",
-            2,
+            row,
+            column,
         )
 
         values = (
@@ -644,7 +694,7 @@ class PageSetupDialog(ctk.CTkToplevel):
     def _build_preview(self, parent) -> None:
         preview_frame = ctk.CTkFrame(
             parent,
-            width=320,
+            width=290,
             fg_color="#FFFFFF",
             corner_radius=12,
             border_width=1,
@@ -715,6 +765,7 @@ class PageSetupDialog(ctk.CTkToplevel):
         parent,
         title: str,
         row: int,
+        column: int = 0,
     ) -> ctk.CTkFrame:
         section = ctk.CTkFrame(
             parent,
@@ -723,10 +774,10 @@ class PageSetupDialog(ctk.CTkToplevel):
         )
         section.grid(
             row=row,
-            column=0,
-            sticky="ew",
-            padx=12,
-            pady=(12 if row == 0 else 6, 6),
+            column=column,
+            sticky="nsew",
+            padx=6,
+            pady=6,
         )
         section.grid_columnconfigure(0, weight=1)
         section.grid_columnconfigure(1, weight=1)
@@ -1514,22 +1565,19 @@ class PageSetupDialog(ctk.CTkToplevel):
 
 
 class BackgroundImageDialog(ctk.CTkToplevel):
-    """Choix, portée et adaptation de l'image de fond."""
+    """Fenêtre flottante de réglage direct du fond sur la page de travail."""
 
     MODE_LABELS = {
         "Remplir sans déformation": "remplir",
-        "Ajuster l’image entière": "ajuster",
-        "Étirer à la surface choisie": "etirer",
+        "Afficher l’image entière": "ajuster",
         "Dimensions et position libres": "manuel",
     }
 
     SCOPE_LABELS = {
-        "Page entière": "page",
         "Surface entre les marges": "surface_composition",
+        "Page entière": "page",
+        "Page avec fonds perdus": "fonds_perdus",
     }
-
-    PREVIEW_WIDTH = 380
-    PREVIEW_HEIGHT = 470
 
     def __init__(
         self,
@@ -1542,27 +1590,45 @@ class BackgroundImageDialog(ctk.CTkToplevel):
         page_width_mm: float,
         page_height_mm: float,
         composition_box_mm: dict[str, float],
+        bleed_box_mm: dict[str, float],
+        current_frame_mm: dict[str, float],
         on_validate,
         on_remove,
+        on_close,
+        on_center,
+        on_reset,
+        on_lock_changed,
     ) -> None:
         super().__init__(parent)
 
         self.on_validate = on_validate
         self.on_remove = on_remove
+        self.on_close = on_close
+        self.on_center = on_center
+        self.on_reset = on_reset
+        self.on_lock_changed = on_lock_changed
         self.selected_path = current_path
-        self.page_width_mm = max(1.0, float(page_width_mm))
-        self.page_height_mm = max(1.0, float(page_height_mm))
-        self.composition_box_mm = dict(composition_box_mm)
-        self._preview_photo = None
+        self.current_frame_mm = dict(current_frame_mm)
+        self._closing = False
+        self._live_update_running = False
+
+        # Ces arguments restent acceptés afin de conserver l'interface
+        # d'appel existante. L'aperçu séparé est volontairement supprimé :
+        # la vraie page de travail devient l'unique aperçu.
+        _ = (
+            page_width_mm,
+            page_height_mm,
+            composition_box_mm,
+            bleed_box_mm,
+        )
 
         self.title("Image de fond")
-        self.geometry("920x660")
-        self.minsize(860, 620)
+        self.geometry("470x650")
+        self.minsize(440, 610)
         self.resizable(True, True)
         self.configure(fg_color=Colors.WINDOW)
         self.transient(parent.winfo_toplevel())
-        self.grab_set()
-        self.protocol("WM_DELETE_WINDOW", self.cancel)
+        self.protocol("WM_DELETE_WINDOW", self.close)
 
         reverse_modes = {
             mode: label
@@ -1588,6 +1654,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
         self.keep_ratio_var = tk.BooleanVar(
             value=bool(keep_aspect_ratio)
         )
+        self.temporary_lock_var = tk.BooleanVar(value=False)
         self.file_var = tk.StringVar(
             value=(
                 current_path.name
@@ -1595,26 +1662,19 @@ class BackgroundImageDialog(ctk.CTkToplevel):
                 else "Aucune image sélectionnée"
             )
         )
+        self.frame_var = tk.StringVar(
+            value=self._format_frame(self.current_frame_mm)
+        )
         self.error_var = tk.StringVar(value="")
 
         self._build()
         self._refresh_controls()
-        self._draw_preview()
-        self.after(80, self._center_window)
+        self.after(80, self._place_window)
 
     def _build(self) -> None:
-        container = ctk.CTkFrame(
-            self,
-            fg_color="transparent",
-        )
-        container.pack(
-            fill="both",
-            expand=True,
-            padx=24,
-            pady=20,
-        )
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=18, pady=16)
         container.grid_columnconfigure(0, weight=1)
-        container.grid_columnconfigure(1, weight=0)
         container.grid_rowconfigure(2, weight=1)
 
         ctk.CTkLabel(
@@ -1623,31 +1683,21 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.H1,
             text_color=Colors.TEXT,
             anchor="w",
-        ).grid(
-            row=0,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-        )
+        ).grid(row=0, column=0, sticky="ew")
 
         ctk.CTkLabel(
             container,
             text=(
-                "Choisis la surface couverte et le mode d’adaptation. "
-                "En mode libre, l’image se déplace et se redimensionne "
-                "directement sur la page."
+                "Les changements sont appliqués immédiatement sur la page. "
+                "En mode libre, déplace l’image et utilise ses huit poignées "
+                "directement dans l’Atelier."
             ),
             font=Fonts.NORMAL,
             text_color=Colors.TEXT_LIGHT,
             anchor="w",
-            wraplength=820,
-        ).grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            pady=(4, 14),
-        )
+            justify="left",
+            wraplength=420,
+        ).grid(row=1, column=0, sticky="ew", pady=(4, 12))
 
         controls = ctk.CTkFrame(
             container,
@@ -1656,12 +1706,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             border_width=1,
             border_color=Colors.BORDER,
         )
-        controls.grid(
-            row=2,
-            column=0,
-            sticky="nsew",
-            padx=(0, 16),
-        )
+        controls.grid(row=2, column=0, sticky="nsew")
         controls.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -1670,13 +1715,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.H2,
             text_color=Colors.TEXT,
             anchor="w",
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(16, 6),
-        )
+        ).grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 4))
 
         ctk.CTkLabel(
             controls,
@@ -1684,29 +1723,17 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.NORMAL,
             text_color=Colors.TEXT,
             anchor="w",
-            wraplength=350,
-        ).grid(
-            row=1,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 10),
-        )
+            wraplength=385,
+        ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
         ctk.CTkButton(
             controls,
             text="Choisir ou remplacer l’image…",
-            height=38,
+            height=36,
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
             command=self._choose_image,
-        ).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 16),
-        )
+        ).grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 12))
 
         ctk.CTkLabel(
             controls,
@@ -1714,13 +1741,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.H2,
             text_color=Colors.TEXT,
             anchor="w",
-        ).grid(
-            row=3,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 6),
-        )
+        ).grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 4))
 
         self.scope_combo = ctk.CTkComboBox(
             controls,
@@ -1729,13 +1750,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             state="readonly",
             command=self._on_scope_changed,
         )
-        self.scope_combo.grid(
-            row=4,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 14),
-        )
+        self.scope_combo.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 10))
 
         ctk.CTkLabel(
             controls,
@@ -1743,13 +1758,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.H2,
             text_color=Colors.TEXT,
             anchor="w",
-        ).grid(
-            row=5,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 6),
-        )
+        ).grid(row=5, column=0, sticky="ew", padx=16, pady=(0, 4))
 
         self.mode_combo = ctk.CTkComboBox(
             controls,
@@ -1758,108 +1767,93 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             state="readonly",
             command=self._on_mode_changed,
         )
-        self.mode_combo.grid(
-            row=6,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 12),
-        )
+        self.mode_combo.grid(row=6, column=0, sticky="ew", padx=16, pady=(0, 8))
 
         self.keep_ratio_check = ctk.CTkCheckBox(
             controls,
             text="Conserver les proportions en mode libre",
             variable=self.keep_ratio_var,
-            command=self._draw_preview,
+            command=self._on_keep_ratio_changed,
         )
-        self.keep_ratio_check.grid(
-            row=7,
+        self.keep_ratio_check.grid(row=7, column=0, sticky="w", padx=16, pady=(0, 10))
+
+        self.temporary_lock_check = ctk.CTkCheckBox(
+            controls,
+            text="Verrouiller temporairement pendant le réglage",
+            variable=self.temporary_lock_var,
+            command=self._on_lock_changed,
+        )
+        self.temporary_lock_check.grid(
+            row=8,
             column=0,
             sticky="w",
             padx=16,
-            pady=(0, 16),
+            pady=(0, 12),
         )
 
-        info = ctk.CTkFrame(
+        position = ctk.CTkFrame(
             controls,
             fg_color="#F3F5F7",
             corner_radius=8,
         )
-        info.grid(
-            row=8,
-            column=0,
-            sticky="ew",
-            padx=16,
-            pady=(0, 16),
-        )
+        position.grid(row=9, column=0, sticky="ew", padx=16, pady=(0, 10))
+        position.grid_columnconfigure((0, 1), weight=1)
 
         ctk.CTkLabel(
-            info,
-            text=(
-                "Remplir : couvre la surface avec recadrage.\n"
-                "Ajuster : garde l’image entière visible.\n"
-                "Étirer : adapte exactement l’image à la surface.\n"
-                "Dimensions libres : affiche 8 poignées et permet "
-                "de déplacer l’image sur la page."
-            ),
-            justify="left",
+            position,
+            text="Position sur la page",
+            font=Fonts.H2,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, columnspan=2, sticky="ew", padx=12, pady=(10, 6))
+
+        self.position_buttons: list[ctk.CTkButton] = []
+        for row, column, label, axis in (
+            (1, 0, "Centrer horizontalement", "horizontal"),
+            (1, 1, "Centrer verticalement", "vertical"),
+            (2, 0, "Centrer complètement", "both"),
+            (2, 1, "Réinitialiser", "reset"),
+        ):
+            command = (
+                self.on_reset
+                if axis == "reset"
+                else lambda value=axis: self.on_center(value)
+            )
+            button = ctk.CTkButton(
+                position,
+                text=label,
+                height=30,
+                fg_color=Colors.BUTTON,
+                hover_color=Colors.BUTTON_HOVER,
+                text_color=Colors.TEXT,
+                command=command,
+            )
+            button.grid(
+                row=row,
+                column=column,
+                sticky="ew",
+                padx=(10 if column == 0 else 4, 10 if column == 1 else 4),
+                pady=(0, 8),
+            )
+            self.position_buttons.append(button)
+
+        ctk.CTkLabel(
+            position,
+            textvariable=self.frame_var,
             font=Fonts.SMALL,
             text_color=Colors.TEXT_LIGHT,
             anchor="w",
-            wraplength=355,
-        ).pack(
-            fill="x",
-            padx=12,
-            pady=10,
-        )
-
-        preview_frame = ctk.CTkFrame(
-            container,
-            width=420,
-            fg_color="#FFFFFF",
-            corner_radius=12,
-            border_width=1,
-            border_color=Colors.BORDER,
-        )
-        preview_frame.grid(
-            row=2,
-            column=1,
-            sticky="ns",
-        )
-        preview_frame.grid_propagate(False)
-
-        ctk.CTkLabel(
-            preview_frame,
-            text="Aperçu",
-            font=Fonts.H2,
-            text_color=Colors.TEXT,
-        ).pack(
-            pady=(16, 8),
-        )
-
-        self.preview_canvas = tk.Canvas(
-            preview_frame,
-            width=self.PREVIEW_WIDTH,
-            height=self.PREVIEW_HEIGHT,
-            bg="#E7E9EC",
-            highlightthickness=0,
-        )
-        self.preview_canvas.pack(
-            padx=18,
-            pady=(0, 12),
-        )
-
-        footer = ctk.CTkFrame(
-            container,
-            fg_color="transparent",
-        )
-        footer.grid(
+        ).grid(
             row=3,
             column=0,
             columnspan=2,
             sticky="ew",
-            pady=(14, 0),
+            padx=12,
+            pady=(0, 9),
         )
+
+        footer = ctk.CTkFrame(container, fg_color="transparent")
+        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         footer.grid_columnconfigure(1, weight=1)
 
         ctk.CTkButton(
@@ -1871,11 +1865,7 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             hover_color="#EFD6D6",
             text_color="#8C2F2F",
             command=self._remove,
-        ).grid(
-            row=0,
-            column=0,
-            sticky="w",
-        )
+        ).grid(row=0, column=0, sticky="w")
 
         ctk.CTkLabel(
             footer,
@@ -1883,363 +1873,183 @@ class BackgroundImageDialog(ctk.CTkToplevel):
             font=Fonts.SMALL,
             text_color="#B42318",
             anchor="w",
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=12,
-        )
+        ).grid(row=0, column=1, sticky="ew", padx=10)
 
         ctk.CTkButton(
             footer,
-            text="Annuler",
-            width=110,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.cancel,
-        ).grid(
-            row=0,
-            column=2,
-            padx=(0, 8),
-        )
-
-        ctk.CTkButton(
-            footer,
-            text="Appliquer",
+            text="Terminer",
             width=120,
             height=36,
             fg_color=Colors.PRIMARY,
             hover_color=Colors.PRIMARY_HOVER,
-            command=self.validate,
-        ).grid(
-            row=0,
-            column=3,
-        )
+            command=self.finish,
+        ).grid(row=0, column=2)
 
     def _choose_image(self) -> None:
         selected = filedialog.askopenfilename(
             parent=self,
             title="Choisir une image de fond",
             filetypes=(
-                (
-                    "Images",
-                    "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff",
-                ),
+                ("Images", "*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"),
                 ("Tous les fichiers", "*.*"),
             ),
         )
-
         if not selected:
             return
 
         path = Path(selected)
-
         try:
             with Image.open(path) as image:
                 image.verify()
         except (OSError, ValueError):
-            self.error_var.set(
-                "Le fichier sélectionné n’est pas une image valide."
-            )
+            self.error_var.set("Le fichier sélectionné n’est pas une image valide.")
             return
 
         self.selected_path = path
         self.file_var.set(path.name)
         self.error_var.set("")
-        self._draw_preview()
+        self._apply_live()
 
     def _on_scope_changed(self, _value=None) -> None:
-        self._draw_preview()
+        self._apply_live()
 
     def _on_mode_changed(self, _value=None) -> None:
         self._refresh_controls()
-        self._draw_preview()
+        self._apply_live()
+
+    def _on_keep_ratio_changed(self) -> None:
+        self._apply_live()
+
+    def _on_lock_changed(self) -> None:
+        self.on_lock_changed(bool(self.temporary_lock_var.get()))
+        self._refresh_controls()
 
     def _refresh_controls(self) -> None:
-        mode = self.MODE_LABELS.get(
-            self.mode_var.get(),
-            "remplir",
-        )
+        mode = self.MODE_LABELS.get(self.mode_var.get(), "remplir")
         self.keep_ratio_check.configure(
-            state="normal" if mode == "manuel" else "disabled",
+            state="normal" if mode == "manuel" else "disabled"
         )
-
-    def _preview_geometry(self) -> tuple[int, int, int, int, float]:
-        available_width = self.PREVIEW_WIDTH - 56
-        available_height = self.PREVIEW_HEIGHT - 56
-        scale = min(
-            available_width / self.page_width_mm,
-            available_height / self.page_height_mm,
+        position_state = (
+            "disabled"
+            if self.temporary_lock_var.get()
+            else "normal"
         )
-        page_width = max(1, int(round(self.page_width_mm * scale)))
-        page_height = max(1, int(round(self.page_height_mm * scale)))
-        page_left = (self.PREVIEW_WIDTH - page_width) // 2
-        page_top = (self.PREVIEW_HEIGHT - page_height) // 2
-        return page_left, page_top, page_width, page_height, scale
+        for button in self.position_buttons:
+            button.configure(state=position_state)
 
-    def _preview_target_box(
-        self,
-        scale: float,
-    ) -> tuple[int, int, int, int]:
-        scope = self.SCOPE_LABELS.get(
-            self.scope_var.get(),
-            "page",
-        )
-
-        if scope == "surface_composition":
-            target = self.composition_box_mm
-        else:
-            target = {
-                "x": 0.0,
-                "y": 0.0,
-                "largeur": self.page_width_mm,
-                "hauteur": self.page_height_mm,
-            }
-
-        return (
-            int(round(float(target.get("x", 0.0)) * scale)),
-            int(round(float(target.get("y", 0.0)) * scale)),
-            max(1, int(round(float(target.get("largeur", 1.0)) * scale))),
-            max(1, int(round(float(target.get("hauteur", 1.0)) * scale))),
-        )
-
-    def _draw_preview(self) -> None:
-        canvas = self.preview_canvas
-        canvas.delete("all")
-
-        (
-            page_left,
-            page_top,
-            page_width,
-            page_height,
-            scale,
-        ) = self._preview_geometry()
-
-        canvas.create_rectangle(
-            page_left + 5,
-            page_top + 6,
-            page_left + page_width + 5,
-            page_top + page_height + 6,
-            fill="#B7BCC2",
-            outline="",
-        )
-        canvas.create_rectangle(
-            page_left,
-            page_top,
-            page_left + page_width,
-            page_top + page_height,
-            fill="#FFFFFF",
-            outline="#4B4F55",
-            width=1,
-        )
-
-        target_x, target_y, target_width, target_height = (
-            self._preview_target_box(scale)
-        )
-
+    def _values(self):
         path = self.selected_path
-
-        if path is not None and path.exists():
-            try:
-                with Image.open(path) as source:
-                    image = source.convert("RGBA")
-
-                mode = self.MODE_LABELS.get(
-                    self.mode_var.get(),
-                    "remplir",
-                )
-
-                if mode == "ajuster":
-                    rendered = ImageOps.contain(
-                        image,
-                        (target_width, target_height),
-                        Image.Resampling.LANCZOS,
-                    )
-                    paste_x = target_x + (target_width - rendered.width) // 2
-                    paste_y = target_y + (target_height - rendered.height) // 2
-                elif mode == "etirer":
-                    rendered = image.resize(
-                        (target_width, target_height),
-                        Image.Resampling.LANCZOS,
-                    )
-                    paste_x = target_x
-                    paste_y = target_y
-                elif mode == "manuel":
-                    if self.keep_ratio_var.get():
-                        rendered = ImageOps.contain(
-                            image,
-                            (target_width, target_height),
-                            Image.Resampling.LANCZOS,
-                        )
-                        paste_x = target_x + (target_width - rendered.width) // 2
-                        paste_y = target_y + (target_height - rendered.height) // 2
-                    else:
-                        rendered = image.resize(
-                            (target_width, target_height),
-                            Image.Resampling.LANCZOS,
-                        )
-                        paste_x = target_x
-                        paste_y = target_y
-                else:
-                    rendered = ImageOps.fit(
-                        image,
-                        (target_width, target_height),
-                        Image.Resampling.LANCZOS,
-                        centering=(0.5, 0.5),
-                    )
-                    paste_x = target_x
-                    paste_y = target_y
-
-                page_image = Image.new(
-                    "RGBA",
-                    (page_width, page_height),
-                    (255, 255, 255, 255),
-                )
-                page_image.alpha_composite(
-                    rendered,
-                    (paste_x, paste_y),
-                )
-
-                self._preview_photo = ImageTk.PhotoImage(page_image)
-                canvas.create_image(
-                    page_left,
-                    page_top,
-                    anchor="nw",
-                    image=self._preview_photo,
-                )
-            except (OSError, ValueError, tk.TclError):
-                canvas.create_text(
-                    self.PREVIEW_WIDTH / 2,
-                    self.PREVIEW_HEIGHT / 2,
-                    text="Aperçu indisponible",
-                    fill="#B42318",
-                    font=(Fonts.FAMILY, 12),
-                )
-        else:
-            canvas.create_text(
-                self.PREVIEW_WIDTH / 2,
-                self.PREVIEW_HEIGHT / 2,
-                text="Aucune image de fond",
-                fill="#6B7077",
-                font=(Fonts.FAMILY, 12),
-            )
-
-        composition = self.composition_box_mm
-        comp_left = page_left + int(round(float(composition.get("x", 0.0)) * scale))
-        comp_top = page_top + int(round(float(composition.get("y", 0.0)) * scale))
-        comp_right = comp_left + max(
-            1,
-            int(round(float(composition.get("largeur", 1.0)) * scale)),
-        )
-        comp_bottom = comp_top + max(
-            1,
-            int(round(float(composition.get("hauteur", 1.0)) * scale)),
-        )
-        canvas.create_rectangle(
-            comp_left,
-            comp_top,
-            comp_right,
-            comp_bottom,
-            fill="",
-            outline="#7A4EAB",
-            dash=(5, 4),
-            width=1,
-        )
-
-        scope = self.SCOPE_LABELS.get(
-            self.scope_var.get(),
-            "page",
-        )
-        if scope == "surface_composition":
-            canvas.create_rectangle(
-                page_left + target_x,
-                page_top + target_y,
-                page_left + target_x + target_width,
-                page_top + target_y + target_height,
-                fill="",
-                outline="#3874CB",
-                width=2,
-            )
-
-        canvas.create_rectangle(
-            page_left,
-            page_top,
-            page_left + page_width,
-            page_top + page_height,
-            fill="",
-            outline="#4B4F55",
-            width=1,
-        )
-
-    def validate(self) -> None:
-        path = self.selected_path
-
         if path is None or not path.exists():
-            self.error_var.set(
-                "Choisis une image avant d’appliquer."
-            )
-            return
+            return None
+        mode = self.MODE_LABELS.get(self.mode_var.get(), "remplir")
+        scope = self.SCOPE_LABELS.get(self.scope_var.get(), "page")
+        return path, scope, mode, bool(self.keep_ratio_var.get())
 
-        mode = self.MODE_LABELS.get(
-            self.mode_var.get(),
-            "remplir",
-        )
-        scope = self.SCOPE_LABELS.get(
-            self.scope_var.get(),
-            "page",
-        )
-        callback = self.on_validate
-        keep_ratio = bool(self.keep_ratio_var.get())
+    def _apply_live(self) -> bool:
+        if self._live_update_running:
+            return True
 
+        values = self._values()
+        if values is None:
+            return False
+
+        self._live_update_running = True
         try:
-            self.grab_release()
-        except tk.TclError:
-            pass
+            result = self.on_validate(*values)
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self.error_var.set(str(error))
+            return False
+        finally:
+            self._live_update_running = False
 
-        self.destroy()
-        self.master.after_idle(
-            lambda: callback(
-                path,
-                scope,
-                mode,
-                keep_ratio,
-            )
+        if result is False:
+            self.error_var.set("Le fond n’a pas pu être appliqué.")
+            return False
+
+        # Le callback peut renvoyer le chemin de la copie enregistrée dans
+        # le projet. On l'utilise ensuite afin d'éviter de recopier le même
+        # fichier lors de chaque changement de surface ou d'adaptation.
+        if isinstance(result, (str, Path)):
+            saved_path = Path(result)
+            if saved_path.exists():
+                self.selected_path = saved_path
+
+        self.error_var.set("")
+        return True
+
+    def set_current_frame(self, frame: dict[str, float]) -> None:
+        self.current_frame_mm = dict(frame)
+        self.frame_var.set(self._format_frame(self.current_frame_mm))
+
+    @staticmethod
+    def _format_frame(frame: dict[str, float]) -> str:
+        if not frame:
+            return "Position et dimensions : —"
+        return (
+            f"X {float(frame.get('x', 0.0)):.1f} mm  ·  "
+            f"Y {float(frame.get('y', 0.0)):.1f} mm  ·  "
+            f"L {float(frame.get('largeur', 0.0)):.1f} mm  ·  "
+            f"H {float(frame.get('hauteur', 0.0)):.1f} mm"
         )
+
+    def finish(self) -> None:
+        self.close()
 
     def _remove(self) -> None:
-        callback = self.on_remove
+        self.on_remove()
+        self.selected_path = None
+        self.file_var.set("Aucune image sélectionnée")
+        self.current_frame_mm = {}
+        self.frame_var.set(self._format_frame({}))
+        self.error_var.set("")
 
+    def close(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
         try:
-            self.grab_release()
-        except tk.TclError:
-            pass
+            self.destroy()
+        finally:
+            self.on_close()
 
-        self.destroy()
-        self.master.after_idle(callback)
-
-    def cancel(self) -> None:
-        try:
-            self.grab_release()
-        except tk.TclError:
-            pass
-        self.destroy()
-
-    def _center_window(self) -> None:
+    def _place_window(self) -> None:
         self.update_idletasks()
-
         parent = self.master.winfo_toplevel()
-        x = parent.winfo_x() + max(
-            0,
-            (parent.winfo_width() - self.winfo_width()) // 2,
-        )
-        y = parent.winfo_y() + max(
-            0,
-            (parent.winfo_height() - self.winfo_height()) // 2,
-        )
 
+        desired_x = (
+            parent.winfo_x()
+            + parent.winfo_width()
+            - self.winfo_width()
+            - 24
+        )
+        desired_y = parent.winfo_y() + 78
+        max_x = max(0, self.winfo_screenwidth() - self.winfo_width())
+        max_y = max(0, self.winfo_screenheight() - self.winfo_height())
+        x = min(max(0, desired_x), max_x)
+        y = min(max(0, desired_y), max_y)
         self.geometry(f"+{x}+{y}")
+        self.bring_to_front()
+
+    def bring_to_front(self) -> None:
+        if not self.winfo_exists():
+            return
+        self.deiconify()
+        self.lift()
+        try:
+            self.attributes("-topmost", True)
+            self.after(200, self._release_topmost)
+        except tk.TclError:
+            pass
+        self.focus_force()
+
+    def _release_topmost(self) -> None:
+        if not self.winfo_exists():
+            return
+        try:
+            self.attributes("-topmost", False)
+        except tk.TclError:
+            pass
+
 
 class PageEditorView:
     """
@@ -2334,6 +2144,12 @@ class PageEditorView:
         self._background_interaction_start_mm: Point | None = None
         self._background_original_frame: dict[str, float] | None = None
         self._background_drag_changed = False
+        self._background_history_recorded = False
+        self._background_edit_mode = False
+        self._background_edit_locked = True
+        self._background_dialog: BackgroundImageDialog | None = None
+        self._ribbon_action_buttons: list[ctk.CTkButton] = []
+        self._ribbon_previous_states: list[tuple[ctk.CTkButton, str]] = []
 
     def show(self) -> None:
 
@@ -2505,6 +2321,10 @@ class PageEditorView:
                 self._set_active_editor_tool(previous_tool)
 
     def _select_shape_tool(self, shape: str) -> None:
+
+        if self._background_edit_mode:
+            self._save_status_text.set("Terminez le réglage du fond avant d’ajouter une zone")
+            return
 
         if self.workspace is None:
             return
@@ -3175,6 +2995,7 @@ class PageEditorView:
                 state=state,
             )
             button.pack(side="left", padx=3, pady=2)
+            self._ribbon_action_buttons.append(button)
             button.bind(
                 "<Enter>",
                 lambda _event, text=label: self._show_editor_tool_name(text),
@@ -3188,6 +3009,7 @@ class PageEditorView:
             return button
 
         self._editor_tool_buttons.clear()
+        self._ribbon_action_buttons = []
 
         _, page = group("Page", 176)
         icon_button(
@@ -3227,25 +3049,68 @@ class PageEditorView:
             lambda: self._select_shape_tool("ellipse"),
         )
 
-        _, organize = group("Organisation", 270)
-        icon_button(
+        _, organize = group("Organisation", 510)
+
+        alignment_panel = ctk.CTkFrame(
             organize,
-            "≡",
-            "Aligner",
-            self._open_alignment_menu,
+            fg_color="transparent",
         )
+        alignment_panel.pack(side="left", padx=(0, 3), pady=1)
+
+        alignment_buttons = (
+            ("⇤", "Gauche", "left", 0, 0),
+            ("↔", "Centre H", "center_horizontal", 0, 1),
+            ("⇥", "Droite", "right", 0, 2),
+            ("↥", "Haut", "top", 1, 0),
+            ("↕", "Centre V", "center_vertical", 1, 1),
+            ("↧", "Bas", "bottom", 1, 2),
+        )
+
+        for icon, label, mode, row, column in alignment_buttons:
+            button = ctk.CTkButton(
+                alignment_panel,
+                text=f"{icon} {label}",
+                width=78,
+                height=27,
+                corner_radius=7,
+                fg_color="#FFFFFF",
+                hover_color=Colors.BUTTON_HOVER,
+                text_color=Colors.TEXT,
+                border_width=1,
+                border_color="#D5D9DE",
+                font=(Fonts.FAMILY, 10),
+                command=lambda value=mode: self._align_selection(value),
+            )
+            button.grid(
+                row=row,
+                column=column,
+                padx=2,
+                pady=2,
+                sticky="ew",
+            )
+            self._ribbon_action_buttons.append(button)
+
         icon_button(
             organize,
             "↔",
             "Distribuer",
             self._distribute_selection_horizontally,
-            width=84,
+            width=72,
         )
         self._group_button = icon_button(
             organize,
             "▣",
             "Grouper",
             self._group_selection,
+            width=72,
+            state="disabled",
+        )
+        self._ungroup_button = icon_button(
+            organize,
+            "▢",
+            "Dissocier",
+            self._ungroup_selection,
+            width=72,
             state="disabled",
         )
 
@@ -3373,33 +3238,83 @@ class PageEditorView:
         if self.workspace is None:
             return
 
-        selected = None
-        index = self.workspace._selected_object_index
-        if index is not None and 0 <= index < len(self.workspace._objects):
-            selected = self.workspace._objects[index]
-        elif self.workspace._selected_object_indices:
-            first = self.workspace._selected_object_indices[0]
-            if 0 <= first < len(self.workspace._objects):
-                selected = self.workspace._objects[first]
+        valid_indices = sorted(
+            index
+            for index in self.workspace._selected_object_indices
+            if 0 <= index < len(self.workspace._objects)
+        )
 
-        if selected is None:
+        if not valid_indices:
+            index = self.workspace._selected_object_index
+            if index is not None and 0 <= index < len(self.workspace._objects):
+                valid_indices = [index]
+
+        if not valid_indices:
             self._properties_type_text.set("Aucune sélection")
             self._properties_position_text.set("Position : —")
             self._properties_size_text.set("Taille : —")
             self._properties_rotation_text.set("Rotation : —")
             return
 
-        labels = {"rectangle": "Rectangle", "ellipse": "Ellipse", "text": "Texte"}
-        self._properties_type_text.set(f"Type : {labels.get(selected.kind, selected.kind.capitalize())}")
-        self._properties_position_text.set(
-            f"Position : X {selected.bounds.left:.2f} mm • Y {selected.bounds.top:.2f} mm"
-        )
-        self._properties_size_text.set(
-            f"Taille : {selected.bounds.width:.2f} × {selected.bounds.height:.2f} mm"
-        )
-        self._properties_rotation_text.set(
-            f"Rotation : {getattr(selected, 'rotation', 0.0):.1f}°"
-        )
+        selected_objects = [
+            self.workspace._objects[index]
+            for index in valid_indices
+        ]
+
+        if len(valid_indices) == 1:
+            selected = selected_objects[0]
+            labels = {
+                "rectangle": "Rectangle",
+                "ellipse": "Ellipse",
+                "text": "Texte",
+            }
+            self._properties_type_text.set(
+                f"Type : {labels.get(selected.kind, selected.kind.capitalize())}"
+            )
+            bounds = self.workspace._object_visual_bounds(selected)
+        else:
+            group_ids = {
+                selected.group_id
+                for selected in selected_objects
+            }
+            is_single_group = (
+                len(group_ids) == 1
+                and None not in group_ids
+            )
+
+            if is_single_group:
+                self._properties_type_text.set(
+                    f"Type : Groupe ({len(valid_indices)} zones)"
+                )
+            else:
+                self._properties_type_text.set(
+                    f"Type : Sélection multiple ({len(valid_indices)} zones)"
+                )
+
+            bounds = self.workspace._selection_visual_bounds(valid_indices)
+
+        if bounds is None:
+            self._properties_position_text.set("Position : —")
+            self._properties_size_text.set("Taille : —")
+        else:
+            self._properties_position_text.set(
+                f"Position : X {bounds.left:.2f} mm • Y {bounds.top:.2f} mm"
+            )
+            self._properties_size_text.set(
+                f"Taille : {bounds.width:.2f} × {bounds.height:.2f} mm"
+            )
+
+        rotations = [
+            float(getattr(selected, "rotation", 0.0))
+            for selected in selected_objects
+        ]
+        first_rotation = rotations[0]
+        if all(abs(rotation - first_rotation) < 1e-6 for rotation in rotations[1:]):
+            self._properties_rotation_text.set(
+                f"Rotation : {first_rotation:.1f}°"
+            )
+        else:
+            self._properties_rotation_text.set("Rotation : multiple")
 
     def _unlocked_indices(self, indices) -> list[int]:
         """Conserve uniquement les objets existants et déverrouillés."""
@@ -4057,7 +3972,7 @@ class PageEditorView:
         self._apply_text_changes(align=alignment)
 
     def _align_selection(self, alignment: str) -> None:
-        """Aligne chaque objet sélectionné individuellement sur la page."""
+        """Aligne les zones sur la surface comprise entre les marges."""
 
         if self.workspace is None:
             return
@@ -4067,11 +3982,75 @@ class PageEditorView:
         )
 
         if not selected_indices:
-            self._save_status_text.set("Aucun objet modifiable sélectionné")
+            primary_index = self.workspace._selected_object_index
+            if (
+                primary_index is not None
+                and 0 <= primary_index < len(self.workspace._objects)
+                and not self.workspace._objects[primary_index].locked
+            ):
+                selected_indices = [primary_index]
+
+        if not selected_indices:
+            self._save_status_text.set("Sélectionner au moins une zone")
             return
 
-        page_width = self.workspace.page_format.width_mm
-        page_height = self.workspace.page_format.height_mm
+        if alignment not in {
+            "left",
+            "center_horizontal",
+            "right",
+            "top",
+            "center_vertical",
+            "bottom",
+        }:
+            return
+
+        page_number = int(getattr(self.page, "number", 1))
+        is_verso = page_number % 2 == 0
+
+        if hasattr(self.page, "composition_box_mm"):
+            composition = self.page.composition_box_mm(verso=is_verso)
+            target_left = float(composition.get("x", 0.0))
+            target_top = float(composition.get("y", 0.0))
+            target_width = max(
+                0.0,
+                float(composition.get("largeur", 0.0)),
+            )
+            target_height = max(
+                0.0,
+                float(composition.get("hauteur", 0.0)),
+            )
+        else:
+            margin_top = float(getattr(self.page, "margin_top_mm", 15.0))
+            margin_bottom = float(
+                getattr(self.page, "margin_bottom_mm", 15.0)
+            )
+            margin_inside = float(
+                getattr(self.page, "margin_inside_mm", 15.0)
+            )
+            margin_outside = float(
+                getattr(self.page, "margin_outside_mm", 15.0)
+            )
+
+            target_left = margin_outside if is_verso else margin_inside
+            right_margin = margin_inside if is_verso else margin_outside
+            target_top = margin_top
+            target_width = max(
+                0.0,
+                self.workspace.page_format.width_mm
+                - target_left
+                - right_margin,
+            )
+            target_height = max(
+                0.0,
+                self.workspace.page_format.height_mm
+                - margin_top
+                - margin_bottom,
+            )
+
+        target_right = target_left + target_width
+        target_bottom = target_top + target_height
+        target_center_x = target_left + target_width / 2.0
+        target_center_y = target_top + target_height / 2.0
 
         self.workspace._remember_current_state()
 
@@ -4082,31 +4061,31 @@ class PageEditorView:
             new_y = bounds.top
 
             if alignment == "left":
-                new_x = 0.0
+                new_x = target_left
             elif alignment == "center_horizontal":
-                new_x = (page_width - bounds.width) / 2
+                new_x = target_center_x - bounds.width / 2.0
             elif alignment == "right":
-                new_x = page_width - bounds.width
+                new_x = target_right - bounds.width
             elif alignment == "top":
-                new_y = 0.0
+                new_y = target_top
             elif alignment == "center_vertical":
-                new_y = (page_height - bounds.height) / 2
+                new_y = target_center_y - bounds.height / 2.0
             elif alignment == "bottom":
-                new_y = page_height - bounds.height
-            else:
-                return
+                new_y = target_bottom - bounds.height
 
             self.workspace._objects[index] = replace(
                 graphic_object,
-                bounds=Rect(
-                    Point(new_x, new_y),
-                    bounds.size,
-                ),
+                bounds=Rect(Point(new_x, new_y), bounds.size),
             )
 
         self.workspace.redraw()
         self.workspace._notify_selection()
         self.workspace.focus_set()
+        self._save_status_text.set(
+            "Zone alignée sur les marges"
+            if len(selected_indices) == 1
+            else f"{len(selected_indices)} zones alignées sur les marges"
+        )
 
 
     def _distribute_selection_horizontally(self) -> None:
@@ -4697,6 +4676,10 @@ class PageEditorView:
         if saved_objects:
             self.workspace._objects = saved_objects
 
+        self.workspace.set_external_history_state(
+            self._snapshot_background_history,
+            self._restore_background_history,
+        )
         self._install_page_guides()
 
         self.workspace.add_selection_listener(
@@ -4750,54 +4733,198 @@ class PageEditorView:
         self._save_page_objects(show_status=False)
 
     def _open_background_dialog(self) -> None:
-        """Ouvre les réglages de l'image de fond."""
+        """Ouvre la fenêtre flottante du fond et sécurise tout échec."""
 
         if getattr(self.page, "locked", False):
-            self._save_status_text.set(
-                "Cette page est verrouillée"
-            )
+            self._save_status_text.set("Cette page est verrouillée")
             return
 
-        background = getattr(
-            self.page,
-            "background",
-            {},
-        )
-        composition_box = self._background_scope_box_mm(
-            "surface_composition"
-        )
+        existing = self._background_dialog
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.deiconify()
+                    existing.lift()
+                    existing.bring_to_front()
+                    return
+            except tk.TclError:
+                self._background_dialog = None
 
-        BackgroundImageDialog(
-            parent=self.parent,
-            current_path=self._resolve_background_resource(),
-            current_mode=str(
-                background.get(
-                    "mode",
-                    "remplir",
-                )
-            ),
-            current_scope=str(
-                background.get(
-                    "portee",
-                    "page",
-                )
-            ),
-            keep_aspect_ratio=bool(
-                background.get(
-                    "conserver_proportions",
-                    True,
-                )
-            ),
-            page_width_mm=float(
-                getattr(self.page, "width_mm", 148.0)
-            ),
-            page_height_mm=float(
-                getattr(self.page, "height_mm", 210.0)
-            ),
-            composition_box_mm=composition_box,
-            on_validate=self._apply_background_image,
-            on_remove=self._remove_background_image,
+        dialog = None
+        try:
+            background = getattr(self.page, "background", {})
+            composition_box = self._background_scope_box_mm(
+                "surface_composition"
+            )
+            bleed_box = self._background_scope_box_mm(
+                "fonds_perdus"
+            )
+            current_frame = self._background_effective_frame_mm(
+                background
+            )
+
+            # Une vraie fenêtre principale est utilisée comme propriétaire.
+            # Sur Windows, utiliser un simple Frame comme parent peut laisser
+            # la fenêtre flottante derrière l'Atelier ou empêcher son affichage.
+            if self.root is not None and self.root.winfo_exists():
+                dialog_parent = self.root.winfo_toplevel()
+            else:
+                dialog_parent = self.parent.winfo_toplevel()
+
+            dialog = BackgroundImageDialog(
+                parent=dialog_parent,
+                current_path=self._resolve_background_resource(),
+                current_mode=str(background.get("mode", "remplir")),
+                current_scope=str(background.get("portee", "page")),
+                keep_aspect_ratio=bool(
+                    background.get("conserver_proportions", True)
+                ),
+                page_width_mm=float(
+                    getattr(self.page, "width_mm", 148.0)
+                ),
+                page_height_mm=float(
+                    getattr(self.page, "height_mm", 210.0)
+                ),
+                composition_box_mm=composition_box,
+                bleed_box_mm=bleed_box,
+                current_frame_mm=current_frame,
+                on_validate=self._apply_background_image,
+                on_remove=self._remove_background_image,
+                on_close=self._end_background_edit_mode,
+                on_center=self._center_background,
+                on_reset=self._reset_background_position,
+                on_lock_changed=self._set_background_temporary_lock,
+            )
+
+            self._background_dialog = dialog
+            self._begin_background_edit_mode()
+
+            dialog.update_idletasks()
+            dialog.deiconify()
+            dialog.lift()
+            dialog.bring_to_front()
+            dialog.after(120, dialog.bring_to_front)
+
+        except Exception as error:
+            if dialog is not None:
+                try:
+                    dialog.destroy()
+                except tk.TclError:
+                    pass
+
+            self._background_dialog = None
+            self._background_edit_mode = False
+            self._background_edit_locked = True
+            self._background_selected = False
+            self._background_interaction_mode = None
+            self._background_interaction_handle = None
+            self._ribbon_previous_states = []
+            self._refresh_group_controls()
+            self._sync_editor_tool_state()
+            self._draw_background_controls()
+
+            messagebox.showerror(
+                "Image de fond",
+                "La fenêtre du fond n’a pas pu s’ouvrir.\n\n"
+                f"Détail : {type(error).__name__} : {error}",
+                parent=(self.root or self.parent),
+            )
+
+    def _begin_background_edit_mode(self) -> None:
+        self._background_edit_mode = True
+        self._background_edit_locked = False
+        self._background_selected = bool(
+            getattr(self.page, "background", {}).get("active")
         )
+        self._ribbon_previous_states = []
+        for button in self._ribbon_action_buttons:
+            try:
+                self._ribbon_previous_states.append(
+                    (button, str(button.cget("state")))
+                )
+                button.configure(state="disabled")
+            except tk.TclError:
+                pass
+        if self.workspace is not None:
+            self.workspace.set_tool("selection")
+            try:
+                self.workspace._clear_reference_state(
+                    clear_selection=True,
+                    redraw=True,
+                    notify=True,
+                )
+            except AttributeError:
+                pass
+            self.workspace.focus_set()
+        self._save_status_text.set("Mode Fond — les zones sont désactivées")
+        self._draw_background_controls()
+
+    def _end_background_edit_mode(self) -> None:
+        self._background_dialog = None
+        self._background_edit_mode = False
+        self._background_edit_locked = True
+        self._background_selected = False
+        self._background_interaction_mode = None
+        self._background_interaction_handle = None
+        self._background_history_recorded = False
+        for button, state in self._ribbon_previous_states:
+            try:
+                button.configure(state=state)
+            except tk.TclError:
+                pass
+        self._ribbon_previous_states = []
+        self._refresh_group_controls()
+        self._sync_editor_tool_state()
+        self._draw_background_controls()
+        if self.workspace is not None:
+            self.workspace.focus_set()
+        self._save_status_text.set("Fond verrouillé — mode mise en page")
+
+    def _set_background_temporary_lock(self, locked: bool) -> None:
+        self._background_edit_locked = bool(locked)
+        if locked:
+            self._background_interaction_mode = None
+            self._background_interaction_handle = None
+            self._save_status_text.set("Fond temporairement verrouillé")
+        else:
+            self._save_status_text.set("Fond déverrouillé pour le réglage")
+        self._draw_background_controls()
+
+    def _remember_background_state(self) -> None:
+        if self.workspace is not None:
+            self.workspace._remember_current_state()
+
+    def _snapshot_background_history(self):
+        return dict(getattr(self.page, "background", {}))
+
+    def _restore_background_history(self, state) -> None:
+        if not isinstance(state, dict):
+            return
+        try:
+            if hasattr(self.page, "_normalize_background"):
+                self.page.background = self.page._normalize_background(state)
+            else:
+                self.page.background = dict(state)
+            self.page.save(update_history=False)
+            document = self._load_current_document()
+            if document is not None:
+                document.update_page_summary(self.page)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return
+        self._background_selected = bool(
+            self._background_edit_mode
+            and self.page.background.get("active")
+        )
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        if (
+            self._background_dialog is not None
+            and self._background_dialog.winfo_exists()
+        ):
+            self._background_dialog.set_current_frame(
+                self._background_effective_frame_mm()
+            )
 
     def _apply_background_image(
         self,
@@ -4805,28 +4932,19 @@ class PageEditorView:
         scope: str,
         mode: str,
         keep_aspect_ratio: bool,
-    ) -> None:
-        """Copie l'image dans le projet puis l'attache à la page."""
+    ) -> bool:
+        """Copie l'image, applique les réglages et conserve le mode Fond."""
 
+        self._remember_background_state()
         try:
-            previous = dict(
-                getattr(
-                    self.page,
-                    "background",
-                    {},
-                )
-            )
+            previous = dict(getattr(self.page, "background", {}))
             preserve_manual_frame = bool(
                 previous.get("active")
                 and previous.get("mode") == "manuel"
                 and mode == "manuel"
                 and previous.get("portee", "page") == scope
             )
-
-            resource_value = self._copy_background_resource(
-                source_path
-            )
-
+            resource_value = self._copy_background_resource(source_path)
             self.page.set_background(
                 resource_value,
                 scope=scope,
@@ -4839,18 +4957,8 @@ class PageEditorView:
                     frame = {
                         "x": float(previous.get("x_mm", 0.0)),
                         "y": float(previous.get("y_mm", 0.0)),
-                        "largeur": float(
-                            previous.get(
-                                "largeur_mm",
-                                getattr(self.page, "width_mm", 148.0),
-                            )
-                        ),
-                        "hauteur": float(
-                            previous.get(
-                                "hauteur_mm",
-                                getattr(self.page, "height_mm", 210.0),
-                            )
-                        ),
+                        "largeur": float(previous.get("largeur_mm", getattr(self.page, "width_mm", 148.0))),
+                        "hauteur": float(previous.get("hauteur_mm", getattr(self.page, "height_mm", 210.0))),
                     }
                 else:
                     frame = self._initial_manual_background_frame(
@@ -4858,7 +4966,6 @@ class PageEditorView:
                         scope,
                         keep_aspect_ratio,
                     )
-
                 self.page.set_background_transform(
                     x_mm=frame["x"],
                     y_mm=frame["y"],
@@ -4866,36 +4973,28 @@ class PageEditorView:
                     height_mm=frame["hauteur"],
                     keep_aspect_ratio=keep_aspect_ratio,
                 )
-                self._background_selected = True
-            else:
-                self._background_selected = False
 
+            self._background_selected = self._background_edit_mode
             document = self._load_current_document()
-
             if document is not None:
-                document.update_page_summary(
-                    self.page
-                )
-
+                document.update_page_summary(self.page)
             self._invalidate_background_cache()
-
             if self.workspace is not None:
                 self.workspace.redraw()
+            if (
+                self._background_dialog is not None
+                and self._background_dialog.winfo_exists()
+            ):
+                self._background_dialog.set_current_frame(
+                    self._background_effective_frame_mm()
+                )
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self._save_status_text.set(f"Image de fond non appliquée : {error}")
+            return False
 
-        except (
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as error:
-            self._save_status_text.set(
-                f"Image de fond non appliquée : {error}"
-            )
-            return
-
-        self._save_status_text.set(
-            "Image de fond enregistrée"
-        )
+        self._save_status_text.set("Image de fond enregistrée — mode Fond actif")
+        saved_path = self._resolve_background_resource()
+        return saved_path if saved_path is not None else True
 
     def _initial_manual_background_frame(
         self,
@@ -4934,68 +5033,134 @@ class PageEditorView:
         }
 
     def _remove_background_image(self) -> None:
-        """Supprime uniquement le lien de fond de la page."""
-
+        self._remember_background_state()
         try:
             self.page.clear_background()
             self._background_selected = False
             self._background_interaction_mode = None
             self._background_interaction_handle = None
-
             document = self._load_current_document()
-
             if document is not None:
-                document.update_page_summary(
-                    self.page
-                )
-
+                document.update_page_summary(self.page)
             self._invalidate_background_cache()
-
             if self.workspace is not None:
                 self.workspace.redraw()
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            self._save_status_text.set(f"Fond non supprimé : {error}")
+            return
+        self._save_status_text.set("Image de fond supprimée")
 
-        except (
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as error:
-            self._save_status_text.set(
-                f"Fond non supprimé : {error}"
-            )
+    def _center_background(self, axis: str) -> None:
+        background = getattr(self.page, "background", {})
+        if not background.get("active"):
+            self._save_status_text.set("Aucune image de fond")
+            return
+        if self._background_edit_locked:
+            self._save_status_text.set("Déverrouillez temporairement le fond")
+            return
+        if str(background.get("mode", "remplir")) != "manuel":
+            self._save_status_text.set("Le centrage manuel est disponible en mode libre")
             return
 
-        self._save_status_text.set(
-            "Image de fond supprimée"
+        target = self._background_scope_box_mm(str(background.get("portee", "page")))
+        frame = self._background_effective_frame_mm(background)
+        x = frame["x"]
+        y = frame["y"]
+        if axis in {"horizontal", "both"}:
+            x = target["x"] + (target["largeur"] - frame["largeur"]) / 2
+        if axis in {"vertical", "both"}:
+            y = target["y"] + (target["hauteur"] - frame["hauteur"]) / 2
+
+        self._remember_background_state()
+        self.page.set_background_transform(
+            x_mm=x,
+            y_mm=y,
+            width_mm=frame["largeur"],
+            height_mm=frame["hauteur"],
+            keep_aspect_ratio=bool(background.get("conserver_proportions", True)),
         )
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        if self._background_dialog is not None:
+            self._background_dialog.set_current_frame(self._background_effective_frame_mm())
+
+    def _reset_background_position(self) -> None:
+        background = getattr(self.page, "background", {})
+        image_path = self._resolve_background_resource()
+        if not background.get("active") or image_path is None:
+            self._save_status_text.set("Aucune image de fond")
+            return
+        if self._background_edit_locked:
+            self._save_status_text.set("Déverrouillez temporairement le fond")
+            return
+
+        self._remember_background_state()
+        if str(background.get("mode", "remplir")) == "manuel":
+            frame = self._initial_manual_background_frame(
+                image_path,
+                str(background.get("portee", "page")),
+                bool(background.get("conserver_proportions", True)),
+            )
+            self.page.set_background_transform(
+                x_mm=frame["x"],
+                y_mm=frame["y"],
+                width_mm=frame["largeur"],
+                height_mm=frame["hauteur"],
+                keep_aspect_ratio=bool(background.get("conserver_proportions", True)),
+            )
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        if self._background_dialog is not None:
+            self._background_dialog.set_current_frame(self._background_effective_frame_mm())
 
     def _project_root(self) -> Path | None:
+        """Retrouve le dossier racine du projet depuis la page ouverte."""
+
         page_root = getattr(
             self.page,
             "root",
             None,
         )
 
-        if page_root is None:
-            return None
+        if page_root is not None:
+            try:
+                current = Path(page_root).resolve()
+            except (OSError, RuntimeError, TypeError, ValueError):
+                current = Path(page_root)
 
-        path = Path(page_root)
+            for candidate in (current, *current.parents):
+                if (candidate / "project.json").is_file():
+                    return candidate
 
-        for candidate in (
-            path,
-            *path.parents,
-        ):
+            # Structure attendue :
+            # projet/documents/<document>/pages/page_XXXX
             if (
-                candidate / "projet.json"
-            ).exists():
-                return candidate
+                current.parent.name == "pages"
+                and len(current.parents) >= 4
+            ):
+                return current.parents[3]
 
-        # Compatibilité avec l'arborescence actuelle :
-        # projet/documents/document/pages/page_0001
-        try:
-            return path.parents[3]
-        except IndexError:
-            return None
+        widget = self.parent
+
+        while widget is not None:
+            project = getattr(widget, "project", None)
+            project_root = getattr(project, "root", None)
+
+            if project_root is not None:
+                return Path(project_root)
+
+            application = getattr(widget, "application", None)
+            project = getattr(application, "project", None)
+            project_root = getattr(project, "root", None)
+
+            if project_root is not None:
+                return Path(project_root)
+
+            widget = getattr(widget, "master", None)
+
+        return None
 
     def _copy_background_resource(
         self,
@@ -5108,6 +5273,18 @@ class PageEditorView:
         self,
         scope: str,
     ) -> dict[str, float]:
+        if scope == "fonds_perdus":
+            left = max(0.0, float(getattr(self.page, "bleed_left_mm", 0.0)))
+            top = max(0.0, float(getattr(self.page, "bleed_top_mm", 0.0)))
+            right = max(0.0, float(getattr(self.page, "bleed_right_mm", 0.0)))
+            bottom = max(0.0, float(getattr(self.page, "bleed_bottom_mm", 0.0)))
+            return {
+                "x": -left,
+                "y": -top,
+                "largeur": max(1.0, float(getattr(self.page, "width_mm", 148.0)) + left + right),
+                "hauteur": max(1.0, float(getattr(self.page, "height_mm", 210.0)) + top + bottom),
+            }
+
         if (
             scope == "surface_composition"
             and hasattr(self.page, "composition_box_mm")
@@ -5247,6 +5424,9 @@ class PageEditorView:
         if (
             canvas is None
             or getattr(self.page, "locked", False)
+            or not self._background_edit_mode
+            or self._background_edit_locked
+            or str(background.get("mode", "remplir")) != "manuel"
             or not background.get("active")
         ):
             return None
@@ -5260,6 +5440,7 @@ class PageEditorView:
         self._background_interaction_start_mm = point
         self._background_original_frame = dict(frame)
         self._background_drag_changed = False
+        self._background_history_recorded = False
 
         try:
             canvas._clear_reference_state(
@@ -5276,33 +5457,25 @@ class PageEditorView:
 
     def _on_background_pre_press(self, event):
         canvas = self.workspace
-
-        if canvas is None:
+        if canvas is None or not self._background_edit_mode:
             return None
 
+        if self._background_edit_locked:
+            return "break"
+
         current = canvas.find_withtag("current")
-        tags = (
-            set(canvas.gettags(current[-1]))
-            if current
-            else set()
-        )
+        tags = set(canvas.gettags(current[-1])) if current else set()
 
         if self._background_handle_tag in tags:
             return self._on_background_handle_press(event)
-
         if self._background_frame_tag in tags:
             return self._on_background_frame_press(event)
-
         if self._background_canvas_tag in tags:
-            result = self._on_background_image_press(event)
-            if result == "break":
-                return result
+            self._on_background_image_press(event)
+            return "break"
 
-        if self._background_selected:
-            self._background_selected = False
-            self._draw_background_controls()
-
-        return None
+        # En mode Fond, aucun objet de mise en page ne reçoit le clic.
+        return "break"
 
     def _on_background_image_press(self, event):
         background = getattr(self.page, "background", {})
@@ -5388,7 +5561,9 @@ class PageEditorView:
 
     def _on_background_drag(self, event):
         if (
-            self._background_interaction_mode is None
+            not self._background_edit_mode
+            or self._background_edit_locked
+            or self._background_interaction_mode is None
             or self._background_interaction_start_mm is None
             or self._background_original_frame is None
         ):
@@ -5407,6 +5582,10 @@ class PageEditorView:
 
         if abs(dx) < 0.001 and abs(dy) < 0.001:
             return "break"
+
+        if not self._background_history_recorded:
+            self._remember_background_state()
+            self._background_history_recorded = True
 
         if self._background_interaction_mode == "move":
             scope = self._background_scope_box_mm(
@@ -5571,6 +5750,7 @@ class PageEditorView:
         self._background_interaction_start_mm = None
         self._background_original_frame = None
         self._background_drag_changed = False
+        self._background_history_recorded = False
 
         if not changed:
             self._draw_background_controls()
@@ -5604,6 +5784,53 @@ class PageEditorView:
         self._invalidate_background_cache()
         if self.workspace is not None:
             self.workspace.redraw()
+        if (
+            self._background_dialog is not None
+            and self._background_dialog.winfo_exists()
+        ):
+            self._background_dialog.set_current_frame(
+                self._background_effective_frame_mm()
+            )
+        return "break"
+
+    def _move_background_with_keyboard(self, event):
+        if not self._background_edit_mode:
+            return None
+        background = getattr(self.page, "background", {})
+        if (
+            self._background_edit_locked
+            or not background.get("active")
+            or str(background.get("mode", "remplir")) != "manuel"
+        ):
+            return "break"
+
+        frame = self._background_effective_frame_mm(background)
+        step = 10.0 if (event.state & 0x0001) else 1.0
+        dx = dy = 0.0
+        if event.keysym == "Left":
+            dx = -step
+        elif event.keysym == "Right":
+            dx = step
+        elif event.keysym == "Up":
+            dy = -step
+        elif event.keysym == "Down":
+            dy = step
+        else:
+            return None
+
+        self._remember_background_state()
+        self.page.set_background_transform(
+            x_mm=frame["x"] + dx,
+            y_mm=frame["y"] + dy,
+            width_mm=frame["largeur"],
+            height_mm=frame["hauteur"],
+            keep_aspect_ratio=bool(background.get("conserver_proportions", True)),
+        )
+        self._invalidate_background_cache()
+        if self.workspace is not None:
+            self.workspace.redraw()
+        if self._background_dialog is not None:
+            self._background_dialog.set_current_frame(self._background_effective_frame_mm())
         return "break"
 
     def _draw_background_controls(self) -> None:
@@ -5620,7 +5847,8 @@ class PageEditorView:
         background = getattr(self.page, "background", {})
 
         if not (
-            self._background_selected
+            self._background_edit_mode
+            and self._background_selected
             and background.get("active")
             and background.get("ressource")
         ):
@@ -5645,6 +5873,13 @@ class PageEditorView:
                 self._background_frame_tag,
             ),
         )
+
+        if (
+            self._background_edit_locked
+            or str(background.get("mode", "remplir")) != "manuel"
+        ):
+            canvas.tag_raise(self._background_selection_tag)
+            return
 
         middle_x = (left + right) / 2
         middle_y = (top + bottom) / 2
@@ -5684,163 +5919,76 @@ class PageEditorView:
         self._background_render_cache_image = None
 
     def _draw_page_background(self, *_args) -> None:
-        """Affiche le fond derrière tous les objets de la page."""
+        """Affiche le fond sur sa surface réelle, fonds perdus compris."""
 
         canvas = self.workspace
-
         if canvas is None:
             return
 
         try:
             if not canvas.winfo_exists():
                 return
-
-            canvas.delete(
-                self._background_canvas_tag
-            )
-
-            background = getattr(
-                self.page,
-                "background",
-                {},
-            )
-
-            if not (
-                background.get("active")
-                and background.get("ressource")
-            ):
+            canvas.delete(self._background_canvas_tag)
+            background = getattr(self.page, "background", {})
+            if not (background.get("active") and background.get("ressource")):
                 self._background_photo = None
                 return
 
             image_path = self._resolve_background_resource()
-
             if image_path is None:
                 self._background_photo = None
                 return
 
-            page_width_px = max(
+            scope = str(background.get("portee", "page"))
+            scope_box = self._background_scope_box_mm(scope)
+            scope_width_px = max(
                 1,
-                int(
-                    round(
-                        canvas.viewport.mm_to_px(
-                            canvas.page_format.width_mm
-                        )
-                    )
-                ),
+                int(round(canvas.viewport.mm_to_px(scope_box["largeur"]))),
             )
-            page_height_px = max(
+            scope_height_px = max(
                 1,
-                int(
-                    round(
-                        canvas.viewport.mm_to_px(
-                            canvas.page_format.height_mm
-                        )
-                    )
-                ),
+                int(round(canvas.viewport.mm_to_px(scope_box["hauteur"]))),
             )
 
             cache_key = (
                 str(image_path),
                 image_path.stat().st_mtime_ns,
-                page_width_px,
-                page_height_px,
-                str(
-                    background.get(
-                        "portee",
-                        "page",
-                    )
-                ),
-                str(
-                    background.get(
-                        "mode",
-                        "remplir",
-                    )
-                ),
-                bool(
-                    background.get(
-                        "conserver_proportions",
-                        True,
-                    )
-                ),
-                float(
-                    background.get(
-                        "opacite",
-                        1.0,
-                    )
-                ),
-                float(
-                    background.get(
-                        "x_mm",
-                        0.0,
-                    )
-                ),
-                float(
-                    background.get(
-                        "y_mm",
-                        0.0,
-                    )
-                ),
-                float(
-                    background.get(
-                        "largeur_mm",
-                        canvas.page_format.width_mm,
-                    )
-                ),
-                float(
-                    background.get(
-                        "hauteur_mm",
-                        canvas.page_format.height_mm,
-                    )
-                ),
+                scope_width_px,
+                scope_height_px,
+                tuple(sorted((key, float(value)) for key, value in scope_box.items())),
+                str(background.get("mode", "remplir")),
+                bool(background.get("conserver_proportions", True)),
+                float(background.get("opacite", 1.0)),
+                float(background.get("x_mm", 0.0)),
+                float(background.get("y_mm", 0.0)),
+                float(background.get("largeur_mm", scope_box["largeur"])),
+                float(background.get("hauteur_mm", scope_box["hauteur"])),
             )
 
-            if (
-                cache_key
-                != self._background_render_cache_key
-            ):
-                self._background_render_cache_image = (
-                    self._render_background_page_image(
-                        image_path=image_path,
-                        page_width_px=page_width_px,
-                        page_height_px=page_height_px,
-                    )
+            if cache_key != self._background_render_cache_key:
+                self._background_render_cache_image = self._render_background_scope_image(
+                    image_path=image_path,
+                    scope_box_mm=scope_box,
+                    output_width_px=scope_width_px,
+                    output_height_px=scope_height_px,
                 )
-                self._background_render_cache_key = (
-                    cache_key
-                )
+                self._background_render_cache_key = cache_key
 
-            rendered = (
-                self._background_render_cache_image
-            )
-
+            rendered = self._background_render_cache_image
             if rendered is None:
                 return
 
             existing_items = canvas.find_all()
-
-            self._background_photo = ImageTk.PhotoImage(
-                rendered
-            )
-
+            self._background_photo = ImageTk.PhotoImage(rendered)
             background_item = canvas.create_image(
-                canvas.page_left,
-                canvas.page_top,
+                canvas.page_left + canvas.viewport.mm_to_px(scope_box["x"]),
+                canvas.page_top + canvas.viewport.mm_to_px(scope_box["y"]),
                 anchor="nw",
                 image=self._background_photo,
-                tags=(
-                    self._background_canvas_tag,
-                    "image_de_fond",
-                ),
+                tags=(self._background_canvas_tag, "image_de_fond"),
             )
-
-            # Ombre et feuille blanche sont les deux premiers éléments.
-            # Le fond est placé juste au-dessus de la feuille, mais sous
-            # les objets de mise en page.
             if len(existing_items) >= 3:
-                canvas.tag_lower(
-                    background_item,
-                    existing_items[2],
-                )
+                canvas.tag_lower(background_item, existing_items[2])
 
         except (
             AttributeError,
@@ -5852,297 +6000,63 @@ class PageEditorView:
         ):
             self._background_photo = None
 
-    def _render_background_page_image(
+    def _render_background_scope_image(
         self,
         *,
         image_path: Path,
-        page_width_px: int,
-        page_height_px: int,
+        scope_box_mm: dict[str, float],
+        output_width_px: int,
+        output_height_px: int,
     ) -> Image.Image:
-        background = getattr(
-            self.page,
-            "background",
-            {},
-        )
-
+        background = getattr(self.page, "background", {})
         with Image.open(image_path) as source:
             original = source.convert("RGBA")
 
-        page_image = Image.new(
+        output = Image.new(
             "RGBA",
-            (
-                page_width_px,
-                page_height_px,
-            ),
+            (output_width_px, output_height_px),
             (255, 255, 255, 0),
         )
-
-        page_width_mm = float(
-            self.workspace.page_format.width_mm
-        )
-        page_height_mm = float(
-            self.workspace.page_format.height_mm
-        )
-        scale_x = (
-            page_width_px
-            / max(page_width_mm, 0.001)
-        )
-        scale_y = (
-            page_height_px
-            / max(page_height_mm, 0.001)
-        )
-
-        scope = str(
-            background.get(
-                "portee",
-                "page",
-            )
-        )
-
-        if (
-            scope == "surface_composition"
-            and hasattr(
-                self.page,
-                "composition_box_mm",
-            )
-        ):
-            is_verso = (
-                int(
-                    getattr(
-                        self.page,
-                        "number",
-                        1,
-                    )
-                ) % 2 == 0
-            )
-            target = self.page.composition_box_mm(
-                verso=is_verso
-            )
-        else:
-            target = {
-                "x": 0.0,
-                "y": 0.0,
-                "largeur": page_width_mm,
-                "hauteur": page_height_mm,
-            }
-
-        target_x = int(
-            round(
-                float(target["x"])
-                * scale_x
-            )
-        )
-        target_y = int(
-            round(
-                float(target["y"])
-                * scale_y
-            )
-        )
-        target_width = max(
-            1,
-            int(
-                round(
-                    float(target["largeur"])
-                    * scale_x
-                )
-            ),
-        )
-        target_height = max(
-            1,
-            int(
-                round(
-                    float(target["hauteur"])
-                    * scale_y
-                )
-            ),
-        )
-        scope_x = target_x
-        scope_y = target_y
-        scope_width = target_width
-        scope_height = target_height
-
-        mode = str(
-            background.get(
-                "mode",
-                "remplir",
-            )
-        )
+        scale_x = output_width_px / max(float(scope_box_mm["largeur"]), 0.001)
+        scale_y = output_height_px / max(float(scope_box_mm["hauteur"]), 0.001)
+        mode = str(background.get("mode", "remplir"))
 
         if mode == "manuel":
-            target_x = int(
-                round(
-                    float(
-                        background.get(
-                            "x_mm",
-                            0.0,
-                        )
-                    )
-                    * scale_x
-                )
-            )
-            target_y = int(
-                round(
-                    float(
-                        background.get(
-                            "y_mm",
-                            0.0,
-                        )
-                    )
-                    * scale_y
-                )
-            )
-            target_width = max(
-                1,
-                int(
-                    round(
-                        float(
-                            background.get(
-                                "largeur_mm",
-                                page_width_mm,
-                            )
-                        )
-                        * scale_x
-                    )
-                ),
-            )
-            target_height = max(
-                1,
-                int(
-                    round(
-                        float(
-                            background.get(
-                                "hauteur_mm",
-                                page_height_mm,
-                            )
-                        )
-                        * scale_y
-                    )
-                ),
-            )
+            frame = self._background_effective_frame_mm(background)
+            target_x = int(round((frame["x"] - scope_box_mm["x"]) * scale_x))
+            target_y = int(round((frame["y"] - scope_box_mm["y"]) * scale_y))
+            target_width = max(1, int(round(frame["largeur"] * scale_x)))
+            target_height = max(1, int(round(frame["hauteur"] * scale_y)))
             rendered = original.resize(
-                (
-                    target_width,
-                    target_height,
-                ),
+                (target_width, target_height),
                 Image.Resampling.LANCZOS,
             )
-
         elif mode == "ajuster":
             contained = ImageOps.contain(
                 original,
-                (
-                    target_width,
-                    target_height,
-                ),
+                (output_width_px, output_height_px),
                 Image.Resampling.LANCZOS,
             )
-            rendered = Image.new(
-                "RGBA",
-                (
-                    target_width,
-                    target_height,
-                ),
-                (255, 255, 255, 0),
-            )
-            rendered.alpha_composite(
-                contained,
-                (
-                    (
-                        target_width
-                        - contained.width
-                    )
-                    // 2,
-                    (
-                        target_height
-                        - contained.height
-                    )
-                    // 2,
-                ),
-            )
-
-        elif mode == "etirer":
-            rendered = original.resize(
-                (
-                    target_width,
-                    target_height,
-                ),
-                Image.Resampling.LANCZOS,
-            )
-
+            rendered = contained
+            target_x = (output_width_px - contained.width) // 2
+            target_y = (output_height_px - contained.height) // 2
         else:
             rendered = ImageOps.fit(
                 original,
-                (
-                    target_width,
-                    target_height,
-                ),
+                (output_width_px, output_height_px),
                 Image.Resampling.LANCZOS,
                 centering=(0.5, 0.5),
             )
+            target_x = 0
+            target_y = 0
 
-        opacity = max(
-            0.0,
-            min(
-                1.0,
-                float(
-                    background.get(
-                        "opacite",
-                        1.0,
-                    )
-                ),
-            ),
-        )
-
+        opacity = max(0.0, min(1.0, float(background.get("opacite", 1.0))))
         if opacity < 1.0:
-            alpha = rendered.getchannel("A").point(
-                lambda value: int(
-                    value * opacity
-                )
-            )
+            alpha = rendered.getchannel("A").point(lambda value: int(value * opacity))
             rendered.putalpha(alpha)
 
-        rendered_layer = Image.new(
-            "RGBA",
-            (page_width_px, page_height_px),
-            (255, 255, 255, 0),
-        )
-        rendered_layer.alpha_composite(
-            rendered,
-            (target_x, target_y),
-        )
-
-        if scope == "surface_composition":
-            clip_left = max(0, scope_x)
-            clip_top = max(0, scope_y)
-            clip_right = min(
-                page_width_px,
-                scope_x + scope_width,
-            )
-            clip_bottom = min(
-                page_height_px,
-                scope_y + scope_height,
-            )
-
-            if (
-                clip_right > clip_left
-                and clip_bottom > clip_top
-            ):
-                clipped = rendered_layer.crop(
-                    (
-                        clip_left,
-                        clip_top,
-                        clip_right,
-                        clip_bottom,
-                    )
-                )
-                page_image.alpha_composite(
-                    clipped,
-                    (clip_left, clip_top),
-                )
-        else:
-            page_image.alpha_composite(rendered_layer)
-
-        return page_image
+        output.alpha_composite(rendered, (target_x, target_y))
+        return output
 
     def _install_page_guides(self) -> None:
         """Maintient le fond et les repères visibles sur le canvas."""
@@ -6197,6 +6111,12 @@ class PageEditorView:
             "<ButtonRelease-1>",
             self._on_background_release,
         )
+        for key in ("<Left>", "<Right>", "<Up>", "<Down>"):
+            self.workspace.bind_class(
+                self._background_bindtag,
+                key,
+                self._move_background_with_keyboard,
+            )
 
     def _draw_page_overlays(self, *_args) -> None:
         self._draw_page_background()
