@@ -321,6 +321,9 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._unused_graphic_resources: list[Path] = []
         self._unused_graphic_size = 0
         self._latest_trash_graphics: Path | None = None
+        self._history_only_graphic_resources: list[Path] = []
+        self._history_only_graphic_size = 0
+        self._latest_trash_history_graphics: Path | None = None
 
         self.title("Nettoyage de la base")
         self.geometry("940x750")
@@ -338,9 +341,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
     # ==========================================================
 
     def _build(self) -> None:
-        container = ctk.CTkFrame(
+        container = ctk.CTkScrollableFrame(
             self,
             fg_color="transparent",
+            corner_radius=0,
         )
         container.pack(
             fill="both",
@@ -349,7 +353,6 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=22,
         )
         container.grid_columnconfigure(0, weight=1)
-        container.grid_rowconfigure(3, weight=1)
 
         ctk.CTkLabel(
             container,
@@ -405,10 +408,9 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         body.grid(
             row=3,
             column=0,
-            sticky="nsew",
+            sticky="ew",
         )
         body.grid_columnconfigure(0, weight=1)
-        body.grid_rowconfigure(1, weight=1)
 
         header = ctk.CTkFrame(
             body,
@@ -462,7 +464,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             padx=(8, 12),
         )
 
-        rows = ctk.CTkScrollableFrame(
+        rows = ctk.CTkFrame(
             body,
             fg_color="transparent",
             corner_radius=0,
@@ -662,6 +664,37 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             anchor="e",
         ).grid(
             row=3,
+            column=1,
+            sticky="e",
+            padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Ressources conservées seulement par l’historique",
+            font=Fonts.NORMAL,
+            text_color="#8A5A00",
+            anchor="w",
+        ).grid(
+            row=4,
+            column=0,
+            padx=14,
+            pady=(0, 12),
+        )
+
+        self.history_only_graphics_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.history_only_graphics_var,
+            font=Fonts.NORMAL,
+            text_color="#8A5A00",
+            anchor="e",
+        ).grid(
+            row=4,
             column=1,
             sticky="e",
             padx=14,
@@ -915,6 +948,65 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.show_history_graphics_details_button = ctk.CTkButton(
+            footer,
+            text="Voir les ressources liées à l’historique",
+            width=290,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_history_only_graphics_details,
+            state="disabled",
+        )
+        self.show_history_graphics_details_button.grid(
+            row=5,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.move_history_graphics_button = ctk.CTkButton(
+            footer,
+            text="Mettre les ressources historiques à la corbeille",
+            width=350,
+            height=36,
+            fg_color="#B76E00",
+            hover_color="#945900",
+            text_color="#FFFFFF",
+            command=self.move_history_only_graphics_to_trash,
+            state="disabled",
+        )
+        self.move_history_graphics_button.grid(
+            row=5,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
+        self.restore_history_graphics_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les ressources historiques",
+            width=280,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_history_graphics,
+            state="disabled",
+        )
+        self.restore_history_graphics_button.grid(
+            row=6,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -1044,6 +1136,37 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             state=graphics_state
         )
 
+        (
+            self._history_only_graphic_resources,
+            self._history_only_graphic_size,
+        ) = self._find_history_only_graphic_resources(root)
+        self.history_only_graphics_var.set(
+            f"{len(self._history_only_graphic_resources)} fichier(s) — "
+            f"{self._format_size(self._history_only_graphic_size)}"
+        )
+        history_state = (
+            "normal"
+            if self._history_only_graphic_resources
+            else "disabled"
+        )
+        self.show_history_graphics_details_button.configure(
+            state=history_state
+        )
+        self.move_history_graphics_button.configure(
+            state=history_state
+        )
+
+        self._latest_trash_history_graphics = (
+            self._find_latest_trash_history_graphics(root)
+        )
+        self.restore_history_graphics_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_history_graphics is not None
+                else "disabled"
+            )
+        )
+
         self._latest_trash_graphics = self._find_latest_trash_graphics(
             root
         )
@@ -1087,6 +1210,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             self.status_var.set(
                 "Le dernier lot de ressources graphiques placé dans la "
                 "corbeille peut être restauré."
+            )
+        elif self._history_only_graphic_resources:
+            self.status_var.set(
+                f"{len(self._history_only_graphic_resources)} ressource(s) "
+                "graphique(s) ne sont utilisées que par l’historique."
+            )
+        elif self._latest_trash_history_graphics is not None:
+            self.status_var.set(
+                "Le dernier lot de ressources liées à l’historique "
+                "peut être restauré."
             )
         else:
             self.status_var.set(
@@ -1674,7 +1807,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         try:
             with manifest_file.open(
                 "r",
-                encoding="utf-8",
+                encoding="utf-8-sig",
             ) as handle:
                 manifest = json.load(handle)
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -1871,6 +2004,479 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         return max(
             candidates,
             key=lambda item: item.name,
+        )
+
+    def move_history_only_graphics_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        files, _ = self._find_history_only_graphic_resources(root)
+
+        if not files:
+            messagebox.showinfo(
+                "Aucune ressource historique",
+                (
+                    "Aucune ressource graphique utilisée seulement par "
+                    "l’historique n’a été détectée."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        first_confirmation = messagebox.askyesno(
+            "Ressources nécessaires à l’historique",
+            (
+                f"{len(files)} fichier(s) ne sont plus utilisés par les "
+                "pages actives, mais restent nécessaires pour certains "
+                "états historiques.\n\n"
+                "Après leur déplacement, ces anciens états pourront être "
+                "incomplets tant que les fichiers ne seront pas restaurés.\n\n"
+                "Continuer ?"
+            ),
+            parent=self,
+        )
+
+        if not first_confirmation:
+            return
+
+        second_confirmation = messagebox.askyesno(
+            "Confirmer le déplacement",
+            (
+                "Les fichiers seront placés dans la corbeille interne du "
+                "projet. Ils ne seront pas supprimés définitivement.\n\n"
+                "Confirmer le déplacement des ressources historiques ?"
+            ),
+            parent=self,
+        )
+
+        if not second_confirmation:
+            return
+
+        trash_root = root / "corbeille"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch = trash_root / f"ressources_historique_{timestamp}"
+        suffix = 1
+
+        while batch.exists():
+            batch = (
+                trash_root
+                / f"ressources_historique_{timestamp}_{suffix}"
+            )
+            suffix += 1
+
+        batch.mkdir(
+            parents=True,
+            exist_ok=False,
+        )
+
+        moved_files: list[tuple[Path, Path]] = []
+        relative_paths: list[str] = []
+
+        original_index = list(
+            getattr(
+                self.project,
+                "ressources",
+                [],
+            )
+        )
+
+        try:
+            for source_path in files:
+                relative_path = (
+                    source_path.relative_to(root).as_posix()
+                )
+                destination = batch / relative_path
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                moved_files.append(
+                    (source_path, destination)
+                )
+                relative_paths.append(relative_path)
+
+            normalized_paths = {
+                path.casefold()
+                for path in relative_paths
+            }
+
+            retained_index = [
+                summary
+                for summary in original_index
+                if not self._summary_references_paths(
+                    summary,
+                    normalized_paths,
+                )
+            ]
+
+            manifest = {
+                "type": "ressources_historique",
+                "date": datetime.now().isoformat(),
+                "projet": str(
+                    getattr(self.project, "name", "")
+                ),
+                "fichiers": relative_paths,
+                "index_retires": [
+                    summary
+                    for summary in original_index
+                    if summary not in retained_index
+                ],
+            }
+
+            with (batch / "manifest.json").open(
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    manifest,
+                    handle,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            if retained_index != original_index:
+                self.project.ressources = retained_index
+
+                try:
+                    self.project.save()
+                except Exception:
+                    self.project.ressources = original_index
+                    raise
+
+        except Exception as exc:
+            self.project.ressources = original_index
+
+            for source_path, destination in reversed(moved_files):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            try:
+                if batch.exists():
+                    shutil.rmtree(batch)
+            except Exception:
+                pass
+
+            messagebox.showerror(
+                "Déplacement impossible",
+                (
+                    "Les ressources liées à l’historique n’ont pas pu "
+                    f"être déplacées correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(relative_paths)} ressource(s) historique(s) "
+            "placée(s) dans la corbeille."
+        )
+
+        messagebox.showinfo(
+            "Ressources historiques déplacées",
+            (
+                f"{len(relative_paths)} fichier(s) ont été placés dans "
+                "la corbeille interne.\n"
+                "Ils restent restaurables."
+            ),
+            parent=self,
+        )
+
+    def restore_latest_history_graphics(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        batch = self._find_latest_trash_history_graphics(root)
+
+        if batch is None:
+            messagebox.showinfo(
+                "Aucune ressource à restaurer",
+                (
+                    "La corbeille ne contient aucun lot de ressources "
+                    "liées à l’historique."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        manifest_file = batch / "manifest.json"
+
+        try:
+            with manifest_file.open(
+                "r",
+                encoding="utf-8-sig",
+            ) as handle:
+                manifest = json.load(handle)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Le manifeste du lot est absent ou illisible.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            return
+
+        files = manifest.get("fichiers", [])
+        removed_index = manifest.get("index_retires", [])
+
+        if not isinstance(files, list) or not files:
+            messagebox.showerror(
+                "Restauration impossible",
+                "Le lot ne contient aucun fichier exploitable.",
+                parent=self,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            "Restaurer les ressources historiques",
+            (
+                f"{len(files)} fichier(s) seront replacés dans les "
+                "bibliothèques graphiques du projet.\n\n"
+                "Confirmer la restauration ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        active_index = list(
+            getattr(
+                self.project,
+                "ressources",
+                [],
+            )
+        )
+        restored: list[tuple[Path, Path]] = []
+        path_mapping: dict[str, str] = {}
+
+        try:
+            for value in files:
+                original_relative = str(value).strip()
+
+                if not original_relative:
+                    continue
+
+                source_path = batch / original_relative
+
+                if not source_path.is_file():
+                    raise FileNotFoundError(
+                        "Fichier absent dans la corbeille : "
+                        f"{original_relative}"
+                    )
+
+                destination = root / original_relative
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                if destination.exists():
+                    destination = self._available_destination(
+                        destination
+                    )
+
+                restored_relative = (
+                    destination.relative_to(root).as_posix()
+                )
+                path_mapping[original_relative] = restored_relative
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                restored.append(
+                    (source_path, destination)
+                )
+
+            restored_index = []
+
+            if isinstance(removed_index, list):
+                for summary in removed_index:
+                    if not isinstance(summary, dict):
+                        continue
+
+                    restored_index.append(
+                        self._replace_paths_in_value(
+                            dict(summary),
+                            path_mapping,
+                        )
+                    )
+
+            combined_index = list(active_index)
+            active_identifiers = {
+                str(summary.get("identifiant", "")).strip()
+                for summary in combined_index
+                if isinstance(summary, dict)
+            }
+
+            for summary in restored_index:
+                identifier = str(
+                    summary.get("identifiant", "")
+                ).strip()
+
+                if identifier and identifier in active_identifiers:
+                    continue
+
+                combined_index.append(summary)
+
+                if identifier:
+                    active_identifiers.add(identifier)
+
+            self.project.ressources = combined_index
+
+            try:
+                self.project.save()
+            except Exception:
+                self.project.ressources = active_index
+                raise
+
+            shutil.rmtree(batch)
+
+        except Exception as exc:
+            self.project.ressources = active_index
+
+            for source_path, destination in reversed(restored):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            messagebox.showerror(
+                "Restauration incomplète",
+                (
+                    "Les ressources historiques n’ont pas pu être "
+                    f"restaurées correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(restored)} ressource(s) historique(s) restaurée(s)."
+        )
+
+        messagebox.showinfo(
+            "Ressources historiques restaurées",
+            (
+                f"{len(restored)} fichier(s) ont été replacés dans "
+                "les bibliothèques graphiques du projet."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _find_latest_trash_history_graphics(
+        root: Path,
+    ) -> Path | None:
+        trash_root = root / "corbeille"
+
+        if not trash_root.exists():
+            return None
+
+        candidates = [
+            item
+            for item in trash_root.iterdir()
+            if (
+                item.is_dir()
+                and item.name.startswith(
+                    "ressources_historique_"
+                )
+                and (item / "manifest.json").is_file()
+            )
+        ]
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda item: item.name,
+        )
+
+    def show_history_only_graphics_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        files, _ = self._find_history_only_graphic_resources(root)
+
+        if not files:
+            messagebox.showinfo(
+                "Aucune ressource historique",
+                (
+                    "Aucune ressource graphique utilisée seulement par "
+                    "l’historique n’a été détectée."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Ressources conservées seulement par l’historique",
+            project_root=root,
+            files=files,
+            dependency_text=(
+                "aucun usage actif — nécessaire seulement à un état historique"
+            ),
         )
 
     def show_unused_graphics_details(self) -> None:
@@ -2146,7 +2752,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         try:
             with manifest_file.open(
                 "r",
-                encoding="utf-8",
+                encoding="utf-8-sig",
             ) as handle:
                 manifest = json.load(handle)
         except (
@@ -2391,6 +2997,98 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
 
         return value
 
+    def _find_history_only_graphic_resources(
+        self,
+        root: Path,
+    ) -> tuple[list[Path], int]:
+        active_references, history_references = (
+            self._collect_active_and_history_path_references(root)
+        )
+        files: list[Path] = []
+        total_size = 0
+
+        for candidate in self._graphic_resource_files(root):
+            active = self._path_matches_references(
+                candidate,
+                root,
+                active_references,
+            )
+            historical = self._path_matches_references(
+                candidate,
+                root,
+                history_references,
+            )
+
+            if active or not historical:
+                continue
+
+            files.append(candidate)
+
+            try:
+                total_size += candidate.stat().st_size
+            except OSError:
+                pass
+
+        files.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return files, total_size
+
+    @staticmethod
+    def _graphic_resource_files(root: Path) -> list[Path]:
+        folders = (
+            root / "ressources" / "images",
+            root / "ressources" / "illustrations",
+            root / "ressources" / "icones",
+            root / "ressources" / "logos",
+        )
+        files: list[Path] = []
+
+        for folder in folders:
+            if not folder.exists():
+                continue
+
+            try:
+                files.extend(
+                    item
+                    for item in folder.rglob("*")
+                    if item.is_file()
+                )
+            except OSError:
+                continue
+
+        return files
+
+    @staticmethod
+    def _path_matches_references(
+        candidate: Path,
+        root: Path,
+        references: set[str],
+    ) -> bool:
+        try:
+            relative = candidate.relative_to(root).as_posix().casefold()
+        except ValueError:
+            return False
+
+        try:
+            absolute = str(candidate.resolve()).replace(
+                "\\",
+                "/",
+            ).casefold()
+        except OSError:
+            absolute = str(candidate).replace(
+                "\\",
+                "/",
+            ).casefold()
+
+        return any(
+            reference == relative
+            or reference == absolute
+            or reference.endswith("/" + relative)
+            for reference in references
+        )
+
     def _find_unused_graphic_resources(
         self,
         root: Path,
@@ -2462,7 +3160,17 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self,
         root: Path,
     ) -> set[str]:
-        references: set[str] = set()
+        active, history = (
+            self._collect_active_and_history_path_references(root)
+        )
+        return active | history
+
+    def _collect_active_and_history_path_references(
+        self,
+        root: Path,
+    ) -> tuple[set[str], set[str]]:
+        active_references: set[str] = set()
+        history_references: set[str] = set()
         search_roots = (
             root / "projet.json",
             root / "documents",
@@ -2470,6 +3178,12 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             root / "contenus",
             root / "productions",
         )
+        history_folder_names = {
+            "historique",
+            "history",
+            "versions",
+            "archives",
+        }
 
         for search_root in search_roots:
             if search_root.is_file():
@@ -2488,7 +3202,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 try:
                     with json_file.open(
                         "r",
-                        encoding="utf-8",
+                        encoding="utf-8-sig",
                     ) as handle:
                         data = json.load(handle)
                 except (
@@ -2498,12 +3212,74 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 ):
                     continue
 
-                self._collect_string_references(
-                    data,
-                    references,
+                is_history_file = any(
+                    part.casefold() in history_folder_names
+                    for part in json_file.parts
                 )
 
-        return references
+                if is_history_file:
+                    self._collect_string_references(
+                        data,
+                        history_references,
+                    )
+                    continue
+
+                self._collect_partitioned_references(
+                    data,
+                    active_references,
+                    history_references,
+                )
+
+        return active_references, history_references
+
+    @staticmethod
+    def _collect_partitioned_references(
+        value,
+        active_destination: set[str],
+        history_destination: set[str],
+        in_history: bool = False,
+    ) -> None:
+        if isinstance(value, str):
+            destination = (
+                history_destination
+                if in_history
+                else active_destination
+            )
+            ProjectCleanupDialog._collect_string_references(
+                value,
+                destination,
+            )
+            return
+
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key).strip().casefold()
+                child_in_history = (
+                    in_history
+                    or normalized_key
+                    in {
+                        "historique",
+                        "history",
+                        "versions",
+                        "archives",
+                    }
+                )
+                ProjectCleanupDialog._collect_partitioned_references(
+                    child,
+                    active_destination,
+                    history_destination,
+                    child_in_history,
+                )
+            return
+
+        if isinstance(value, list):
+            for child in value:
+                ProjectCleanupDialog._collect_partitioned_references(
+                    child,
+                    active_destination,
+                    history_destination,
+                    in_history,
+                )
 
     @staticmethod
     def _collect_string_references(
@@ -2607,7 +3383,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 try:
                     with json_file.open(
                         "r",
-                        encoding="utf-8",
+                        encoding="utf-8-sig",
                     ) as handle:
                         data = json.load(handle)
                 except (OSError, UnicodeError, json.JSONDecodeError):

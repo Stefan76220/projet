@@ -21,7 +21,7 @@ class Project:
     sans supprimer ni déplacer leurs fichiers existants.
     """
 
-    VERSION = "1.2"
+    VERSION = "1.3"
 
     PROJECT_FOLDERS = (
         "documents",
@@ -38,6 +38,7 @@ class Project:
         "productions",
         "exports",
         "cache",
+        "corbeille",
     )
 
     def __init__(self) -> None:
@@ -108,6 +109,10 @@ class Project:
     @property
     def cache_folder(self) -> Path:
         return self._require_root() / "cache"
+
+    @property
+    def trash_folder(self) -> Path:
+        return self._require_root() / "corbeille"
 
     # ==========================================================
     # Création / Chargement
