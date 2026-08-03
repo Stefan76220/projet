@@ -292,12 +292,14 @@ class TrashContentsDialog(ctk.CTkToplevel):
         parent,
         project_root: Path,
         restore_callback: Callable[[Path], None],
+        delete_callback: Callable[[Path], None],
     ) -> None:
         super().__init__(parent)
 
         self.project_root = project_root
         self.trash_root = project_root / "corbeille"
         self.restore_callback = restore_callback
+        self.delete_callback = delete_callback
 
         self.title("Contenu de la corbeille")
         self.geometry("900x640")
@@ -499,6 +501,22 @@ class TrashContentsDialog(ctk.CTkToplevel):
                 row=0,
                 column=2,
                 rowspan=2,
+                padx=(0, 8),
+            )
+
+            ctk.CTkButton(
+                row,
+                text="Supprimer ce lot",
+                width=150,
+                height=34,
+                fg_color="#B42318",
+                hover_color="#8F1C14",
+                text_color="#FFFFFF",
+                command=lambda selected=batch: self._delete(selected),
+            ).grid(
+                row=0,
+                column=3,
+                rowspan=2,
                 padx=(0, 12),
             )
 
@@ -515,6 +533,22 @@ class TrashContentsDialog(ctk.CTkToplevel):
 
         try:
             self.restore_callback(batch)
+        finally:
+            if self.winfo_exists():
+                try:
+                    self.grab_set()
+                except tk.TclError:
+                    pass
+                self.refresh()
+
+    def _delete(self, batch: Path) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        try:
+            self.delete_callback(batch)
         finally:
             if self.winfo_exists():
                 try:
@@ -1788,6 +1822,102 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             parent=self,
             project_root=root,
             restore_callback=self.restore_trash_batch,
+            delete_callback=self.delete_trash_batch,
+        )
+
+    def delete_trash_batch(self, batch: Path) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        trash_root = root / "corbeille"
+
+        try:
+            resolved_trash = trash_root.resolve()
+            resolved_batch = batch.resolve()
+        except OSError:
+            resolved_trash = trash_root
+            resolved_batch = batch
+
+        if (
+            not batch.exists()
+            or not batch.is_dir()
+            or resolved_batch.parent != resolved_trash
+        ):
+            messagebox.showerror(
+                "Lot indisponible",
+                (
+                    "Le lot sélectionné n’existe plus ou ne se trouve "
+                    "pas directement dans la corbeille du projet."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        file_count, batch_size = self._folder_stats(batch)
+        lot_name = TrashContentsDialog._batch_label(batch)
+
+        first_confirmation = messagebox.askyesno(
+            "Suppression définitive du lot",
+            (
+                f"Lot : {lot_name}\n"
+                f"{file_count} fichier(s) — "
+                f"{self._format_size(batch_size)}\n\n"
+                "Ce lot sera supprimé définitivement et ne pourra plus "
+                "être restauré.\n\n"
+                "Continuer ?"
+            ),
+            parent=self,
+        )
+
+        if not first_confirmation:
+            return
+
+        second_confirmation = messagebox.askyesno(
+            "Dernière confirmation",
+            (
+                "La suppression est irréversible.\n\n"
+                f"Supprimer définitivement le lot « {lot_name} » ?"
+            ),
+            parent=self,
+        )
+
+        if not second_confirmation:
+            return
+
+        try:
+            shutil.rmtree(batch)
+        except OSError as exc:
+            messagebox.showerror(
+                "Suppression impossible",
+                (
+                    "Le lot n’a pas pu être supprimé correctement.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"Le lot « {lot_name} » a été supprimé définitivement."
+        )
+
+        messagebox.showinfo(
+            "Lot supprimé",
+            (
+                f"Le lot « {lot_name} » a été supprimé définitivement.\n"
+                "Les autres lots de la corbeille sont conservés."
+            ),
+            parent=self,
         )
 
     def restore_trash_batch(self, batch: Path) -> None:
