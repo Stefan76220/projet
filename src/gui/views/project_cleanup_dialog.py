@@ -9,9 +9,11 @@ import tkinter as tk
 from tkinter import messagebox
 
 import customtkinter as ctk
+from PIL import Image
 
 from src.theme.colors import Colors
 from src.theme.fonts import Fonts
+from src.theme.interface_assets import InterfaceAssets
 
 
 class CleanupDetailsDialog(ctk.CTkToplevel):
@@ -35,7 +37,7 @@ class CleanupDetailsDialog(ctk.CTkToplevel):
         self.geometry("860x620")
         self.minsize(760, 520)
         self.configure(fg_color=Colors.WINDOW)
-        self.transient(parent)
+        self.transient(parent.winfo_toplevel())
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -50,8 +52,8 @@ class CleanupDetailsDialog(ctk.CTkToplevel):
         container.pack(
             fill="both",
             expand=True,
-            padx=24,
-            pady=22,
+            padx=20,
+            pady=16,
         )
         container.grid_columnconfigure(0, weight=1)
         container.grid_rowconfigure(2, weight=1)
@@ -154,7 +156,7 @@ class CleanupDetailsDialog(ctk.CTkToplevel):
             column=0,
             sticky="nsew",
             padx=12,
-            pady=(0, 8),
+            pady=(0, 6),
         )
         rows.grid_columnconfigure(0, weight=1)
 
@@ -309,7 +311,7 @@ class TrashContentsDialog(ctk.CTkToplevel):
         self.geometry("900x640")
         self.minsize(780, 520)
         self.configure(fg_color=Colors.WINDOW)
-        self.transient(parent)
+        self.transient(parent.winfo_toplevel())
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -631,7 +633,7 @@ class TrashContentsDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-class ProjectCleanupDialog(ctk.CTkToplevel):
+class ProjectCleanupDialog(ctk.CTkFrame):
     """Analyse le stockage du projet actuellement ouvert."""
 
     CATEGORY_FOLDERS = (
@@ -681,45 +683,337 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._latest_trash_content_sheets: Path | None = None
         self._latest_trash_content_collections: Path | None = None
 
-        self.title("Nettoyage de la base")
-        self.geometry("940x750")
-        self.minsize(880, 690)
-        self.configure(fg_color=Colors.WINDOW)
-        self.transient(parent.winfo_toplevel())
-        self.protocol("WM_DELETE_WINDOW", self.close)
+        self.configure(
+            fg_color="#F8FAF7",
+            corner_radius=0,
+        )
+        self.pack(
+            fill="both",
+            expand=True,
+        )
 
         self._build()
-        self.after(80, self._center_window)
-        self.after(120, self.analyze)
+        self.analyze()
 
     # ==========================================================
     # Construction
     # ==========================================================
 
     def _build(self) -> None:
-        container = ctk.CTkScrollableFrame(
+        paper = "#F7FAF5"
+        card = "#FEFFFE"
+        pearl = "#D4E0E5"
+        ink = "#21384A"
+        blue = "#356F9F"
+        celadon = "#91D1B5"
+        sky = "#8EC5EA"
+        lilac = "#B7A6E0"
+        coral = "#F08B72"
+        turquoise = "#65C3C8"
+        sun = "#F2D66B"
+        panel_shadow = "#D4DEDC"
+        cool_shadow = "#CFD9E1"
+
+        def load_asset(
+            family: str,
+            filename: str,
+            max_size: tuple[int, int],
+            *,
+            crop_transparency: bool = True,
+            separator_crop: bool = False,
+        ) -> ctk.CTkImage | None:
+            path = InterfaceAssets.path(
+                family,
+                filename,
+            )
+
+            if not path.is_file():
+                return None
+
+            try:
+                with Image.open(path) as source_image:
+                    image = source_image.convert("RGBA")
+
+                if crop_transparency:
+                    if separator_crop:
+                        width, height = image.size
+                        bounds = (
+                            round(width * 0.04),
+                            round(height * 0.38),
+                            round(width * 0.96),
+                            round(height * 0.62),
+                        )
+                    else:
+                        bounds = image.getbbox()
+
+                    if bounds is not None:
+                        image = image.crop(bounds)
+
+                width, height = image.size
+                max_width, max_height = max_size
+
+                scale = min(
+                    max_width / max(width, 1),
+                    max_height / max(height, 1),
+                )
+                display_size = (
+                    max(1, round(width * scale)),
+                    max(1, round(height * scale)),
+                )
+
+                return ctk.CTkImage(
+                    light_image=image,
+                    dark_image=image,
+                    size=display_size,
+                )
+            except (OSError, ValueError):
+                return None
+
+        self._paper_image = load_asset(
+            "textures",
+            "papier_clair.png",
+            (1600, 1000),
+            crop_transparency=False,
+        )
+        self._corner_image = load_asset(
+            "coins",
+            "angle_livre.png",
+            (96, 56),
+        )
+        self._separator_image = load_asset(
+            "separateurs",
+            "separateur_livre.png",
+            (340, 30),
+            separator_crop=True,
+        )
+
+        if self._paper_image is not None:
+            background = ctk.CTkLabel(
+                self,
+                text="",
+                image=self._paper_image,
+                fg_color=paper,
+            )
+            background.place(
+                x=0,
+                y=0,
+                relwidth=1,
+                relheight=1,
+            )
+            background.lower()
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        toolbar = ctk.CTkFrame(
+            self,
+            height=48,
+            fg_color="#FCFEFC",
+            corner_radius=0,
+            border_width=1,
+            border_color="#E3E9E7",
+        )
+        toolbar.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
+        toolbar.grid_propagate(False)
+        toolbar.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            toolbar,
+            text="←  Centre du projet",
+            width=160,
+            height=32,
+            corner_radius=7,
+            fg_color="#EEF3F6",
+            hover_color="#DFE8EE",
+            text_color=ink,
+            font=Fonts.NORMAL,
+            command=self.close,
+        ).grid(
+            row=0,
+            column=0,
+            padx=(18, 10),
+            pady=8,
+        )
+
+        ctk.CTkLabel(
+            toolbar,
+            text="Outils du projet  /  Nettoyage de la base",
+            font=Fonts.SMALL,
+            height=16,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=1,
+            sticky="ew",
+        )
+
+        ctk.CTkButton(
+            toolbar,
+            text="Actualiser",
+            width=100,
+            height=32,
+            corner_radius=7,
+            fg_color="#EDF4FA",
+            hover_color="#DDEBF5",
+            text_color=blue,
+            command=self.analyze,
+        ).grid(
+            row=0,
+            column=2,
+            padx=(10, 18),
+            pady=8,
+        )
+
+        page = ctk.CTkFrame(
             self,
             fg_color="transparent",
             corner_radius=0,
         )
-        container.pack(
-            fill="both",
-            expand=True,
-            padx=24,
-            pady=22,
+        page.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=16,
+            pady=(8, 5),
         )
-        container.grid_columnconfigure(0, weight=1)
+        page.grid_columnconfigure(0, weight=1)
+        page.grid_rowconfigure(3, weight=1, minsize=205)
 
-        ctk.CTkLabel(
-            container,
-            text="Nettoyage de la base",
-            font=Fonts.TITLE,
-            text_color=Colors.TEXT,
-            anchor="w",
-        ).grid(
+        header_shadow = ctk.CTkFrame(
+            page,
+            height=76,
+            fg_color=panel_shadow,
+            corner_radius=14,
+        )
+        header_shadow.grid(
             row=0,
             column=0,
             sticky="ew",
+        )
+        header_shadow.grid_propagate(False)
+
+        header = ctk.CTkFrame(
+            header_shadow,
+            fg_color="#FFFFFF",
+            corner_radius=13,
+            border_width=1,
+            border_color="#C9D6D9",
+        )
+        header.pack(
+            fill="both",
+            expand=True,
+            padx=(0, 2),
+            pady=(0, 3),
+        )
+        header.grid_columnconfigure(1, weight=1)
+        header.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkFrame(
+            header,
+            height=2,
+            fg_color="#FFFFFF",
+            corner_radius=1,
+        ).place(
+            x=18,
+            y=3,
+            relwidth=0.97,
+        )
+
+        top_rule = ctk.CTkFrame(
+            header,
+            height=1,
+            fg_color=ink,
+            corner_radius=0,
+        )
+        top_rule.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=(20, 16),
+            pady=(6, 0),
+        )
+
+        corner_holder = ctk.CTkFrame(
+            header,
+            width=108,
+            height=56,
+            fg_color="transparent",
+        )
+        corner_holder.grid(
+            row=1,
+            column=0,
+            sticky="nw",
+            padx=(11, 5),
+            pady=(0, 2),
+        )
+        corner_holder.grid_propagate(False)
+
+        if self._corner_image is not None:
+            ctk.CTkLabel(
+                corner_holder,
+                text="",
+                image=self._corner_image,
+                fg_color="transparent",
+            ).pack(
+                anchor="nw",
+            )
+        else:
+            ctk.CTkFrame(
+                corner_holder,
+                width=1,
+                height=72,
+                fg_color=ink,
+                corner_radius=0,
+            ).pack(
+                side="left",
+                padx=(10, 0),
+                pady=(4, 0),
+            )
+
+        title_guide = ctk.CTkFrame(
+            header,
+            fg_color="transparent",
+        )
+        title_guide.grid(
+            row=1,
+            column=1,
+            sticky="nsew",
+            padx=(0, 16),
+            pady=(0, 2),
+        )
+        title_guide.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkFrame(
+            title_guide,
+            width=1,
+            fg_color=ink,
+            corner_radius=0,
+        ).grid(
+            row=0,
+            column=0,
+            rowspan=3,
+            sticky="ns",
+            padx=(0, 10),
+        )
+
+        ctk.CTkFrame(
+            title_guide,
+            width=8,
+            height=8,
+            fg_color=celadon,
+            corner_radius=2,
+        ).grid(
+            row=0,
+            column=0,
+            sticky="n",
+            padx=(0, 10),
+            pady=(1, 0),
         )
 
         project_name = str(
@@ -729,163 +1023,280 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         root = self._project_root()
 
         ctk.CTkLabel(
-            container,
-            text=f"Projet analysé : {project_name}",
-            font=Fonts.H2,
-            text_color=Colors.TEXT,
+            title_guide,
+            text="Nettoyage de la base",
+            font=Fonts.H1,
+            height=24,
+            text_color=ink,
             anchor="w",
         ).grid(
-            row=1,
-            column=0,
+            row=0,
+            column=1,
             sticky="ew",
-            pady=(8, 0),
         )
 
         ctk.CTkLabel(
-            container,
-            text=str(root) if root is not None else "Dossier indisponible",
+            title_guide,
+            text=f"Projet analysé : {project_name}",
+            font=Fonts.NORMAL,
+            height=18,
+            text_color=blue,
+            anchor="w",
+        ).grid(
+            row=1,
+            column=1,
+            sticky="ew",
+            pady=0,
+        )
+
+        ctk.CTkLabel(
+            title_guide,
+            text=(
+                str(root)
+                if root is not None
+                else "Dossier indisponible"
+            ),
             font=Fonts.SMALL,
             text_color=Colors.TEXT_LIGHT,
             anchor="w",
         ).grid(
             row=2,
-            column=0,
-            sticky="ew",
-            pady=(2, 14),
-        )
-
-        body = ctk.CTkFrame(
-            container,
-            fg_color="#FFFFFF",
-            corner_radius=12,
-            border_width=1,
-            border_color=Colors.BORDER,
-        )
-        body.grid(
-            row=3,
-            column=0,
-            sticky="ew",
-        )
-        body.grid_columnconfigure(0, weight=1)
-
-        header = ctk.CTkFrame(
-            body,
-            fg_color="#EEF2F6",
-            corner_radius=8,
-        )
-        header.grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=12,
-            pady=(12, 6),
-        )
-        header.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            header,
-            text="Zone du projet",
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-            anchor="w",
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=12,
-            pady=8,
-        )
-
-        ctk.CTkLabel(
-            header,
-            text="Fichiers",
-            width=90,
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-        ).grid(
-            row=0,
             column=1,
-            padx=8,
+            sticky="ew",
+            pady=0,
         )
 
-        ctk.CTkLabel(
-            header,
-            text="Espace occupé",
-            width=130,
-            font=Fonts.NORMAL,
-            text_color=Colors.TEXT,
-        ).grid(
-            row=0,
-            column=2,
-            padx=(8, 12),
-        )
-
-        rows = ctk.CTkFrame(
-            body,
+        separator_holder = ctk.CTkFrame(
+            page,
+            height=32,
             fg_color="transparent",
-            corner_radius=0,
         )
-        rows.grid(
+        separator_holder.grid(
             row=1,
             column=0,
-            sticky="nsew",
-            padx=12,
+            sticky="ew",
+            pady=(0, 3),
+        )
+        separator_holder.grid_propagate(False)
+
+        if self._separator_image is not None:
+            ctk.CTkLabel(
+                separator_holder,
+                text="",
+                image=self._separator_image,
+                fg_color="transparent",
+            ).pack()
+        else:
+            ctk.CTkFrame(
+                separator_holder,
+                height=1,
+                fg_color=pearl,
+            ).pack(
+                fill="x",
+                padx=360,
+                pady=10,
+            )
+
+        self.total_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.cache_recoverable_var = tk.StringVar(
+            value="—"
+        )
+        self.unused_visuals_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.unused_graphics_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.history_only_graphics_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.unused_models_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.unused_content_sheets_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+        self.unused_content_collections_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        overview = ctk.CTkFrame(
+            page,
+            fg_color="transparent",
+        )
+        overview.grid(
+            row=2,
+            column=0,
+            sticky="ew",
             pady=(0, 8),
         )
-        rows.grid_columnconfigure(0, weight=1)
+        overview.grid_columnconfigure(0, weight=1)
+        overview.grid_columnconfigure(1, weight=1)
 
-        for index, (label, folder_name) in enumerate(self.CATEGORY_FOLDERS):
-            row = ctk.CTkFrame(
-                rows,
-                fg_color="#FAFBFC" if index % 2 == 0 else "#FFFFFF",
-                corner_radius=6,
+        def create_card_title(
+            parent,
+            text: str,
+            accent: str,
+            background: str,
+        ) -> None:
+            title_shadow = ctk.CTkFrame(
+                parent,
+                fg_color="#DCE5E3",
+                corner_radius=9,
             )
-            row.grid(
-                row=index,
+            title_shadow.grid(
+                row=0,
                 column=0,
+                columnspan=2,
                 sticky="ew",
-                pady=2,
+                padx=8,
+                pady=(6, 4),
             )
-            row.grid_columnconfigure(0, weight=1)
+
+            title = ctk.CTkFrame(
+                title_shadow,
+                fg_color=background,
+                corner_radius=8,
+                border_width=1,
+                border_color="#FFFFFF",
+            )
+            title.pack(
+                fill="both",
+                expand=True,
+                padx=(0, 1),
+                pady=(0, 2),
+            )
+
+            ctk.CTkFrame(
+                title,
+                width=6,
+                height=20,
+                fg_color=accent,
+                corner_radius=3,
+            ).pack(
+                side="left",
+                padx=(8, 7),
+                pady=4,
+            )
 
             ctk.CTkLabel(
-                row,
-                text=label,
+                title,
+                text=text,
                 font=Fonts.NORMAL,
-                text_color=Colors.TEXT,
+                text_color=ink,
+                anchor="w",
+            ).pack(
+                side="left",
+                pady=4,
+            )
+
+        occupation_shadow = ctk.CTkFrame(
+            overview,
+            fg_color=panel_shadow,
+            corner_radius=13,
+        )
+        occupation_shadow.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 6),
+        )
+
+        occupation = ctk.CTkFrame(
+            occupation_shadow,
+            fg_color="#FCFFFD",
+            corner_radius=12,
+            border_width=1,
+            border_color="#BDD8CC",
+        )
+        occupation.pack(
+            fill="both",
+            expand=True,
+            padx=(0, 2),
+            pady=(0, 3),
+        )
+        occupation.grid_columnconfigure(0, weight=1)
+        occupation.grid_columnconfigure(1, weight=1)
+
+        create_card_title(
+            occupation,
+            "Occupation du projet",
+            celadon,
+            "#DFF3E9",
+        )
+
+        for index, (label, folder_name) in enumerate(
+            self.CATEGORY_FOLDERS
+        ):
+            row_index = 1 + index // 2
+            column_index = index % 2
+
+            item = ctk.CTkFrame(
+                occupation,
+                fg_color=(
+                    "#EDF8F2"
+                    if row_index % 2 == 1
+                    else "#F8FCFA"
+                ),
+                corner_radius=6,
+            )
+            item.grid(
+                row=row_index,
+                column=column_index,
+                sticky="ew",
+                padx=(
+                    (8, 4)
+                    if column_index == 0
+                    else (4, 8)
+                ),
+                pady=2,
+            )
+            item.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(
+                item,
+                text=label,
+                font=Fonts.SMALL,
+                text_color=ink,
                 anchor="w",
             ).grid(
                 row=0,
                 column=0,
                 sticky="ew",
-                padx=12,
-                pady=9,
+                padx=(8, 4),
+                pady=4,
             )
 
             count_label = ctk.CTkLabel(
-                row,
+                item,
                 text="—",
-                width=90,
-                font=Fonts.NORMAL,
+                width=34,
+                font=Fonts.SMALL,
                 text_color=Colors.TEXT_LIGHT,
+                anchor="e",
             )
             count_label.grid(
                 row=0,
                 column=1,
-                padx=8,
+                padx=(4, 2),
+                pady=4,
             )
 
             size_label = ctk.CTkLabel(
-                row,
+                item,
                 text="—",
-                width=130,
-                font=Fonts.NORMAL,
+                width=66,
+                font=Fonts.SMALL,
                 text_color=Colors.TEXT_LIGHT,
+                anchor="e",
             )
             size_label.grid(
                 row=0,
                 column=2,
-                padx=(8, 12),
+                padx=(2, 8),
+                pady=4,
             )
 
             self._rows[folder_name] = (
@@ -893,277 +1304,867 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 size_label,
             )
 
+        summary_shadow = ctk.CTkFrame(
+            overview,
+            fg_color=cool_shadow,
+            corner_radius=13,
+        )
+        summary_shadow.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
+            padx=(6, 0),
+        )
+
         summary = ctk.CTkFrame(
-            container,
-            fg_color="#EAF3FF",
-            corner_radius=10,
+            summary_shadow,
+            fg_color="#FCFDFF",
+            corner_radius=12,
             border_width=1,
-            border_color="#B9D5F5",
+            border_color="#BDD2E4",
         )
-        summary.grid(
-            row=4,
-            column=0,
-            sticky="ew",
-            pady=(14, 0),
+        summary.pack(
+            fill="both",
+            expand=True,
+            padx=(0, 2),
+            pady=(0, 3),
         )
+        summary.grid_columnconfigure(0, weight=1)
         summary.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(
+        create_card_title(
             summary,
-            text="Taille totale du projet",
-            font=Fonts.H2,
-            text_color="#17365D",
+            "Éléments détectés",
+            sky,
+            "#E2F0FB",
+        )
+
+        summary_items = (
+            ("Taille totale", self.total_var, blue),
+            ("Cache", self.cache_recoverable_var, blue),
+            ("Visuels", self.unused_visuals_var, blue),
+            ("Graphiques", self.unused_graphics_var, blue),
+            (
+                "Historique",
+                self.history_only_graphics_var,
+                "#A36342",
+            ),
+            ("Modèles", self.unused_models_var, blue),
+            ("Fiches", self.unused_content_sheets_var, blue),
+            (
+                "Collections",
+                self.unused_content_collections_var,
+                blue,
+            ),
+        )
+        accent_colors = (
+            sky,
+            turquoise,
+            lilac,
+            celadon,
+        )
+
+        for index, (label, variable, text_color) in enumerate(
+            summary_items
+        ):
+            row_index = 1 + index // 2
+            column_index = index % 2
+
+            item = ctk.CTkFrame(
+                summary,
+                fg_color=(
+                    "#EDF5FC"
+                    if row_index % 2 == 1
+                    else "#F8FBFE"
+                ),
+                corner_radius=6,
+            )
+            item.grid(
+                row=row_index,
+                column=column_index,
+                sticky="ew",
+                padx=(
+                    (8, 4)
+                    if column_index == 0
+                    else (4, 8)
+                ),
+                pady=2,
+            )
+            item.grid_columnconfigure(1, weight=1)
+
+            ctk.CTkFrame(
+                item,
+                width=4,
+                height=14,
+                fg_color=accent_colors[index % 4],
+                corner_radius=2,
+            ).grid(
+                row=0,
+                column=0,
+                padx=(7, 5),
+                pady=4,
+            )
+
+            ctk.CTkLabel(
+                item,
+                text=label,
+                font=Fonts.SMALL,
+                text_color=ink,
+                anchor="w",
+            ).grid(
+                row=0,
+                column=1,
+                sticky="ew",
+                padx=(0, 4),
+                pady=4,
+            )
+
+            ctk.CTkLabel(
+                item,
+                textvariable=variable,
+                width=138,
+                font=Fonts.SMALL,
+                text_color=text_color,
+                anchor="e",
+            ).grid(
+                row=0,
+                column=2,
+                padx=(4, 8),
+                pady=4,
+            )
+
+        actions_shadow = ctk.CTkFrame(
+            page,
+            fg_color=cool_shadow,
+            corner_radius=15,
+        )
+        actions_shadow.grid(
+            row=3,
+            column=0,
+            sticky="nsew",
+            pady=(2, 3),
+        )
+
+        actions = ctk.CTkFrame(
+            actions_shadow,
+            fg_color="#FFFFFF",
+            corner_radius=14,
+            border_width=1,
+            border_color="#C4D1D9",
+        )
+        actions.pack(
+            fill="both",
+            expand=True,
+            padx=(0, 2),
+            pady=(0, 3),
+        )
+        actions.grid_columnconfigure(0, weight=1)
+        actions.grid_rowconfigure(1, weight=1)
+
+        tab_strip = ctk.CTkFrame(
+            actions,
+            height=44,
+            fg_color=paper,
+            corner_radius=0,
+        )
+        tab_strip.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(5, 0),
+        )
+        tab_strip.grid_propagate(False)
+        tab_strip.grid_columnconfigure(3, weight=1)
+
+        content_host = ctk.CTkFrame(
+            actions,
+            fg_color="#FFFFFF",
+            corner_radius=11,
+            border_width=1,
+            border_color="#C4D1D9",
+        )
+        content_host.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=12,
+            pady=(0, 10),
+        )
+
+        cleanup_tab = ctk.CTkFrame(
+            content_host,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+        )
+        libraries_tab = ctk.CTkFrame(
+            content_host,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+        )
+        trash_tab = ctk.CTkFrame(
+            content_host,
+            fg_color="#FFFFFF",
+            corner_radius=10,
+        )
+
+        for tab_page in (
+            cleanup_tab,
+            libraries_tab,
+            trash_tab,
+        ):
+            tab_page.place(
+                x=0,
+                y=0,
+                relwidth=1,
+                relheight=1,
+            )
+
+        tab_specs = (
+            ("Nettoyage courant", cleanup_tab, celadon),
+            ("Bibliothèques", libraries_tab, lilac),
+            ("Corbeille", trash_tab, coral),
+        )
+        tab_canvases: dict[str, tk.Canvas] = {}
+
+        def draw_folder_tab(
+            canvas: tk.Canvas,
+            label: str,
+            accent: str,
+            active: bool,
+        ) -> None:
+            canvas.delete("all")
+
+            width = 184
+            height = 42
+            top = 1 if active else 7
+            fill = "#FFFFFF" if active else "#E6EDF1"
+            outline = "#9FB0BA" if active else "#C3CDD3"
+            text_color = ink if active else "#566A78"
+
+            points = (
+                2, height - 1,
+                2, top + 10,
+                13, top + 10,
+                20, top + 2,
+                width - 12, top + 2,
+                width - 2, top + 11,
+                width - 2, height - 1,
+            )
+
+            canvas.create_polygon(
+                points,
+                fill=fill,
+                outline=outline,
+                width=1,
+                smooth=False,
+            )
+            canvas.create_line(
+                20,
+                top + 3,
+                width - 18,
+                top + 3,
+                fill=accent,
+                width=4,
+            )
+            canvas.create_rectangle(
+                13,
+                top + 13,
+                20,
+                top + 20,
+                fill=accent,
+                outline="",
+            )
+            canvas.create_text(
+                width // 2 + 4,
+                top + 22,
+                text=label,
+                fill=text_color,
+                font=(
+                    "Segoe UI Semibold"
+                    if active
+                    else "Segoe UI",
+                    10,
+                ),
+            )
+
+        def show_tab(tab_name: str) -> None:
+            selected_page = next(
+                page_widget
+                for name, page_widget, _ in tab_specs
+                if name == tab_name
+            )
+            selected_page.tkraise()
+
+            for name, _, accent in tab_specs:
+                draw_folder_tab(
+                    tab_canvases[name],
+                    name,
+                    accent,
+                    name == tab_name,
+                )
+
+        for column, (name, _, accent) in enumerate(tab_specs):
+            canvas = tk.Canvas(
+                tab_strip,
+                width=184,
+                height=42,
+                bg=paper,
+                highlightthickness=0,
+                borderwidth=0,
+                cursor="hand2",
+            )
+            canvas.grid(
+                row=0,
+                column=column,
+                sticky="s",
+                padx=(0, 4),
+            )
+            canvas.bind(
+                "<Button-1>",
+                lambda _event, tab_name=name: show_tab(tab_name),
+            )
+            tab_canvases[name] = canvas
+
+        cleanup_scroll = ctk.CTkScrollableFrame(
+            cleanup_tab,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#BFCBD2",
+            scrollbar_button_hover_color="#9FADB7",
+        )
+        cleanup_scroll.pack(
+            fill="both",
+            expand=True,
+            padx=8,
+            pady=7,
+        )
+
+        libraries_scroll = ctk.CTkScrollableFrame(
+            libraries_tab,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#BFCBD2",
+            scrollbar_button_hover_color="#9FADB7",
+        )
+        libraries_scroll.pack(
+            fill="both",
+            expand=True,
+            padx=8,
+            pady=7,
+        )
+
+        trash_scroll = ctk.CTkScrollableFrame(
+            trash_tab,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#BFCBD2",
+            scrollbar_button_hover_color="#9FADB7",
+        )
+        trash_scroll.pack(
+            fill="both",
+            expand=True,
+            padx=8,
+            pady=7,
+        )
+
+        show_tab("Nettoyage courant")
+
+        icon_font = (
+            "Segoe MDL2 Assets",
+            14,
+        )
+        icon_detail = "\uE946"
+        icon_trash = "\uE74D"
+        icon_restore = "\uE7A7"
+        icon_view = "\uE890"
+
+        def configure_action_table(parent) -> None:
+            parent.grid_columnconfigure(0, weight=1)
+            parent.grid_columnconfigure(1, minsize=185)
+            parent.grid_columnconfigure(2, minsize=58)
+            parent.grid_columnconfigure(3, minsize=70)
+            parent.grid_columnconfigure(4, minsize=70)
+
+            headers = (
+                ("Élément", 0, "w"),
+                ("État", 1, "e"),
+                ("Détail", 2, "center"),
+                ("Corbeille", 3, "center"),
+                ("Restaurer", 4, "center"),
+            )
+
+            for label, column, anchor in headers:
+                ctk.CTkLabel(
+                    parent,
+                    text=label,
+                    font=Fonts.SMALL,
+                    text_color=Colors.TEXT_LIGHT,
+                    anchor=anchor,
+                ).grid(
+                    row=0,
+                    column=column,
+                    sticky="ew",
+                    padx=6,
+                    pady=(5, 3),
+                )
+
+        def make_icon_button(
+            parent,
+            *,
+            glyph: str,
+            command,
+            kind: str,
+        ):
+            if kind == "detail":
+                fg_color = "#EDF4FA"
+                hover_color = "#DDEBF5"
+                text_color = blue
+            elif kind == "trash":
+                fg_color = "#FFF1ED"
+                hover_color = "#FBE1D8"
+                text_color = "#B05D48"
+            else:
+                fg_color = "#EDF7F2"
+                hover_color = "#DCEDE4"
+                text_color = "#3E775C"
+
+            border_color = {
+                "detail": "#B9D5E8",
+                "trash": "#F0C8BB",
+                "restore": "#BBDCCB",
+            }[kind]
+
+            return ctk.CTkButton(
+                parent,
+                text=glyph,
+                width=32,
+                height=29,
+                corner_radius=7,
+                fg_color=fg_color,
+                hover_color=hover_color,
+                border_width=1,
+                border_color=border_color,
+                text_color=text_color,
+                text_color_disabled="#A9B0B7",
+                font=icon_font,
+                command=command,
+                state="disabled",
+            )
+
+        def add_action_row(
+            parent,
+            *,
+            row: int,
+            label: str,
+            state_variable,
+            detail_attribute: str,
+            detail_command,
+            move_attribute: str,
+            move_command,
+            restore_attribute: str,
+            restore_command,
+        ) -> None:
+            row_frame = ctk.CTkFrame(
+                parent,
+                fg_color=(
+                    "#EFF6FA"
+                    if row % 2 == 1
+                    else "#F8FCFA"
+                ),
+                corner_radius=7,
+                border_width=1,
+                border_color=(
+                    "#D6E4EC"
+                    if row % 2 == 1
+                    else "#DDEAE3"
+                ),
+            )
+            row_frame.grid(
+                row=row,
+                column=0,
+                columnspan=5,
+                sticky="ew",
+                padx=3,
+                pady=2,
+            )
+            row_frame.grid_columnconfigure(0, weight=1)
+            row_frame.grid_columnconfigure(1, minsize=185)
+            row_frame.grid_columnconfigure(2, minsize=58)
+            row_frame.grid_columnconfigure(3, minsize=70)
+            row_frame.grid_columnconfigure(4, minsize=70)
+
+            ctk.CTkLabel(
+                row_frame,
+                text=label,
+                font=Fonts.NORMAL,
+                text_color=ink,
+                anchor="w",
+            ).grid(
+                row=0,
+                column=0,
+                sticky="ew",
+                padx=(10, 6),
+                pady=4,
+            )
+
+            ctk.CTkLabel(
+                row_frame,
+                textvariable=state_variable,
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+                anchor="e",
+            ).grid(
+                row=0,
+                column=1,
+                sticky="ew",
+                padx=6,
+                pady=4,
+            )
+
+            detail_button = make_icon_button(
+                row_frame,
+                glyph=icon_detail,
+                command=detail_command,
+                kind="detail",
+            )
+            detail_button.grid(
+                row=0,
+                column=2,
+                padx=6,
+                pady=3,
+            )
+            setattr(
+                self,
+                detail_attribute,
+                detail_button,
+            )
+
+            move_button = make_icon_button(
+                row_frame,
+                glyph=icon_trash,
+                command=move_command,
+                kind="trash",
+            )
+            move_button.grid(
+                row=0,
+                column=3,
+                padx=6,
+                pady=3,
+            )
+            setattr(
+                self,
+                move_attribute,
+                move_button,
+            )
+
+            restore_button = make_icon_button(
+                row_frame,
+                glyph=icon_restore,
+                command=restore_command,
+                kind="restore",
+            )
+            restore_button.grid(
+                row=0,
+                column=4,
+                padx=6,
+                pady=3,
+            )
+            setattr(
+                self,
+                restore_attribute,
+                restore_button,
+            )
+
+        configure_action_table(cleanup_scroll)
+
+        add_action_row(
+            cleanup_scroll,
+            row=1,
+            label="Cache temporaire",
+            state_variable=self.cache_recoverable_var,
+            detail_attribute="show_cache_details_button",
+            detail_command=self.show_cache_details,
+            move_attribute="move_cache_button",
+            move_command=self.move_cache_to_trash,
+            restore_attribute="restore_cache_button",
+            restore_command=self.restore_latest_cache,
+        )
+
+        add_action_row(
+            cleanup_scroll,
+            row=2,
+            label="Visuels témoins inutilisés",
+            state_variable=self.unused_visuals_var,
+            detail_attribute="show_visuals_details_button",
+            detail_command=self.show_unused_visuals_details,
+            move_attribute="move_unused_visuals_button",
+            move_command=self.move_unused_visuals_to_trash,
+            restore_attribute="restore_visuals_button",
+            restore_command=self.restore_latest_visuals,
+        )
+
+        add_action_row(
+            cleanup_scroll,
+            row=3,
+            label="Ressources graphiques inutilisées",
+            state_variable=self.unused_graphics_var,
+            detail_attribute="show_graphics_details_button",
+            detail_command=self.show_unused_graphics_details,
+            move_attribute="move_unused_graphics_button",
+            move_command=self.move_unused_graphics_to_trash,
+            restore_attribute="restore_graphics_button",
+            restore_command=self.restore_latest_graphics,
+        )
+
+        configure_action_table(libraries_scroll)
+
+        add_action_row(
+            libraries_scroll,
+            row=1,
+            label="Ressources liées uniquement à l’historique",
+            state_variable=self.history_only_graphics_var,
+            detail_attribute="show_history_graphics_details_button",
+            detail_command=self.show_history_only_graphics_details,
+            move_attribute="move_history_graphics_button",
+            move_command=self.move_history_only_graphics_to_trash,
+            restore_attribute="restore_history_graphics_button",
+            restore_command=self.restore_latest_history_graphics,
+        )
+
+        add_action_row(
+            libraries_scroll,
+            row=2,
+            label="Modèles inutilisés",
+            state_variable=self.unused_models_var,
+            detail_attribute="show_unused_models_details_button",
+            detail_command=self.show_unused_models_details,
+            move_attribute="move_unused_models_button",
+            move_command=self.move_unused_models_to_trash,
+            restore_attribute="restore_models_button",
+            restore_command=self.restore_latest_models,
+        )
+
+        add_action_row(
+            libraries_scroll,
+            row=3,
+            label="Fiches de contenu inutilisées",
+            state_variable=self.unused_content_sheets_var,
+            detail_attribute="show_unused_content_sheets_button",
+            detail_command=self.show_unused_content_sheets_details,
+            move_attribute="move_unused_content_sheets_button",
+            move_command=self.move_unused_content_sheets_to_trash,
+            restore_attribute="restore_content_sheets_button",
+            restore_command=self.restore_latest_content_sheets,
+        )
+
+        add_action_row(
+            libraries_scroll,
+            row=4,
+            label="Collections inutilisées",
+            state_variable=self.unused_content_collections_var,
+            detail_attribute="show_unused_content_collections_button",
+            detail_command=self.show_unused_content_collections_details,
+            move_attribute="move_unused_content_collections_button",
+            move_command=self.move_unused_content_collections_to_trash,
+            restore_attribute="restore_content_collections_button",
+            restore_command=self.restore_latest_content_collections,
+        )
+
+        trash_scroll.grid_columnconfigure(0, weight=1)
+        trash_scroll.grid_columnconfigure(1, minsize=185)
+        trash_scroll.grid_columnconfigure(2, minsize=70)
+
+        for label, column, anchor in (
+            ("Action", 0, "w"),
+            ("État", 1, "e"),
+            ("Exécuter", 2, "center"),
+        ):
+            ctk.CTkLabel(
+                trash_scroll,
+                text=label,
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+                anchor=anchor,
+            ).grid(
+                row=0,
+                column=column,
+                sticky="ew",
+                padx=6,
+                pady=(5, 3),
+            )
+
+        trash_view_row = ctk.CTkFrame(
+            trash_scroll,
+            fg_color="#EFF6FA",
+            corner_radius=7,
+            border_width=1,
+            border_color="#D6E4EC",
+        )
+        trash_view_row.grid(
+            row=1,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=3,
+            pady=2,
+        )
+        trash_view_row.grid_columnconfigure(0, weight=1)
+        trash_view_row.grid_columnconfigure(1, minsize=185)
+        trash_view_row.grid_columnconfigure(2, minsize=70)
+
+        ctk.CTkLabel(
+            trash_view_row,
+            text="Consulter les lots de la corbeille",
+            font=Fonts.NORMAL,
+            text_color=ink,
             anchor="w",
         ).grid(
             row=0,
             column=0,
-            padx=14,
-            pady=(12, 5),
+            sticky="ew",
+            padx=10,
+            pady=5,
         )
 
-        self.total_var = tk.StringVar(value="Analyse en cours…")
-
         ctk.CTkLabel(
-            summary,
-            textvariable=self.total_var,
-            font=Fonts.H2,
-            text_color="#17365D",
+            trash_view_row,
+            text="Restauration lot par lot",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
             anchor="e",
         ).grid(
             row=0,
             column=1,
-            sticky="e",
-            padx=14,
-            pady=(12, 5),
+            sticky="ew",
+            padx=6,
+            pady=5,
         )
 
-        ctk.CTkLabel(
-            summary,
-            text="Cache pouvant être isolé",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="w",
-        ).grid(
-            row=1,
-            column=0,
-            padx=14,
-            pady=(0, 12),
+        self.view_trash_button = ctk.CTkButton(
+            trash_view_row,
+            text=icon_view,
+            width=31,
+            height=28,
+            corner_radius=6,
+            fg_color="#EDF4FA",
+            hover_color="#DDEBF5",
+            text_color=blue,
+            text_color_disabled="#A9B0B7",
+            font=icon_font,
+            command=self.show_trash_contents,
+            state="disabled",
+        )
+        self.view_trash_button.grid(
+            row=0,
+            column=2,
+            padx=6,
+            pady=3,
         )
 
-        self.cache_recoverable_var = tk.StringVar(value="—")
-
-        ctk.CTkLabel(
-            summary,
-            textvariable=self.cache_recoverable_var,
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="e",
-        ).grid(
-            row=1,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
+        trash_empty_row = ctk.CTkFrame(
+            trash_scroll,
+            fg_color="#FFF7F4",
+            corner_radius=7,
+            border_width=1,
+            border_color="#F0D4CB",
         )
-
-        ctk.CTkLabel(
-            summary,
-            text="Visuels témoins inutilisés",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="w",
-        ).grid(
+        trash_empty_row.grid(
             row=2,
             column=0,
-            padx=14,
-            pady=(0, 12),
+            columnspan=3,
+            sticky="ew",
+            padx=3,
+            pady=2,
         )
-
-        self.unused_visuals_var = tk.StringVar(value="Analyse en cours…")
+        trash_empty_row.grid_columnconfigure(0, weight=1)
+        trash_empty_row.grid_columnconfigure(1, minsize=185)
+        trash_empty_row.grid_columnconfigure(2, minsize=70)
 
         ctk.CTkLabel(
-            summary,
-            textvariable=self.unused_visuals_var,
+            trash_empty_row,
+            text="Vider définitivement la corbeille",
             font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="e",
-        ).grid(
-            row=2,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
-        )
-
-        ctk.CTkLabel(
-            summary,
-            text="Ressources graphiques non référencées",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
+            text_color=ink,
             anchor="w",
         ).grid(
-            row=3,
+            row=0,
             column=0,
-            padx=14,
-            pady=(0, 12),
-        )
-
-        self.unused_graphics_var = tk.StringVar(
-            value="Analyse en cours…"
+            sticky="ew",
+            padx=10,
+            pady=5,
         )
 
         ctk.CTkLabel(
-            summary,
-            textvariable=self.unused_graphics_var,
-            font=Fonts.NORMAL,
-            text_color="#17365D",
+            trash_empty_row,
+            text="Action irréversible",
+            font=Fonts.SMALL,
+            text_color="#A44A3A",
             anchor="e",
         ).grid(
-            row=3,
+            row=0,
             column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
+            sticky="ew",
+            padx=6,
+            pady=5,
         )
 
-        ctk.CTkLabel(
-            summary,
-            text="Ressources conservées seulement par l’historique",
-            font=Fonts.NORMAL,
-            text_color="#8A5A00",
-            anchor="w",
-        ).grid(
-            row=4,
-            column=0,
-            padx=14,
-            pady=(0, 12),
+        self.empty_trash_button = ctk.CTkButton(
+            trash_empty_row,
+            text=icon_trash,
+            width=31,
+            height=28,
+            corner_radius=6,
+            fg_color="#FFF1ED",
+            hover_color="#FBE1D8",
+            text_color="#B05D48",
+            text_color_disabled="#A9B0B7",
+            font=icon_font,
+            command=self.empty_trash,
+            state="disabled",
         )
-
-        self.history_only_graphics_var = tk.StringVar(
-            value="Analyse en cours…"
-        )
-
-        ctk.CTkLabel(
-            summary,
-            textvariable=self.history_only_graphics_var,
-            font=Fonts.NORMAL,
-            text_color="#8A5A00",
-            anchor="e",
-        ).grid(
-            row=4,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
-        )
-
-        ctk.CTkLabel(
-            summary,
-            text="Modèles non utilisés",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="w",
-        ).grid(
-            row=5,
-            column=0,
-            padx=14,
-            pady=(0, 12),
-        )
-
-        self.unused_models_var = tk.StringVar(
-            value="Analyse en cours…"
-        )
-
-        ctk.CTkLabel(
-            summary,
-            textvariable=self.unused_models_var,
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="e",
-        ).grid(
-            row=5,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
-        )
-
-        ctk.CTkLabel(
-            summary,
-            text="Fiches de contenu non utilisées",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="w",
-        ).grid(
-            row=6,
-            column=0,
-            padx=14,
-            pady=(0, 5),
-        )
-
-        self.unused_content_sheets_var = tk.StringVar(
-            value="Analyse en cours…"
-        )
-
-        ctk.CTkLabel(
-            summary,
-            textvariable=self.unused_content_sheets_var,
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="e",
-        ).grid(
-            row=6,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 5),
-        )
-
-        ctk.CTkLabel(
-            summary,
-            text="Collections non utilisées",
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="w",
-        ).grid(
-            row=7,
-            column=0,
-            padx=14,
-            pady=(0, 12),
-        )
-
-        self.unused_content_collections_var = tk.StringVar(
-            value="Analyse en cours…"
-        )
-
-        ctk.CTkLabel(
-            summary,
-            textvariable=self.unused_content_collections_var,
-            font=Fonts.NORMAL,
-            text_color="#17365D",
-            anchor="e",
-        ).grid(
-            row=7,
-            column=1,
-            sticky="e",
-            padx=14,
-            pady=(0, 12),
+        self.empty_trash_button.grid(
+            row=0,
+            column=2,
+            padx=6,
+            pady=3,
         )
 
         footer = ctk.CTkFrame(
-            container,
-            fg_color="transparent",
+            self,
+            height=36,
+            fg_color="#FCFEFC",
+            corner_radius=0,
+            border_width=1,
+            border_color="#DEE7E3",
         )
         footer.grid(
-            row=8,
+            row=2,
             column=0,
             sticky="ew",
-            pady=(14, 0),
         )
-        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_propagate(False)
+        footer.grid_columnconfigure(1, weight=1)
 
         self.status_var = tk.StringVar(
-            value="Le cache peut être déplacé dans la corbeille interne sans suppression définitive."
+            value=(
+                "Analyse du projet en cours. "
+                "Les suppressions passent d’abord "
+                "par la corbeille interne."
+            )
+        )
+
+        ctk.CTkFrame(
+            footer,
+            width=5,
+            height=20,
+            fg_color=lilac,
+            corner_radius=3,
+        ).grid(
+            row=0,
+            column=0,
+            padx=(18, 8),
+            pady=8,
         )
 
         ctk.CTkLabel(
@@ -1174,480 +2175,19 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             anchor="w",
         ).grid(
             row=0,
-            column=0,
-            columnspan=5,
-            sticky="ew",
-            pady=(0, 8),
-        )
-
-        self.move_cache_button = ctk.CTkButton(
-            footer,
-            text="Mettre le cache à la corbeille",
-            width=210,
-            height=36,
-            fg_color="#B76E00",
-            hover_color="#945900",
-            text_color="#FFFFFF",
-            command=self.move_cache_to_trash,
-            state="disabled",
-        )
-        self.move_cache_button.grid(
-            row=1,
-            column=0,
-            sticky="w",
-            padx=(0, 8),
-        )
-
-        self.restore_cache_button = ctk.CTkButton(
-            footer,
-            text="Restaurer le dernier cache",
-            width=200,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_cache,
-            state="disabled",
-        )
-        self.restore_cache_button.grid(
-            row=1,
             column=1,
-            padx=(0, 8),
+            sticky="ew",
         )
 
-        self.empty_trash_button = ctk.CTkButton(
+        ctk.CTkLabel(
             footer,
-            text="Vider la corbeille",
-            width=160,
-            height=36,
-            fg_color="#B42318",
-            hover_color="#8F1C14",
-            text_color="#FFFFFF",
-            command=self.empty_trash,
-            state="disabled",
-        )
-        self.empty_trash_button.grid(
-            row=1,
-            column=2,
-            padx=(0, 8),
-        )
-
-        self.view_trash_button = ctk.CTkButton(
-            footer,
-            text="Voir le contenu de la corbeille",
-            width=250,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_trash_contents,
-            state="disabled",
-        )
-        self.view_trash_button.grid(
-            row=7,
-            column=0,
-            columnspan=2,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        ctk.CTkButton(
-            footer,
-            text="Actualiser",
-            width=110,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.analyze,
+            text="PageMaître · nettoyage sécurisé",
+            font=Fonts.SMALL,
+            text_color=Colors.TEXT_LIGHT,
         ).grid(
-            row=1,
-            column=3,
-            padx=(0, 8),
-        )
-
-        ctk.CTkButton(
-            footer,
-            text="Fermer",
-            width=110,
-            height=36,
-            fg_color="#17365D",
-            hover_color="#244B79",
-            text_color="#FFFFFF",
-            command=self.close,
-        ).grid(
-            row=1,
-            column=4,
-        )
-
-        self.move_unused_visuals_button = ctk.CTkButton(
-            footer,
-            text="Mettre les visuels inutilisés à la corbeille",
-            width=320,
-            height=36,
-            fg_color="#7B61D1",
-            hover_color="#624DB0",
-            text_color="#FFFFFF",
-            command=self.move_unused_visuals_to_trash,
-            state="disabled",
-        )
-        self.move_unused_visuals_button.grid(
-            row=2,
-            column=0,
-            columnspan=2,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.restore_visuals_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les derniers visuels",
-            width=250,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_visuals,
-            state="disabled",
-        )
-        self.restore_visuals_button.grid(
-            row=2,
+            row=0,
             column=2,
-            columnspan=2,
-            sticky="w",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.move_unused_graphics_button = ctk.CTkButton(
-            footer,
-            text="Mettre les ressources graphiques à la corbeille",
-            width=360,
-            height=36,
-            fg_color="#7B61D1",
-            hover_color="#624DB0",
-            text_color="#FFFFFF",
-            command=self.move_unused_graphics_to_trash,
-            state="disabled",
-        )
-        self.move_unused_graphics_button.grid(
-            row=3,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.restore_graphics_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les dernières ressources",
-            width=270,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_graphics,
-            state="disabled",
-        )
-        self.restore_graphics_button.grid(
-            row=3,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.show_graphics_details_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail des ressources",
-            width=240,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_unused_graphics_details,
-            state="disabled",
-        )
-        self.show_graphics_details_button.grid(
-            row=4,
-            column=0,
-            columnspan=2,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.show_visuals_details_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail des visuels",
-            width=220,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_unused_visuals_details,
-            state="disabled",
-        )
-        self.show_visuals_details_button.grid(
-            row=4,
-            column=2,
-            columnspan=2,
-            sticky="w",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.show_cache_details_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail du cache",
-            width=200,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_cache_details,
-            state="disabled",
-        )
-        self.show_cache_details_button.grid(
-            row=4,
-            column=4,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.show_history_graphics_details_button = ctk.CTkButton(
-            footer,
-            text="Voir les ressources liées à l’historique",
-            width=290,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_history_only_graphics_details,
-            state="disabled",
-        )
-        self.show_history_graphics_details_button.grid(
-            row=5,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.move_history_graphics_button = ctk.CTkButton(
-            footer,
-            text="Mettre les ressources historiques à la corbeille",
-            width=350,
-            height=36,
-            fg_color="#B76E00",
-            hover_color="#945900",
-            text_color="#FFFFFF",
-            command=self.move_history_only_graphics_to_trash,
-            state="disabled",
-        )
-        self.move_history_graphics_button.grid(
-            row=5,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.restore_history_graphics_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les ressources historiques",
-            width=280,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_history_graphics,
-            state="disabled",
-        )
-        self.restore_history_graphics_button.grid(
-            row=6,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.show_unused_models_details_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail des modèles inutilisés",
-            width=290,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_unused_models_details,
-            state="disabled",
-        )
-        self.show_unused_models_details_button.grid(
-            row=6,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.move_unused_models_button = ctk.CTkButton(
-            footer,
-            text="Mettre les modèles inutilisés à la corbeille",
-            width=320,
-            height=36,
-            fg_color="#B76E00",
-            hover_color="#945900",
-            text_color="#FFFFFF",
-            command=self.move_unused_models_to_trash,
-            state="disabled",
-        )
-        self.move_unused_models_button.grid(
-            row=7,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.restore_models_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les derniers modèles",
-            width=250,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_models,
-            state="disabled",
-        )
-        self.restore_models_button.grid(
-            row=7,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.show_unused_content_sheets_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail des fiches inutilisées",
-            width=290,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_unused_content_sheets_details,
-            state="disabled",
-        )
-        self.show_unused_content_sheets_button.grid(
-            row=8,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.show_unused_content_collections_button = ctk.CTkButton(
-            footer,
-            text="Voir le détail des collections inutilisées",
-            width=310,
-            height=36,
-            fg_color=Colors.BUTTON,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=Colors.TEXT,
-            command=self.show_unused_content_collections_details,
-            state="disabled",
-        )
-        self.show_unused_content_collections_button.grid(
-            row=8,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.move_unused_content_sheets_button = ctk.CTkButton(
-            footer,
-            text="Mettre les fiches inutilisées à la corbeille",
-            width=310,
-            height=36,
-            fg_color="#B76E00",
-            hover_color="#945900",
-            text_color="#FFFFFF",
-            command=self.move_unused_content_sheets_to_trash,
-            state="disabled",
-        )
-        self.move_unused_content_sheets_button.grid(
-            row=9,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.restore_content_sheets_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les dernières fiches",
-            width=250,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_content_sheets,
-            state="disabled",
-        )
-        self.restore_content_sheets_button.grid(
-            row=9,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
-        )
-
-        self.move_unused_content_collections_button = ctk.CTkButton(
-            footer,
-            text="Mettre les collections inutilisées à la corbeille",
-            width=340,
-            height=36,
-            fg_color="#B76E00",
-            hover_color="#945900",
-            text_color="#FFFFFF",
-            command=self.move_unused_content_collections_to_trash,
-            state="disabled",
-        )
-        self.move_unused_content_collections_button.grid(
-            row=10,
-            column=0,
-            columnspan=3,
-            sticky="w",
-            pady=(8, 0),
-        )
-
-        self.restore_content_collections_button = ctk.CTkButton(
-            footer,
-            text="Restaurer les dernières collections",
-            width=270,
-            height=36,
-            fg_color="#3B7A57",
-            hover_color="#2F6246",
-            text_color="#FFFFFF",
-            command=self.restore_latest_content_collections,
-            state="disabled",
-        )
-        self.restore_content_collections_button.grid(
-            row=10,
-            column=3,
-            columnspan=2,
-            sticky="e",
-            padx=(8, 0),
-            pady=(8, 0),
+            padx=(10, 18),
         )
 
     # ==========================================================
@@ -5965,23 +6505,8 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             return None
 
     # ==========================================================
-    # Fenêtre
+    # Vue intégrée
     # ==========================================================
-
-    def _center_window(self) -> None:
-        self.update_idletasks()
-
-        parent = self.master.winfo_toplevel()
-        x = parent.winfo_x() + max(
-            0,
-            (parent.winfo_width() - self.winfo_width()) // 2,
-        )
-        y = parent.winfo_y() + max(
-            0,
-            (parent.winfo_height() - self.winfo_height()) // 2,
-        )
-
-        self.geometry(f"+{x}+{y}")
 
     def close(self) -> None:
         if self._closed:
@@ -5989,8 +6514,13 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
 
         self._closed = True
 
+        callback = self.on_close
+
+        if callback is not None:
+            callback()
+            return
+
         try:
             self.destroy()
-        finally:
-            if self.on_close is not None:
-                self.on_close()
+        except tk.TclError:
+            pass

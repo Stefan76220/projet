@@ -15,7 +15,7 @@ class Workspace:
     Zone de travail principale de l'application.
 
     Cette classe pilote les différentes vues affichées
-    (accueil, liste des documents et éditeur).
+    (accueil, liste des documents, nettoyage et éditeur).
     """
 
     def __init__(
@@ -27,7 +27,8 @@ class Workspace:
         self.application = application
         self.current_project = None
         self._documents_transitioning = False
-        self._cleanup_dialog = None
+        self._cleanup_transitioning = False
+        self._cleanup_view = None
 
         self.frame = ctk.CTkFrame(
             parent,
@@ -52,9 +53,11 @@ class Workspace:
         for widget in self.frame.winfo_children():
             widget.destroy()
 
+        self._cleanup_view = None
+
     def show_dashboard(self) -> None:
 
-        self._close_cleanup_dialog()
+        self._destroy_cleanup_view()
         self._set_navigation_visible(False)
         self.clear()
 
@@ -72,7 +75,7 @@ class Workspace:
 
         self._documents_transitioning = True
         self.current_project = project
-        self._close_cleanup_dialog()
+        self._destroy_cleanup_view()
 
         # La vue est construite hors écran puis affichée une seule fois.
         # Cela évite le double rafraîchissement visible à l'ouverture
@@ -120,7 +123,7 @@ class Workspace:
                 hover_color="#244B79",
                 text_color="#FFFFFF",
                 font=Fonts.NORMAL,
-                command=self._open_project_cleanup,
+                command=self.show_project_cleanup,
             ).pack(side="right")
 
             content = ctk.CTkFrame(
@@ -159,7 +162,7 @@ class Workspace:
         document_info,
     ) -> None:
 
-        self._close_cleanup_dialog()
+        self._destroy_cleanup_view()
         self._set_navigation_visible(True)
         self.clear()
 
@@ -182,43 +185,79 @@ class Workspace:
     # Nettoyage du projet
     # ==========================================================
 
-    def _open_project_cleanup(self) -> None:
-
-        if self.current_project is None:
-            return
+    def show_project_cleanup(self) -> None:
 
         if (
-            self._cleanup_dialog is not None
-            and self._cleanup_dialog.winfo_exists()
+            self.current_project is None
+            or self._cleanup_transitioning
         ):
-            self._cleanup_dialog.lift()
-            self._cleanup_dialog.focus_force()
             return
 
-        self._cleanup_dialog = ProjectCleanupDialog(
-            self.frame,
-            self.current_project,
-            on_close=self._on_cleanup_dialog_closed,
-        )
+        self._cleanup_transitioning = True
 
-    def _on_cleanup_dialog_closed(self) -> None:
+        # Construction hors écran : la page apparaît une seule fois,
+        # déjà analysée et complètement mise en page.
+        self.frame.grid_remove()
 
-        self._cleanup_dialog = None
+        try:
+            self._set_navigation_visible(True)
+            self.clear()
 
-    def _close_cleanup_dialog(self) -> None:
+            self._cleanup_view = ProjectCleanupDialog(
+                self.frame,
+                self.current_project,
+                on_close=self.back_to_documents,
+            )
 
-        dialog = self._cleanup_dialog
+            self.frame.update_idletasks()
 
-        if dialog is None:
+        finally:
+            self.frame.grid(
+                row=0,
+                column=1,
+                sticky="nsew",
+            )
+            self.frame.after_idle(
+                self._finish_cleanup_transition
+            )
+
+    def _finish_cleanup_transition(self) -> None:
+
+        self._cleanup_transitioning = False
+
+    def _open_project_cleanup(self) -> None:
+        """
+        Compatibilité avec les appels plus anciens.
+
+        Le nettoyage est maintenant une page intégrée à l'espace
+        de travail et non une fenêtre indépendante.
+        """
+
+        self.show_project_cleanup()
+
+    def _destroy_cleanup_view(self) -> None:
+
+        view = self._cleanup_view
+
+        if view is None:
             return
 
         try:
-            if dialog.winfo_exists():
-                dialog.close()
+            view.on_close = None
+
+            if view.winfo_exists():
+                view.destroy()
         except Exception:
             pass
 
-        self._cleanup_dialog = None
+        self._cleanup_view = None
+
+    def _close_cleanup_dialog(self) -> None:
+        """
+        Compatibilité avec l'ancien nom de méthode.
+        """
+
+        self._destroy_cleanup_view()
 
     # ==========================================================
     # Navigation latérale
