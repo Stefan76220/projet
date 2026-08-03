@@ -284,6 +284,306 @@ class CleanupDetailsDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+class TrashContentsDialog(ctk.CTkToplevel):
+    """Affiche tous les lots présents dans la corbeille interne."""
+
+    def __init__(
+        self,
+        parent,
+        project_root: Path,
+        restore_callback: Callable[[Path], None],
+    ) -> None:
+        super().__init__(parent)
+
+        self.project_root = project_root
+        self.trash_root = project_root / "corbeille"
+        self.restore_callback = restore_callback
+
+        self.title("Contenu de la corbeille")
+        self.geometry("900x640")
+        self.minsize(780, 520)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        self._build()
+        self.after(80, self._center_window)
+
+    def _build(self) -> None:
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=22,
+        )
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(2, weight=1)
+
+        ctk.CTkLabel(
+            container,
+            text="Contenu de la corbeille",
+            font=Fonts.TITLE,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
+
+        self.summary_var = tk.StringVar(value="Analyse en cours…")
+
+        ctk.CTkLabel(
+            container,
+            textvariable=self.summary_var,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            pady=(4, 12),
+        )
+
+        self.rows = ctk.CTkScrollableFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        self.rows.grid(
+            row=2,
+            column=0,
+            sticky="nsew",
+        )
+        self.rows.grid_columnconfigure(0, weight=1)
+
+        footer = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        footer.grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            pady=(14, 0),
+        )
+        footer.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(
+            footer,
+            text="Fermer",
+            width=110,
+            height=36,
+            fg_color="#17365D",
+            hover_color="#244B79",
+            text_color="#FFFFFF",
+            command=self.close,
+        ).grid(
+            row=0,
+            column=1,
+        )
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        for child in self.rows.winfo_children():
+            child.destroy()
+
+        batches = self._trash_batches()
+        total_files = 0
+        total_size = 0
+
+        if not batches:
+            ctk.CTkLabel(
+                self.rows,
+                text="La corbeille interne est vide.",
+                font=Fonts.NORMAL,
+                text_color=Colors.TEXT_LIGHT,
+            ).grid(
+                row=0,
+                column=0,
+                sticky="ew",
+                padx=18,
+                pady=28,
+            )
+            self.summary_var.set("Aucun lot restaurable.")
+            return
+
+        for row_index, batch in enumerate(batches):
+            file_count, batch_size = (
+                ProjectCleanupDialog._folder_stats(batch)
+            )
+            total_files += file_count
+            total_size += batch_size
+
+            row = ctk.CTkFrame(
+                self.rows,
+                fg_color=(
+                    "#FAFBFC"
+                    if row_index % 2 == 0
+                    else "#FFFFFF"
+                ),
+                corner_radius=8,
+            )
+            row.grid(
+                row=row_index,
+                column=0,
+                sticky="ew",
+                padx=10,
+                pady=4,
+            )
+            row.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(
+                row,
+                text=self._batch_label(batch),
+                font=Fonts.H2,
+                text_color=Colors.TEXT,
+                anchor="w",
+            ).grid(
+                row=0,
+                column=0,
+                sticky="ew",
+                padx=12,
+                pady=(10, 2),
+            )
+
+            ctk.CTkLabel(
+                row,
+                text=batch.name,
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+                anchor="w",
+            ).grid(
+                row=1,
+                column=0,
+                sticky="ew",
+                padx=12,
+                pady=(0, 10),
+            )
+
+            ctk.CTkLabel(
+                row,
+                text=(
+                    f"{file_count} fichier(s) — "
+                    f"{ProjectCleanupDialog._format_size(batch_size)}"
+                ),
+                width=190,
+                font=Fonts.NORMAL,
+                text_color=Colors.TEXT,
+            ).grid(
+                row=0,
+                column=1,
+                rowspan=2,
+                padx=10,
+            )
+
+            ctk.CTkButton(
+                row,
+                text="Restaurer ce lot",
+                width=150,
+                height=34,
+                fg_color="#3B7A57",
+                hover_color="#2F6246",
+                text_color="#FFFFFF",
+                command=lambda selected=batch: self._restore(selected),
+            ).grid(
+                row=0,
+                column=2,
+                rowspan=2,
+                padx=(0, 12),
+            )
+
+        self.summary_var.set(
+            f"{len(batches)} lot(s) — {total_files} fichier(s) — "
+            f"{ProjectCleanupDialog._format_size(total_size)}"
+        )
+
+    def _restore(self, batch: Path) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        try:
+            self.restore_callback(batch)
+        finally:
+            if self.winfo_exists():
+                try:
+                    self.grab_set()
+                except tk.TclError:
+                    pass
+                self.refresh()
+
+    def _trash_batches(self) -> list[Path]:
+        if not self.trash_root.exists():
+            return []
+
+        try:
+            batches = [
+                item
+                for item in self.trash_root.iterdir()
+                if item.is_dir()
+            ]
+        except OSError:
+            return []
+
+        batches.sort(
+            key=lambda item: item.name,
+            reverse=True,
+        )
+        return batches
+
+    @staticmethod
+    def _batch_label(batch: Path) -> str:
+        name = batch.name
+
+        if name.startswith("cache_"):
+            return "Cache"
+
+        if name.startswith("visuels_temoins_"):
+            return "Visuels témoins"
+
+        if name.startswith("ressources_historique_"):
+            return "Ressources liées à l’historique"
+
+        if name.startswith("ressources_graphiques_"):
+            return "Ressources graphiques"
+
+        return "Lot non identifié"
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+
+    def close(self) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        self.destroy()
+
+
 class ProjectCleanupDialog(ctk.CTkToplevel):
     """Analyse le stockage du projet actuellement ouvert."""
 
@@ -783,6 +1083,25 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             padx=(0, 8),
         )
 
+        self.view_trash_button = ctk.CTkButton(
+            footer,
+            text="Voir le contenu de la corbeille",
+            width=250,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_trash_contents,
+            state="disabled",
+        )
+        self.view_trash_button.grid(
+            row=7,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(8, 0),
+        )
+
         ctk.CTkButton(
             footer,
             text="Actualiser",
@@ -1081,8 +1400,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._trash_file_count, self._trash_size = self._folder_stats(
             root / "corbeille"
         )
+        trash_state = (
+            "normal"
+            if self._trash_file_count > 0
+            else "disabled"
+        )
         self.empty_trash_button.configure(
-            state="normal" if self._trash_file_count > 0 else "disabled"
+            state=trash_state
+        )
+        self.view_trash_button.configure(
+            state=trash_state
         )
 
         (
@@ -1358,7 +1685,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             parent=self,
         )
 
-    def restore_latest_cache(self) -> None:
+    def restore_latest_cache(
+        self,
+        source: Path | None = None,
+    ) -> None:
         root = self._project_root()
 
         if root is None or not root.exists():
@@ -1369,7 +1699,8 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
             return
 
-        source = self._find_latest_trash_cache(root)
+        if source is None:
+            source = self._find_latest_trash_cache(root)
 
         if source is None:
             messagebox.showinfo(
@@ -1427,6 +1758,72 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         messagebox.showinfo(
             "Cache restauré",
             f"{file_count} fichier(s) ont été replacés dans le cache du projet.",
+            parent=self,
+        )
+
+    def show_trash_contents(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        trash_root = root / "corbeille"
+        file_count, _ = self._folder_stats(trash_root)
+
+        if file_count == 0:
+            messagebox.showinfo(
+                "Corbeille vide",
+                "Aucun lot n’est présent dans la corbeille interne.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        TrashContentsDialog(
+            parent=self,
+            project_root=root,
+            restore_callback=self.restore_trash_batch,
+        )
+
+    def restore_trash_batch(self, batch: Path) -> None:
+        if not batch.exists() or not batch.is_dir():
+            messagebox.showerror(
+                "Lot indisponible",
+                "Le lot sélectionné n’existe plus.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        name = batch.name
+
+        if name.startswith("cache_"):
+            self.restore_latest_cache(batch)
+            return
+
+        if name.startswith("visuels_temoins_"):
+            self.restore_latest_visuals(batch)
+            return
+
+        if name.startswith("ressources_historique_"):
+            self.restore_latest_history_graphics(batch)
+            return
+
+        if name.startswith("ressources_graphiques_"):
+            self.restore_latest_graphics(batch)
+            return
+
+        messagebox.showerror(
+            "Lot non reconnu",
+            (
+                "PageMaître ne connaît pas encore la méthode de "
+                f"restauration du lot « {name} »."
+            ),
             parent=self,
         )
 
@@ -1780,7 +2177,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             parent=self,
         )
 
-    def restore_latest_visuals(self) -> None:
+    def restore_latest_visuals(
+        self,
+        batch: Path | None = None,
+    ) -> None:
         root = self._project_root()
 
         if root is None or not root.exists():
@@ -1791,7 +2191,8 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
             return
 
-        batch = self._find_latest_trash_visuals(root)
+        if batch is None:
+            batch = self._find_latest_trash_visuals(root)
 
         if batch is None:
             messagebox.showinfo(
@@ -2207,7 +2608,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             parent=self,
         )
 
-    def restore_latest_history_graphics(self) -> None:
+    def restore_latest_history_graphics(
+        self,
+        batch: Path | None = None,
+    ) -> None:
         root = self._project_root()
 
         if root is None or not root.exists():
@@ -2218,7 +2622,8 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
             return
 
-        batch = self._find_latest_trash_history_graphics(root)
+        if batch is None:
+            batch = self._find_latest_trash_history_graphics(root)
 
         if batch is None:
             messagebox.showinfo(
@@ -2722,7 +3127,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
 
         return False
 
-    def restore_latest_graphics(self) -> None:
+    def restore_latest_graphics(
+        self,
+        batch: Path | None = None,
+    ) -> None:
         root = self._project_root()
 
         if root is None or not root.exists():
@@ -2733,7 +3141,8 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
             return
 
-        batch = self._find_latest_trash_graphics(root)
+        if batch is None:
+            batch = self._find_latest_trash_graphics(root)
 
         if batch is None:
             messagebox.showinfo(
