@@ -14,6 +14,276 @@ from src.theme.colors import Colors
 from src.theme.fonts import Fonts
 
 
+class CleanupDetailsDialog(ctk.CTkToplevel):
+    """Affiche la liste détaillée des éléments détectés par le nettoyage."""
+
+    def __init__(
+        self,
+        parent,
+        title: str,
+        project_root: Path,
+        files: list[Path],
+        dependency_text: str,
+    ) -> None:
+        super().__init__(parent)
+
+        self.project_root = project_root
+        self.files = list(files)
+        self.dependency_text = dependency_text
+
+        self.title(title)
+        self.geometry("860x620")
+        self.minsize(760, 520)
+        self.configure(fg_color=Colors.WINDOW)
+        self.transient(parent)
+        self.grab_set()
+        self.protocol("WM_DELETE_WINDOW", self.close)
+
+        self._build(title)
+        self.after(80, self._center_window)
+
+    def _build(self, title: str) -> None:
+        container = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        container.pack(
+            fill="both",
+            expand=True,
+            padx=24,
+            pady=22,
+        )
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(2, weight=1)
+
+        ctk.CTkLabel(
+            container,
+            text=title,
+            font=Fonts.TITLE,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+        )
+
+        total_size = sum(
+            self._safe_size(path)
+            for path in self.files
+        )
+
+        ctk.CTkLabel(
+            container,
+            text=(
+                f"{len(self.files)} fichier(s) — "
+                f"{ProjectCleanupDialog._format_size(total_size)}"
+            ),
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT_LIGHT,
+            anchor="w",
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            pady=(4, 12),
+        )
+
+        body = ctk.CTkFrame(
+            container,
+            fg_color="#FFFFFF",
+            corner_radius=12,
+            border_width=1,
+            border_color=Colors.BORDER,
+        )
+        body.grid(
+            row=2,
+            column=0,
+            sticky="nsew",
+        )
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=1)
+
+        header = ctk.CTkFrame(
+            body,
+            fg_color="#EEF2F6",
+            corner_radius=8,
+        )
+        header.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(12, 6),
+        )
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text="Emplacement dans le projet",
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=8,
+        )
+
+        ctk.CTkLabel(
+            header,
+            text="Taille",
+            width=110,
+            font=Fonts.NORMAL,
+            text_color=Colors.TEXT,
+        ).grid(
+            row=0,
+            column=1,
+            padx=(8, 12),
+        )
+
+        rows = ctk.CTkScrollableFrame(
+            body,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        rows.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=12,
+            pady=(0, 8),
+        )
+        rows.grid_columnconfigure(0, weight=1)
+
+        for index, path in enumerate(self.files):
+            row = ctk.CTkFrame(
+                rows,
+                fg_color=(
+                    "#FAFBFC"
+                    if index % 2 == 0
+                    else "#FFFFFF"
+                ),
+                corner_radius=6,
+            )
+            row.grid(
+                row=index,
+                column=0,
+                sticky="ew",
+                pady=2,
+            )
+            row.grid_columnconfigure(0, weight=1)
+
+            try:
+                relative = path.relative_to(
+                    self.project_root
+                ).as_posix()
+            except ValueError:
+                relative = str(path)
+
+            ctk.CTkLabel(
+                row,
+                text=relative,
+                font=Fonts.NORMAL,
+                text_color=Colors.TEXT,
+                anchor="w",
+            ).grid(
+                row=0,
+                column=0,
+                sticky="ew",
+                padx=12,
+                pady=(8, 2),
+            )
+
+            ctk.CTkLabel(
+                row,
+                text=ProjectCleanupDialog._format_size(
+                    self._safe_size(path)
+                ),
+                width=110,
+                font=Fonts.NORMAL,
+                text_color=Colors.TEXT_LIGHT,
+            ).grid(
+                row=0,
+                column=1,
+                padx=(8, 12),
+                pady=(8, 2),
+            )
+
+            ctk.CTkLabel(
+                row,
+                text=f"Dépendance : {self.dependency_text}",
+                font=Fonts.SMALL,
+                text_color=Colors.TEXT_LIGHT,
+                anchor="w",
+            ).grid(
+                row=1,
+                column=0,
+                columnspan=2,
+                sticky="ew",
+                padx=12,
+                pady=(0, 8),
+            )
+
+        footer = ctk.CTkFrame(
+            container,
+            fg_color="transparent",
+        )
+        footer.grid(
+            row=3,
+            column=0,
+            sticky="ew",
+            pady=(14, 0),
+        )
+        footer.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(
+            footer,
+            text="Fermer",
+            width=110,
+            height=36,
+            fg_color="#17365D",
+            hover_color="#244B79",
+            text_color="#FFFFFF",
+            command=self.close,
+        ).grid(
+            row=0,
+            column=1,
+        )
+
+    @staticmethod
+    def _safe_size(path: Path) -> int:
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+
+    def _center_window(self) -> None:
+        self.update_idletasks()
+
+        parent = self.master.winfo_toplevel()
+        x = parent.winfo_x() + max(
+            0,
+            (parent.winfo_width() - self.winfo_width()) // 2,
+        )
+        y = parent.winfo_y() + max(
+            0,
+            (parent.winfo_height() - self.winfo_height()) // 2,
+        )
+
+        self.geometry(f"+{x}+{y}")
+
+    def close(self) -> None:
+        try:
+            self.grab_release()
+        except tk.TclError:
+            pass
+
+        self.destroy()
+
+
 class ProjectCleanupDialog(ctk.CTkToplevel):
     """Analyse le stockage du projet actuellement ouvert."""
 
@@ -587,6 +857,25 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.show_graphics_details_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail des ressources",
+            width=240,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_unused_graphics_details,
+            state="disabled",
+        )
+        self.show_graphics_details_button.grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -692,12 +981,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             f"{len(self._unused_graphic_resources)} fichier(s) — "
             f"{self._format_size(self._unused_graphic_size)}"
         )
+        graphics_state = (
+            "normal"
+            if self._unused_graphic_resources
+            else "disabled"
+        )
         self.move_unused_graphics_button.configure(
-            state=(
-                "normal"
-                if self._unused_graphic_resources
-                else "disabled"
-            )
+            state=graphics_state
+        )
+        self.show_graphics_details_button.configure(
+            state=graphics_state
         )
 
         self._latest_trash_graphics = self._find_latest_trash_graphics(
@@ -1420,6 +1713,39 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         return max(
             candidates,
             key=lambda item: item.name,
+        )
+
+    def show_unused_graphics_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        unused, _ = self._find_unused_graphic_resources(root)
+
+        if not unused:
+            messagebox.showinfo(
+                "Aucune ressource inutilisée",
+                (
+                    "Aucune ressource graphique non référencée "
+                    "n’a été détectée."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Ressources graphiques non référencées",
+            project_root=root,
+            files=unused,
+            dependency_text="aucune référence active détectée",
         )
 
     def move_unused_graphics_to_trash(self) -> None:
