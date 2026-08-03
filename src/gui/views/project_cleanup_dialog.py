@@ -599,6 +599,12 @@ class TrashContentsDialog(ctk.CTkToplevel):
         if name.startswith("modeles_"):
             return "Modèles"
 
+        if name.startswith("fiches_contenu_"):
+            return "Fiches de contenu"
+
+        if name.startswith("collections_contenu_"):
+            return "Collections de contenu"
+
         return "Lot non identifié"
 
     def _center_window(self) -> None:
@@ -668,6 +674,12 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._unused_models: list[Path] = []
         self._unused_models_size = 0
         self._latest_trash_models: Path | None = None
+        self._unused_content_sheets: list[Path] = []
+        self._unused_content_sheets_size = 0
+        self._unused_content_collections: list[Path] = []
+        self._unused_content_collections_size = 0
+        self._latest_trash_content_sheets: Path | None = None
+        self._latest_trash_content_collections: Path | None = None
 
         self.title("Nettoyage de la base")
         self.geometry("940x750")
@@ -1073,6 +1085,68 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             column=1,
             sticky="e",
             padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Fiches de contenu non utilisées",
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="w",
+        ).grid(
+            row=6,
+            column=0,
+            padx=14,
+            pady=(0, 5),
+        )
+
+        self.unused_content_sheets_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.unused_content_sheets_var,
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="e",
+        ).grid(
+            row=6,
+            column=1,
+            sticky="e",
+            padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Collections non utilisées",
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="w",
+        ).grid(
+            row=7,
+            column=0,
+            padx=14,
+            pady=(0, 12),
+        )
+
+        self.unused_content_collections_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.unused_content_collections_var,
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="e",
+        ).grid(
+            row=7,
+            column=1,
+            sticky="e",
+            padx=14,
             pady=(0, 12),
         )
 
@@ -1081,7 +1155,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             fg_color="transparent",
         )
         footer.grid(
-            row=6,
+            row=8,
             column=0,
             sticky="ew",
             pady=(14, 0),
@@ -1459,6 +1533,123 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.show_unused_content_sheets_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail des fiches inutilisées",
+            width=290,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_unused_content_sheets_details,
+            state="disabled",
+        )
+        self.show_unused_content_sheets_button.grid(
+            row=8,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.show_unused_content_collections_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail des collections inutilisées",
+            width=310,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_unused_content_collections_details,
+            state="disabled",
+        )
+        self.show_unused_content_collections_button.grid(
+            row=8,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
+        self.move_unused_content_sheets_button = ctk.CTkButton(
+            footer,
+            text="Mettre les fiches inutilisées à la corbeille",
+            width=310,
+            height=36,
+            fg_color="#B76E00",
+            hover_color="#945900",
+            text_color="#FFFFFF",
+            command=self.move_unused_content_sheets_to_trash,
+            state="disabled",
+        )
+        self.move_unused_content_sheets_button.grid(
+            row=9,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.restore_content_sheets_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les dernières fiches",
+            width=250,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_content_sheets,
+            state="disabled",
+        )
+        self.restore_content_sheets_button.grid(
+            row=9,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
+        self.move_unused_content_collections_button = ctk.CTkButton(
+            footer,
+            text="Mettre les collections inutilisées à la corbeille",
+            width=340,
+            height=36,
+            fg_color="#B76E00",
+            hover_color="#945900",
+            text_color="#FFFFFF",
+            command=self.move_unused_content_collections_to_trash,
+            state="disabled",
+        )
+        self.move_unused_content_collections_button.grid(
+            row=10,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.restore_content_collections_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les dernières collections",
+            width=270,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_content_collections,
+            state="disabled",
+        )
+        self.restore_content_collections_button.grid(
+            row=10,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -1658,6 +1849,68 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
         )
 
+        (
+            self._unused_content_sheets,
+            self._unused_content_sheets_size,
+        ) = self._find_unused_content_sheets(root)
+        self.unused_content_sheets_var.set(
+            f"{len(self._unused_content_sheets)} fiche(s) — "
+            f"{self._format_size(self._unused_content_sheets_size)}"
+        )
+        sheets_state = (
+            "normal"
+            if self._unused_content_sheets
+            else "disabled"
+        )
+        self.show_unused_content_sheets_button.configure(
+            state=sheets_state
+        )
+        self.move_unused_content_sheets_button.configure(
+            state=sheets_state
+        )
+
+        self._latest_trash_content_sheets = (
+            self._find_latest_trash_content_sheets(root)
+        )
+        self.restore_content_sheets_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_content_sheets is not None
+                else "disabled"
+            )
+        )
+
+        (
+            self._unused_content_collections,
+            self._unused_content_collections_size,
+        ) = self._find_unused_content_collections(root)
+        self.unused_content_collections_var.set(
+            f"{len(self._unused_content_collections)} collection(s) — "
+            f"{self._format_size(self._unused_content_collections_size)}"
+        )
+        collections_state = (
+            "normal"
+            if self._unused_content_collections
+            else "disabled"
+        )
+        self.show_unused_content_collections_button.configure(
+            state=collections_state
+        )
+        self.move_unused_content_collections_button.configure(
+            state=collections_state
+        )
+
+        self._latest_trash_content_collections = (
+            self._find_latest_trash_content_collections(root)
+        )
+        self.restore_content_collections_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_content_collections is not None
+                else "disabled"
+            )
+        )
+
         self._latest_trash_graphics = self._find_latest_trash_graphics(
             root
         )
@@ -1721,6 +1974,24 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             self.status_var.set(
                 "Le dernier lot de modèles placé dans la corbeille "
                 "peut être restauré."
+            )
+        elif self._unused_content_sheets:
+            self.status_var.set(
+                f"{len(self._unused_content_sheets)} fiche(s) de contenu "
+                "ne sont associées à aucune collection, page ou production."
+            )
+        elif self._unused_content_collections:
+            self.status_var.set(
+                f"{len(self._unused_content_collections)} collection(s) "
+                "ne sont associées à aucune production."
+            )
+        elif self._latest_trash_content_sheets is not None:
+            self.status_var.set(
+                "Le dernier lot de fiches de contenu peut être restauré."
+            )
+        elif self._latest_trash_content_collections is not None:
+            self.status_var.set(
+                "Le dernier lot de collections peut être restauré."
             )
         else:
             self.status_var.set(
@@ -2090,6 +2361,14 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
 
         if name.startswith("modeles_"):
             self.restore_latest_models(batch)
+            return
+
+        if name.startswith("fiches_contenu_"):
+            self.restore_latest_content_sheets(batch)
+            return
+
+        if name.startswith("collections_contenu_"):
+            self.restore_latest_content_collections(batch)
             return
 
         messagebox.showerror(
@@ -2679,6 +2958,616 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         return max(
             candidates,
             key=lambda item: item.name,
+        )
+
+    def move_unused_content_sheets_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        folders, _ = self._find_unused_content_sheets(root)
+
+        self._move_unused_content_folders_to_trash(
+            root=root,
+            folders=folders,
+            batch_prefix="fiches_contenu",
+            manifest_type="fiches_contenu",
+            definition_name="fiche.json",
+            index_attribute="content_sheets",
+            item_label="fiche(s) de contenu",
+            confirmation_title="Mettre les fiches à la corbeille",
+        )
+
+    def move_unused_content_collections_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        folders, _ = self._find_unused_content_collections(root)
+
+        self._move_unused_content_folders_to_trash(
+            root=root,
+            folders=folders,
+            batch_prefix="collections_contenu",
+            manifest_type="collections_contenu",
+            definition_name="collection.json",
+            index_attribute="content_collections",
+            item_label="collection(s) de contenu",
+            confirmation_title="Mettre les collections à la corbeille",
+        )
+
+    def _move_unused_content_folders_to_trash(
+        self,
+        *,
+        root: Path,
+        folders: list[Path],
+        batch_prefix: str,
+        manifest_type: str,
+        definition_name: str,
+        index_attribute: str,
+        item_label: str,
+        confirmation_title: str,
+    ) -> None:
+        if not folders:
+            messagebox.showinfo(
+                "Aucun contenu inutilisé",
+                f"Aucune {item_label} inutilisée n’a été détectée.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        confirmed = messagebox.askyesno(
+            confirmation_title,
+            (
+                f"{len(folders)} {item_label} ne sont associées à aucun "
+                "élément actif du projet.\n\n"
+                "Elles seront déplacées dans la corbeille interne et "
+                "resteront restaurables.\n\n"
+                "Continuer ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        trash_root = root / "corbeille"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch = trash_root / f"{batch_prefix}_{timestamp}"
+        suffix = 1
+
+        while batch.exists():
+            batch = trash_root / f"{batch_prefix}_{timestamp}_{suffix}"
+            suffix += 1
+
+        batch.mkdir(
+            parents=True,
+            exist_ok=False,
+        )
+
+        moved: list[tuple[Path, Path]] = []
+        relative_folders: list[str] = []
+        identifiers: set[str] = set()
+
+        original_index = list(
+            getattr(
+                self.project,
+                index_attribute,
+                [],
+            )
+        )
+
+        try:
+            for source_folder in folders:
+                relative_folder = (
+                    source_folder.relative_to(root).as_posix()
+                )
+                destination = batch / relative_folder
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                identifier = self._definition_identifier(
+                    source_folder / definition_name
+                )
+
+                if identifier:
+                    identifiers.add(identifier)
+
+                shutil.move(
+                    str(source_folder),
+                    str(destination),
+                )
+                moved.append(
+                    (source_folder, destination)
+                )
+                relative_folders.append(relative_folder)
+
+            retained_index = [
+                summary
+                for summary in original_index
+                if str(
+                    summary.get("identifiant", "")
+                ).strip() not in identifiers
+            ]
+
+            removed_index = [
+                summary
+                for summary in original_index
+                if summary not in retained_index
+            ]
+
+            manifest = {
+                "type": manifest_type,
+                "date": datetime.now().isoformat(),
+                "projet": str(
+                    getattr(self.project, "name", "")
+                ),
+                "dossiers": relative_folders,
+                "index_retires": removed_index,
+            }
+
+            with (batch / "manifest.json").open(
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    manifest,
+                    handle,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            if retained_index != original_index:
+                setattr(
+                    self.project,
+                    index_attribute,
+                    retained_index,
+                )
+
+                try:
+                    self.project.save()
+                except Exception:
+                    setattr(
+                        self.project,
+                        index_attribute,
+                        original_index,
+                    )
+                    raise
+
+        except Exception as exc:
+            setattr(
+                self.project,
+                index_attribute,
+                original_index,
+            )
+
+            for source_folder, destination in reversed(moved):
+                try:
+                    source_folder.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_folder),
+                        )
+                except Exception:
+                    pass
+
+            try:
+                if batch.exists():
+                    shutil.rmtree(batch)
+            except Exception:
+                pass
+
+            messagebox.showerror(
+                "Déplacement impossible",
+                (
+                    "Les contenus n’ont pas pu être déplacés "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(relative_folders)} {item_label} placée(s) dans la corbeille."
+        )
+
+        messagebox.showinfo(
+            "Contenus déplacés",
+            (
+                f"{len(relative_folders)} {item_label} ont été placées "
+                "dans la corbeille interne.\n"
+                "Elles restent restaurables."
+            ),
+            parent=self,
+        )
+
+    def restore_latest_content_sheets(
+        self,
+        batch: Path | None = None,
+    ) -> None:
+        self._restore_content_batch(
+            batch=batch,
+            batch_prefix="fiches_contenu_",
+            index_attribute="content_sheets",
+            item_label="fiche(s) de contenu",
+        )
+
+    def restore_latest_content_collections(
+        self,
+        batch: Path | None = None,
+    ) -> None:
+        self._restore_content_batch(
+            batch=batch,
+            batch_prefix="collections_contenu_",
+            index_attribute="content_collections",
+            item_label="collection(s) de contenu",
+        )
+
+    def _restore_content_batch(
+        self,
+        *,
+        batch: Path | None,
+        batch_prefix: str,
+        index_attribute: str,
+        item_label: str,
+    ) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        if batch is None:
+            batch = self._find_latest_trash_batch(
+                root,
+                batch_prefix,
+            )
+
+        if batch is None:
+            messagebox.showinfo(
+                "Aucun contenu à restaurer",
+                f"La corbeille ne contient aucune {item_label}.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        manifest_file = batch / "manifest.json"
+
+        try:
+            with manifest_file.open(
+                "r",
+                encoding="utf-8-sig",
+            ) as handle:
+                manifest = json.load(handle)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Le manifeste du lot est absent ou illisible.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            return
+
+        folders = manifest.get("dossiers", [])
+        removed_index = manifest.get("index_retires", [])
+
+        if not isinstance(folders, list) or not folders:
+            messagebox.showerror(
+                "Restauration impossible",
+                "Le lot ne contient aucun dossier exploitable.",
+                parent=self,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            "Restaurer les contenus",
+            (
+                f"{len(folders)} {item_label} seront replacées dans "
+                "la bibliothèque du projet.\n\n"
+                "Confirmer la restauration ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        active_index = list(
+            getattr(
+                self.project,
+                index_attribute,
+                [],
+            )
+        )
+        restored: list[tuple[Path, Path]] = []
+        path_mapping: dict[str, str] = {}
+
+        try:
+            for value in folders:
+                original_relative = str(value).strip()
+
+                if not original_relative:
+                    continue
+
+                source_folder = batch / original_relative
+
+                if not source_folder.is_dir():
+                    raise FileNotFoundError(
+                        "Dossier absent dans la corbeille : "
+                        f"{original_relative}"
+                    )
+
+                destination = root / original_relative
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                if destination.exists():
+                    destination = self._available_destination(
+                        destination
+                    )
+
+                restored_relative = (
+                    destination.relative_to(root).as_posix()
+                )
+                path_mapping[original_relative] = restored_relative
+
+                shutil.move(
+                    str(source_folder),
+                    str(destination),
+                )
+                restored.append(
+                    (source_folder, destination)
+                )
+
+            restored_index: list[dict] = []
+
+            if isinstance(removed_index, list):
+                for summary in removed_index:
+                    if not isinstance(summary, dict):
+                        continue
+
+                    restored_index.append(
+                        self._replace_paths_in_value(
+                            dict(summary),
+                            path_mapping,
+                        )
+                    )
+
+            combined_index = list(active_index)
+            active_identifiers = {
+                str(summary.get("identifiant", "")).strip()
+                for summary in combined_index
+                if isinstance(summary, dict)
+            }
+
+            for summary in restored_index:
+                identifier = str(
+                    summary.get("identifiant", "")
+                ).strip()
+
+                if identifier and identifier in active_identifiers:
+                    continue
+
+                combined_index.append(summary)
+
+                if identifier:
+                    active_identifiers.add(identifier)
+
+            setattr(
+                self.project,
+                index_attribute,
+                combined_index,
+            )
+
+            try:
+                self.project.save()
+            except Exception:
+                setattr(
+                    self.project,
+                    index_attribute,
+                    active_index,
+                )
+                raise
+
+            shutil.rmtree(batch)
+
+        except Exception as exc:
+            setattr(
+                self.project,
+                index_attribute,
+                active_index,
+            )
+
+            for source_folder, destination in reversed(restored):
+                try:
+                    source_folder.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_folder),
+                        )
+                except Exception:
+                    pass
+
+            messagebox.showerror(
+                "Restauration incomplète",
+                (
+                    "Les contenus n’ont pas pu être restaurés "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(restored)} {item_label} restaurée(s)."
+        )
+
+        messagebox.showinfo(
+            "Contenus restaurés",
+            (
+                f"{len(restored)} {item_label} ont été replacées dans "
+                "la bibliothèque du projet."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _find_latest_trash_batch(
+        root: Path,
+        prefix: str,
+    ) -> Path | None:
+        trash_root = root / "corbeille"
+
+        if not trash_root.exists():
+            return None
+
+        try:
+            candidates = [
+                item
+                for item in trash_root.iterdir()
+                if (
+                    item.is_dir()
+                    and item.name.startswith(prefix)
+                    and (item / "manifest.json").is_file()
+                )
+            ]
+        except OSError:
+            return None
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda item: item.name,
+        )
+
+    def _find_latest_trash_content_sheets(
+        self,
+        root: Path,
+    ) -> Path | None:
+        return self._find_latest_trash_batch(
+            root,
+            "fiches_contenu_",
+        )
+
+    def _find_latest_trash_content_collections(
+        self,
+        root: Path,
+    ) -> Path | None:
+        return self._find_latest_trash_batch(
+            root,
+            "collections_contenu_",
+        )
+
+    def show_unused_content_sheets_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        sheets, _ = self._find_unused_content_sheets(root)
+
+        if not sheets:
+            messagebox.showinfo(
+                "Aucune fiche inutilisée",
+                (
+                    "Toutes les fiches de contenu sont associées à une "
+                    "collection, une page ou une production."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Fiches de contenu non utilisées",
+            project_root=root,
+            files=sheets,
+            dependency_text=(
+                "aucune collection, page ou production associée"
+            ),
+        )
+
+    def show_unused_content_collections_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        collections, _ = self._find_unused_content_collections(root)
+
+        if not collections:
+            messagebox.showinfo(
+                "Aucune collection inutilisée",
+                (
+                    "Toutes les collections sont associées à une "
+                    "production."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Collections non utilisées",
+            project_root=root,
+            files=collections,
+            dependency_text="aucune production associée",
         )
 
     def move_unused_models_to_trash(self) -> None:
@@ -4155,6 +5044,262 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             ]
 
         return value
+
+    def _find_unused_content_sheets(
+        self,
+        root: Path,
+    ) -> tuple[list[Path], int]:
+        used_ids = self._used_content_sheet_ids(root)
+        sheets_folder = root / "contenus" / "fiches"
+
+        return self._find_unused_content_folders(
+            folder=sheets_folder,
+            definition_name="fiche.json",
+            used_ids=used_ids,
+        )
+
+    def _find_unused_content_collections(
+        self,
+        root: Path,
+    ) -> tuple[list[Path], int]:
+        used_ids = self._used_content_collection_ids(root)
+        collections_folder = root / "contenus" / "collections"
+
+        return self._find_unused_content_folders(
+            folder=collections_folder,
+            definition_name="collection.json",
+            used_ids=used_ids,
+        )
+
+    def _find_unused_content_folders(
+        self,
+        *,
+        folder: Path,
+        definition_name: str,
+        used_ids: set[str],
+    ) -> tuple[list[Path], int]:
+        unused: list[Path] = []
+        total_size = 0
+
+        if not folder.exists():
+            return unused, total_size
+
+        try:
+            candidates = [
+                item
+                for item in folder.iterdir()
+                if (
+                    item.is_dir()
+                    and (item / definition_name).is_file()
+                )
+            ]
+        except OSError:
+            return unused, total_size
+
+        for candidate in candidates:
+            identifier = self._definition_identifier(
+                candidate / definition_name
+            )
+
+            if not identifier or identifier in used_ids:
+                continue
+
+            unused.append(candidate)
+            _, folder_size = self._folder_stats(candidate)
+            total_size += folder_size
+
+        unused.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return unused, total_size
+
+    @staticmethod
+    def _definition_identifier(
+        definition_file: Path,
+    ) -> str:
+        try:
+            with definition_file.open(
+                "r",
+                encoding="utf-8-sig",
+            ) as handle:
+                data = json.load(handle)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ):
+            return ""
+
+        identity = data.get("identite", {})
+
+        if not isinstance(identity, dict):
+            return ""
+
+        return str(
+            identity.get("identifiant", "")
+        ).strip()
+
+    def _used_content_sheet_ids(
+        self,
+        root: Path,
+    ) -> set[str]:
+        identifiers: set[str] = set()
+
+        collections_folder = root / "contenus" / "collections"
+
+        if collections_folder.exists():
+            try:
+                collection_files = list(
+                    collections_folder.rglob("collection.json")
+                )
+            except OSError:
+                collection_files = []
+
+            for collection_file in collection_files:
+                try:
+                    with collection_file.open(
+                        "r",
+                        encoding="utf-8-sig",
+                    ) as handle:
+                        data = json.load(handle)
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ):
+                    continue
+
+                sheets = data.get("fiches", [])
+
+                if not isinstance(sheets, list):
+                    continue
+
+                for entry in sheets:
+                    if not isinstance(entry, dict):
+                        continue
+
+                    identifier = str(
+                        entry.get("identifiant", "")
+                    ).strip()
+
+                    if identifier:
+                        identifiers.add(identifier)
+
+        self._collect_named_identifiers_from_roots(
+            roots=(
+                root / "projet.json",
+                root / "documents",
+                root / "productions",
+            ),
+            accepted_keys={
+                "contenu",
+                "fiche",
+                "fiche_id",
+                "fiche_identifiant",
+                "source_content_id",
+            },
+            destination=identifiers,
+        )
+
+        return identifiers
+
+    def _used_content_collection_ids(
+        self,
+        root: Path,
+    ) -> set[str]:
+        identifiers: set[str] = set()
+
+        self._collect_named_identifiers_from_roots(
+            roots=(
+                root / "projet.json",
+                root / "documents",
+                root / "productions",
+            ),
+            accepted_keys={
+                "collection",
+                "collection_id",
+                "collection_identifiant",
+                "source_collection_id",
+            },
+            destination=identifiers,
+        )
+
+        return identifiers
+
+    def _collect_named_identifiers_from_roots(
+        self,
+        *,
+        roots: tuple[Path, ...],
+        accepted_keys: set[str],
+        destination: set[str],
+    ) -> None:
+        for search_root in roots:
+            if search_root.is_file():
+                json_files = [search_root]
+            elif search_root.exists():
+                try:
+                    json_files = list(
+                        search_root.rglob("*.json")
+                    )
+                except OSError:
+                    json_files = []
+            else:
+                json_files = []
+
+            for json_file in json_files:
+                try:
+                    with json_file.open(
+                        "r",
+                        encoding="utf-8-sig",
+                    ) as handle:
+                        data = json.load(handle)
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ):
+                    continue
+
+                self._collect_named_identifiers(
+                    data,
+                    accepted_keys,
+                    destination,
+                )
+
+    @staticmethod
+    def _collect_named_identifiers(
+        value,
+        accepted_keys: set[str],
+        destination: set[str],
+    ) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key).strip().casefold()
+
+                if (
+                    normalized_key in accepted_keys
+                    and isinstance(child, str)
+                ):
+                    identifier = child.strip()
+
+                    if identifier:
+                        destination.add(identifier)
+
+                ProjectCleanupDialog._collect_named_identifiers(
+                    child,
+                    accepted_keys,
+                    destination,
+                )
+            return
+
+        if isinstance(value, list):
+            for child in value:
+                ProjectCleanupDialog._collect_named_identifiers(
+                    child,
+                    accepted_keys,
+                    destination,
+                )
 
     def _find_unused_models(
         self,
