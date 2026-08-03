@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 import shutil
 from typing import Callable
@@ -44,6 +45,9 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._latest_trash_cache: Path | None = None
         self._trash_file_count = 0
         self._trash_size = 0
+        self._unused_visual_references: list[dict] = []
+        self._unused_visual_size = 0
+        self._latest_trash_visuals: Path | None = None
 
         self.title("Nettoyage de la base")
         self.geometry("900x700")
@@ -328,6 +332,35 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             column=1,
             sticky="e",
             padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Visuels témoins inutilisés",
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="w",
+        ).grid(
+            row=2,
+            column=0,
+            padx=14,
+            pady=(0, 12),
+        )
+
+        self.unused_visuals_var = tk.StringVar(value="Analyse en cours…")
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.unused_visuals_var,
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="e",
+        ).grid(
+            row=2,
+            column=1,
+            sticky="e",
+            padx=14,
             pady=(0, 12),
         )
 
@@ -442,6 +475,45 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             column=4,
         )
 
+        self.move_unused_visuals_button = ctk.CTkButton(
+            footer,
+            text="Mettre les visuels inutilisés à la corbeille",
+            width=320,
+            height=36,
+            fg_color="#7B61D1",
+            hover_color="#624DB0",
+            text_color="#FFFFFF",
+            command=self.move_unused_visuals_to_trash,
+            state="disabled",
+        )
+        self.move_unused_visuals_button.grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.restore_visuals_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les derniers visuels",
+            width=250,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_visuals,
+            state="disabled",
+        )
+        self.restore_visuals_button.grid(
+            row=2,
+            column=2,
+            columnspan=2,
+            sticky="w",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -512,6 +584,33 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             state="normal" if self._trash_file_count > 0 else "disabled"
         )
 
+        (
+            self._unused_visual_references,
+            self._unused_visual_size,
+        ) = self._find_unused_visual_references(root)
+        self.unused_visuals_var.set(
+            f"{len(self._unused_visual_references)} fichier(s) — "
+            f"{self._format_size(self._unused_visual_size)}"
+        )
+        self.move_unused_visuals_button.configure(
+            state=(
+                "normal"
+                if self._unused_visual_references
+                else "disabled"
+            )
+        )
+
+        self._latest_trash_visuals = self._find_latest_trash_visuals(
+            root
+        )
+        self.restore_visuals_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_visuals is not None
+                else "disabled"
+            )
+        )
+
         if self._cache_file_count > 0:
             self.status_var.set(
                 "Le cache peut être déplacé dans la corbeille interne sans suppression définitive."
@@ -525,8 +624,20 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 f"La corbeille contient {self._trash_file_count} fichier(s), soit "
                 f"{self._format_size(self._trash_size)}."
             )
+        elif self._unused_visual_references:
+            self.status_var.set(
+                f"{len(self._unused_visual_references)} visuel(s) témoin(s) ne sont associés "
+                "à aucune page du projet."
+            )
+        elif self._latest_trash_visuals is not None:
+            self.status_var.set(
+                "Le dernier lot de visuels témoins placé dans la corbeille "
+                "peut être restauré."
+            )
         else:
-            self.status_var.set("Le cache et la corbeille du projet sont vides.")
+            self.status_var.set(
+                "Le cache et la corbeille sont vides. Aucun visuel témoin inutilisé."
+            )
 
     def move_cache_to_trash(self) -> None:
         root = self._project_root()
@@ -800,6 +911,543 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 return candidate
 
             index += 1
+
+    def move_unused_visuals_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        unused, unused_size = self._find_unused_visual_references(root)
+
+        if not unused:
+            messagebox.showinfo(
+                "Aucun visuel inutilisé",
+                "Tous les visuels témoins sont actuellement utilisés.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        confirmed = messagebox.askyesno(
+            "Mettre les visuels inutilisés à la corbeille",
+            (
+                f"{len(unused)} visuel(s) témoin(s), soit "
+                f"{self._format_size(unused_size)}, ne sont associés "
+                "à aucune page.\n\n"
+                "Ils seront déplacés dans la corbeille interne du projet "
+                "et pourront être restaurés ultérieurement."
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        trash_root = root / "corbeille"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch = trash_root / f"visuels_temoins_{timestamp}"
+        suffix = 1
+
+        while batch.exists():
+            batch = trash_root / f"visuels_temoins_{timestamp}_{suffix}"
+            suffix += 1
+
+        batch.mkdir(parents=True, exist_ok=False)
+
+        moved_files: list[tuple[Path, Path]] = []
+        identifiers = {
+            str(summary.get("identifiant", "")).strip()
+            for summary in unused
+            if str(summary.get("identifiant", "")).strip()
+        }
+
+        try:
+            for summary in unused:
+                relative_path = str(
+                    summary.get("fichier", "")
+                ).strip()
+
+                if not relative_path:
+                    continue
+
+                source_path = root / relative_path
+
+                if not source_path.is_file():
+                    continue
+
+                destination = batch / relative_path
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                moved_files.append(
+                    (source_path, destination)
+                )
+
+            manifest = {
+                "type": "visuels_temoins",
+                "date": datetime.now().isoformat(),
+                "projet": str(
+                    getattr(self.project, "name", "")
+                ),
+                "elements": unused,
+            }
+
+            with (batch / "manifest.json").open(
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    manifest,
+                    handle,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            original_index = list(
+                getattr(
+                    self.project,
+                    "visual_references",
+                    [],
+                )
+            )
+
+            self.project.visual_references = [
+                summary
+                for summary in original_index
+                if str(
+                    summary.get("identifiant", "")
+                ).strip() not in identifiers
+            ]
+
+            try:
+                self.project.save()
+            except Exception:
+                self.project.visual_references = original_index
+                raise
+
+        except Exception as exc:
+            for source_path, destination in reversed(moved_files):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            try:
+                if batch.exists():
+                    shutil.rmtree(batch)
+            except Exception:
+                pass
+
+            messagebox.showerror(
+                "Déplacement impossible",
+                (
+                    "Les visuels inutilisés n’ont pas pu être déplacés "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(unused)} visuel(s) témoin(s) placés dans la corbeille."
+        )
+
+        messagebox.showinfo(
+            "Visuels placés dans la corbeille",
+            (
+                f"{len(unused)} visuel(s) témoin(s) ont été retirés "
+                "de la bibliothèque active.\n"
+                "Aucune suppression définitive n’a été effectuée."
+            ),
+            parent=self,
+        )
+
+    def restore_latest_visuals(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        batch = self._find_latest_trash_visuals(root)
+
+        if batch is None:
+            messagebox.showinfo(
+                "Aucun visuel à restaurer",
+                "La corbeille ne contient aucun lot de visuels témoins.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        manifest_file = batch / "manifest.json"
+
+        try:
+            with manifest_file.open(
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                manifest = json.load(handle)
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Le manifeste du lot de visuels est absent ou illisible.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            return
+
+        elements = manifest.get("elements", [])
+
+        if not isinstance(elements, list) or not elements:
+            messagebox.showerror(
+                "Restauration impossible",
+                "Le lot ne contient aucune référence exploitable.",
+                parent=self,
+            )
+            return
+
+        active_references = list(
+            getattr(
+                self.project,
+                "visual_references",
+                [],
+            )
+        )
+        active_identifiers = {
+            str(summary.get("identifiant", "")).strip()
+            for summary in active_references
+            if isinstance(summary, dict)
+        }
+
+        conflicts = [
+            str(summary.get("identifiant", "")).strip()
+            for summary in elements
+            if (
+                isinstance(summary, dict)
+                and str(summary.get("identifiant", "")).strip()
+                in active_identifiers
+            )
+        ]
+
+        if conflicts:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Au moins un identifiant du lot existe déjà dans la "
+                    "bibliothèque active. Aucun fichier n’a été déplacé."
+                ),
+                parent=self,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            "Restaurer les visuels témoins",
+            (
+                f"{len(elements)} visuel(s) témoin(s) seront replacés "
+                "dans la bibliothèque active du projet.\n\n"
+                "Confirmer la restauration ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        restored: list[tuple[Path, Path]] = []
+        restored_summaries: list[dict] = []
+
+        try:
+            for summary in elements:
+                if not isinstance(summary, dict):
+                    continue
+
+                restored_summary = dict(summary)
+                relative_path = str(
+                    restored_summary.get("fichier", "")
+                ).strip()
+
+                if not relative_path:
+                    continue
+
+                source_path = batch / relative_path
+
+                if not source_path.is_file():
+                    raise FileNotFoundError(
+                        f"Fichier absent dans la corbeille : {relative_path}"
+                    )
+
+                destination = root / relative_path
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                if destination.exists():
+                    destination = self._available_destination(
+                        destination
+                    )
+                    restored_summary["fichier"] = (
+                        destination.relative_to(root).as_posix()
+                    )
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                restored.append(
+                    (source_path, destination)
+                )
+                restored_summaries.append(
+                    restored_summary
+                )
+
+            self.project.visual_references = (
+                active_references + restored_summaries
+            )
+
+            try:
+                self.project.save()
+            except Exception:
+                self.project.visual_references = active_references
+                raise
+
+            shutil.rmtree(batch)
+
+        except Exception as exc:
+            self.project.visual_references = active_references
+
+            for source_path, destination in reversed(restored):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            messagebox.showerror(
+                "Restauration incomplète",
+                (
+                    "Les visuels n’ont pas pu être restaurés correctement.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(restored_summaries)} visuel(s) témoin(s) restaurés."
+        )
+
+        messagebox.showinfo(
+            "Visuels restaurés",
+            (
+                f"{len(restored_summaries)} visuel(s) témoin(s) ont été "
+                "replacés dans la bibliothèque active."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _find_latest_trash_visuals(root: Path) -> Path | None:
+        trash_root = root / "corbeille"
+
+        if not trash_root.exists():
+            return None
+
+        candidates = [
+            item
+            for item in trash_root.iterdir()
+            if (
+                item.is_dir()
+                and item.name.startswith("visuels_temoins_")
+                and (item / "manifest.json").is_file()
+            )
+        ]
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda item: item.name,
+        )
+
+    def _find_unused_visual_references(
+        self,
+        root: Path,
+    ) -> tuple[list[dict], int]:
+        references = getattr(
+            self.project,
+            "visual_references",
+            [],
+        )
+
+        if not isinstance(references, list):
+            return [], 0
+
+        used_identifiers = self._used_visual_reference_ids(root)
+        unused: list[dict] = []
+        total_size = 0
+
+        for summary in references:
+            if not isinstance(summary, dict):
+                continue
+
+            identifier = str(
+                summary.get("identifiant", "")
+            ).strip()
+
+            if not identifier or identifier in used_identifiers:
+                continue
+
+            unused.append(dict(summary))
+
+            relative_path = str(
+                summary.get("fichier", "")
+            ).strip()
+
+            if not relative_path:
+                continue
+
+            file_path = root / relative_path
+
+            try:
+                if file_path.is_file():
+                    total_size += file_path.stat().st_size
+            except OSError:
+                pass
+
+        return unused, total_size
+
+    @staticmethod
+    def _used_visual_reference_ids(root: Path) -> set[str]:
+        used: set[str] = set()
+        search_roots = (
+            root / "documents",
+            root / "modeles",
+            root / "contenus",
+            root / "productions",
+        )
+
+        for search_root in search_roots:
+            if not search_root.exists():
+                continue
+
+            try:
+                files = search_root.rglob("*.json")
+            except OSError:
+                continue
+
+            for json_file in files:
+                try:
+                    with json_file.open(
+                        "r",
+                        encoding="utf-8",
+                    ) as handle:
+                        data = json.load(handle)
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    continue
+
+                ProjectCleanupDialog._collect_visual_reference_ids(
+                    data,
+                    used,
+                )
+
+        return used
+
+    @staticmethod
+    def _collect_visual_reference_ids(
+        value,
+        destination: set[str],
+        parent_key: str = "",
+    ) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key)
+
+                if normalized_key == "visuel_temoin_id":
+                    identifier = str(child).strip()
+
+                    if identifier:
+                        destination.add(identifier)
+
+                    continue
+
+                if normalized_key == "visuels_temoins_ids":
+                    if isinstance(child, list):
+                        for item in child:
+                            identifier = str(item).strip()
+
+                            if identifier:
+                                destination.add(identifier)
+
+                    continue
+
+                if (
+                    normalized_key == "reference_id"
+                    and parent_key == "visuel_temoin_guide"
+                ):
+                    identifier = str(child).strip()
+
+                    if identifier:
+                        destination.add(identifier)
+
+                    continue
+
+                ProjectCleanupDialog._collect_visual_reference_ids(
+                    child,
+                    destination,
+                    normalized_key,
+                )
+
+            return
+
+        if isinstance(value, list):
+            for child in value:
+                ProjectCleanupDialog._collect_visual_reference_ids(
+                    child,
+                    destination,
+                    parent_key,
+                )
 
     @staticmethod
     def _folder_stats(folder: Path) -> tuple[int, int]:
