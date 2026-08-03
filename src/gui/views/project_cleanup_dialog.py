@@ -876,6 +876,45 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.show_visuals_details_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail des visuels",
+            width=220,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_unused_visuals_details,
+            state="disabled",
+        )
+        self.show_visuals_details_button.grid(
+            row=4,
+            column=2,
+            columnspan=2,
+            sticky="w",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
+        self.show_cache_details_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail du cache",
+            width=200,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_cache_details,
+            state="disabled",
+        )
+        self.show_cache_details_button.grid(
+            row=4,
+            column=4,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -930,8 +969,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self.cache_recoverable_var.set(
             f"{self._cache_file_count} fichier(s) — {self._format_size(self._cache_size)}"
         )
+        cache_state = (
+            "normal"
+            if self._cache_file_count > 0
+            else "disabled"
+        )
         self.move_cache_button.configure(
-            state="normal" if self._cache_file_count > 0 else "disabled"
+            state=cache_state
+        )
+        self.show_cache_details_button.configure(
+            state=cache_state
         )
 
         self._latest_trash_cache = self._find_latest_trash_cache(root)
@@ -954,12 +1001,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             f"{len(self._unused_visual_references)} fichier(s) — "
             f"{self._format_size(self._unused_visual_size)}"
         )
+        visuals_state = (
+            "normal"
+            if self._unused_visual_references
+            else "disabled"
+        )
         self.move_unused_visuals_button.configure(
-            state=(
-                "normal"
-                if self._unused_visual_references
-                else "disabled"
-            )
+            state=visuals_state
+        )
+        self.show_visuals_details_button.configure(
+            state=visuals_state
         )
 
         self._latest_trash_visuals = self._find_latest_trash_visuals(
@@ -1042,6 +1093,59 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 "Le cache et la corbeille sont vides. "
                 "Aucune ressource graphique inutilisée détectée."
             )
+
+    def show_cache_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        cache_folder = root / "cache"
+        files = self._list_files(cache_folder)
+
+        if not files:
+            messagebox.showinfo(
+                "Cache vide",
+                "Aucun fichier de cache n’est présent.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Fichiers du cache",
+            project_root=root,
+            files=files,
+            dependency_text=(
+                "fichier temporaire — aucune dépendance durable attendue"
+            ),
+        )
+
+    @staticmethod
+    def _list_files(folder: Path) -> list[Path]:
+        if not folder.exists():
+            return []
+
+        try:
+            files = [
+                item
+                for item in folder.rglob("*")
+                if item.is_file()
+            ]
+        except OSError:
+            return []
+
+        files.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return files
 
     def move_cache_to_trash(self) -> None:
         root = self._project_root()
@@ -1315,6 +1419,60 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 return candidate
 
             index += 1
+
+    def show_unused_visuals_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        unused, _ = self._find_unused_visual_references(root)
+
+        if not unused:
+            messagebox.showinfo(
+                "Aucun visuel inutilisé",
+                (
+                    "Aucun visuel témoin sans association active "
+                    "n’a été détecté."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        files: list[Path] = []
+
+        for summary in unused:
+            relative_path = str(
+                summary.get("fichier", "")
+            ).strip()
+
+            if relative_path:
+                files.append(root / relative_path)
+
+        if not files:
+            messagebox.showerror(
+                "Détail indisponible",
+                (
+                    "Les références inutilisées ne contiennent aucun "
+                    "emplacement de fichier exploitable."
+                ),
+                parent=self,
+            )
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Visuels témoins inutilisés",
+            project_root=root,
+            files=files,
+            dependency_text="aucune page active associée",
+        )
 
     def move_unused_visuals_to_trash(self) -> None:
         root = self._project_root()
