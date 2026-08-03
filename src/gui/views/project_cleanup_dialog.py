@@ -255,6 +255,10 @@ class CleanupDetailsDialog(ctk.CTkToplevel):
 
     @staticmethod
     def _safe_size(path: Path) -> int:
+        if path.is_dir():
+            _, total_size = ProjectCleanupDialog._folder_stats(path)
+            return total_size
+
         try:
             return path.stat().st_size
         except OSError:
@@ -592,6 +596,9 @@ class TrashContentsDialog(ctk.CTkToplevel):
         if name.startswith("ressources_graphiques_"):
             return "Ressources graphiques"
 
+        if name.startswith("modeles_"):
+            return "Modèles"
+
         return "Lot non identifié"
 
     def _center_window(self) -> None:
@@ -658,6 +665,9 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._history_only_graphic_resources: list[Path] = []
         self._history_only_graphic_size = 0
         self._latest_trash_history_graphics: Path | None = None
+        self._unused_models: list[Path] = []
+        self._unused_models_size = 0
+        self._latest_trash_models: Path | None = None
 
         self.title("Nettoyage de la base")
         self.geometry("940x750")
@@ -1032,6 +1042,37 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             column=1,
             sticky="e",
             padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Modèles non utilisés",
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="w",
+        ).grid(
+            row=5,
+            column=0,
+            padx=14,
+            pady=(0, 12),
+        )
+
+        self.unused_models_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.unused_models_var,
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="e",
+        ).grid(
+            row=5,
+            column=1,
+            sticky="e",
+            padx=14,
             pady=(0, 12),
         )
 
@@ -1040,7 +1081,7 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             fg_color="transparent",
         )
         footer.grid(
-            row=5,
+            row=6,
             column=0,
             sticky="ew",
             pady=(14, 0),
@@ -1360,6 +1401,64 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.show_unused_models_details_button = ctk.CTkButton(
+            footer,
+            text="Voir le détail des modèles inutilisés",
+            width=290,
+            height=36,
+            fg_color=Colors.BUTTON,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=Colors.TEXT,
+            command=self.show_unused_models_details,
+            state="disabled",
+        )
+        self.show_unused_models_details_button.grid(
+            row=6,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.move_unused_models_button = ctk.CTkButton(
+            footer,
+            text="Mettre les modèles inutilisés à la corbeille",
+            width=320,
+            height=36,
+            fg_color="#B76E00",
+            hover_color="#945900",
+            text_color="#FFFFFF",
+            command=self.move_unused_models_to_trash,
+            state="disabled",
+        )
+        self.move_unused_models_button.grid(
+            row=7,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.restore_models_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les derniers modèles",
+            width=250,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_models,
+            state="disabled",
+        )
+        self.restore_models_button.grid(
+            row=7,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -1528,6 +1627,37 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
         )
 
+        (
+            self._unused_models,
+            self._unused_models_size,
+        ) = self._find_unused_models(root)
+        self.unused_models_var.set(
+            f"{len(self._unused_models)} modèle(s) — "
+            f"{self._format_size(self._unused_models_size)}"
+        )
+        models_state = (
+            "normal"
+            if self._unused_models
+            else "disabled"
+        )
+        self.show_unused_models_details_button.configure(
+            state=models_state
+        )
+        self.move_unused_models_button.configure(
+            state=models_state
+        )
+
+        self._latest_trash_models = self._find_latest_trash_models(
+            root
+        )
+        self.restore_models_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_models is not None
+                else "disabled"
+            )
+        )
+
         self._latest_trash_graphics = self._find_latest_trash_graphics(
             root
         )
@@ -1580,6 +1710,16 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         elif self._latest_trash_history_graphics is not None:
             self.status_var.set(
                 "Le dernier lot de ressources liées à l’historique "
+                "peut être restauré."
+            )
+        elif self._unused_models:
+            self.status_var.set(
+                f"{len(self._unused_models)} modèle(s) ne sont associés "
+                "à aucune page, fiche, collection ou production."
+            )
+        elif self._latest_trash_models is not None:
+            self.status_var.set(
+                "Le dernier lot de modèles placé dans la corbeille "
                 "peut être restauré."
             )
         else:
@@ -1946,6 +2086,10 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
 
         if name.startswith("ressources_graphiques_"):
             self.restore_latest_graphics(batch)
+            return
+
+        if name.startswith("modeles_"):
+            self.restore_latest_models(batch)
             return
 
         messagebox.showerror(
@@ -2535,6 +2679,482 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         return max(
             candidates,
             key=lambda item: item.name,
+        )
+
+    def move_unused_models_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        models, _ = self._find_unused_models(root)
+
+        if not models:
+            messagebox.showinfo(
+                "Aucun modèle inutilisé",
+                "Aucun modèle inutilisé n’a été détecté.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        confirmed = messagebox.askyesno(
+            "Mettre les modèles à la corbeille",
+            (
+                f"{len(models)} modèle(s) ne sont associés à aucune page, "
+                "fiche, collection ou production.\n\n"
+                "Ils seront déplacés dans la corbeille interne du projet "
+                "et resteront restaurables.\n\n"
+                "Continuer ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        trash_root = root / "corbeille"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch = trash_root / f"modeles_{timestamp}"
+        suffix = 1
+
+        while batch.exists():
+            batch = trash_root / f"modeles_{timestamp}_{suffix}"
+            suffix += 1
+
+        batch.mkdir(
+            parents=True,
+            exist_ok=False,
+        )
+
+        moved: list[tuple[Path, Path]] = []
+        relative_folders: list[str] = []
+        model_ids: set[str] = set()
+
+        original_index = list(
+            getattr(
+                self.project,
+                "models",
+                [],
+            )
+        )
+
+        try:
+            for source_folder in models:
+                relative_folder = (
+                    source_folder.relative_to(root).as_posix()
+                )
+                destination = batch / relative_folder
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                model_file = source_folder / "modele.json"
+
+                try:
+                    with model_file.open(
+                        "r",
+                        encoding="utf-8-sig",
+                    ) as handle:
+                        data = json.load(handle)
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ):
+                    data = {}
+
+                identity = data.get("identite", {})
+
+                if isinstance(identity, dict):
+                    identifier = str(
+                        identity.get("identifiant", "")
+                    ).strip()
+
+                    if identifier:
+                        model_ids.add(identifier)
+
+                shutil.move(
+                    str(source_folder),
+                    str(destination),
+                )
+                moved.append(
+                    (source_folder, destination)
+                )
+                relative_folders.append(relative_folder)
+
+            retained_index = [
+                summary
+                for summary in original_index
+                if str(
+                    summary.get("identifiant", "")
+                ).strip() not in model_ids
+            ]
+
+            removed_index = [
+                summary
+                for summary in original_index
+                if summary not in retained_index
+            ]
+
+            manifest = {
+                "type": "modeles",
+                "date": datetime.now().isoformat(),
+                "projet": str(
+                    getattr(self.project, "name", "")
+                ),
+                "dossiers": relative_folders,
+                "index_retires": removed_index,
+            }
+
+            with (batch / "manifest.json").open(
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    manifest,
+                    handle,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            if retained_index != original_index:
+                self.project.models = retained_index
+
+                try:
+                    self.project.save()
+                except Exception:
+                    self.project.models = original_index
+                    raise
+
+        except Exception as exc:
+            self.project.models = original_index
+
+            for source_folder, destination in reversed(moved):
+                try:
+                    source_folder.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_folder),
+                        )
+                except Exception:
+                    pass
+
+            try:
+                if batch.exists():
+                    shutil.rmtree(batch)
+            except Exception:
+                pass
+
+            messagebox.showerror(
+                "Déplacement impossible",
+                (
+                    "Les modèles n’ont pas pu être déplacés "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(relative_folders)} modèle(s) placé(s) dans la corbeille."
+        )
+
+        messagebox.showinfo(
+            "Modèles déplacés",
+            (
+                f"{len(relative_folders)} modèle(s) ont été placés dans "
+                "la corbeille interne.\n"
+                "Ils restent restaurables."
+            ),
+            parent=self,
+        )
+
+    def restore_latest_models(
+        self,
+        batch: Path | None = None,
+    ) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        if batch is None:
+            batch = self._find_latest_trash_models(root)
+
+        if batch is None:
+            messagebox.showinfo(
+                "Aucun modèle à restaurer",
+                "La corbeille ne contient aucun lot de modèles.",
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        manifest_file = batch / "manifest.json"
+
+        try:
+            with manifest_file.open(
+                "r",
+                encoding="utf-8-sig",
+            ) as handle:
+                manifest = json.load(handle)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Le manifeste du lot est absent ou illisible.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            return
+
+        folders = manifest.get("dossiers", [])
+        removed_index = manifest.get("index_retires", [])
+
+        if not isinstance(folders, list) or not folders:
+            messagebox.showerror(
+                "Restauration impossible",
+                "Le lot ne contient aucun modèle exploitable.",
+                parent=self,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            "Restaurer les modèles",
+            (
+                f"{len(folders)} modèle(s) seront replacés dans la "
+                "bibliothèque du projet.\n\n"
+                "Confirmer la restauration ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        active_index = list(
+            getattr(
+                self.project,
+                "models",
+                [],
+            )
+        )
+        restored: list[tuple[Path, Path]] = []
+        path_mapping: dict[str, str] = {}
+
+        try:
+            for value in folders:
+                original_relative = str(value).strip()
+
+                if not original_relative:
+                    continue
+
+                source_folder = batch / original_relative
+
+                if not source_folder.is_dir():
+                    raise FileNotFoundError(
+                        "Modèle absent dans la corbeille : "
+                        f"{original_relative}"
+                    )
+
+                destination = root / original_relative
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                if destination.exists():
+                    destination = self._available_destination(
+                        destination
+                    )
+
+                restored_relative = (
+                    destination.relative_to(root).as_posix()
+                )
+                path_mapping[original_relative] = restored_relative
+
+                shutil.move(
+                    str(source_folder),
+                    str(destination),
+                )
+                restored.append(
+                    (source_folder, destination)
+                )
+
+            restored_index: list[dict] = []
+
+            if isinstance(removed_index, list):
+                for summary in removed_index:
+                    if not isinstance(summary, dict):
+                        continue
+
+                    restored_index.append(
+                        self._replace_paths_in_value(
+                            dict(summary),
+                            path_mapping,
+                        )
+                    )
+
+            combined_index = list(active_index)
+            active_identifiers = {
+                str(summary.get("identifiant", "")).strip()
+                for summary in combined_index
+                if isinstance(summary, dict)
+            }
+
+            for summary in restored_index:
+                identifier = str(
+                    summary.get("identifiant", "")
+                ).strip()
+
+                if identifier and identifier in active_identifiers:
+                    continue
+
+                combined_index.append(summary)
+
+                if identifier:
+                    active_identifiers.add(identifier)
+
+            self.project.models = combined_index
+
+            try:
+                self.project.save()
+            except Exception:
+                self.project.models = active_index
+                raise
+
+            shutil.rmtree(batch)
+
+        except Exception as exc:
+            self.project.models = active_index
+
+            for source_folder, destination in reversed(restored):
+                try:
+                    source_folder.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_folder),
+                        )
+                except Exception:
+                    pass
+
+            messagebox.showerror(
+                "Restauration incomplète",
+                (
+                    "Les modèles n’ont pas pu être restaurés "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(restored)} modèle(s) restauré(s)."
+        )
+
+        messagebox.showinfo(
+            "Modèles restaurés",
+            (
+                f"{len(restored)} modèle(s) ont été replacés dans "
+                "la bibliothèque du projet."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _find_latest_trash_models(
+        root: Path,
+    ) -> Path | None:
+        trash_root = root / "corbeille"
+
+        if not trash_root.exists():
+            return None
+
+        try:
+            candidates = [
+                item
+                for item in trash_root.iterdir()
+                if (
+                    item.is_dir()
+                    and item.name.startswith("modeles_")
+                    and (item / "manifest.json").is_file()
+                )
+            ]
+        except OSError:
+            return None
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda item: item.name,
+        )
+
+    def show_unused_models_details(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        models, _ = self._find_unused_models(root)
+
+        if not models:
+            messagebox.showinfo(
+                "Aucun modèle inutilisé",
+                (
+                    "Tous les modèles du projet sont associés à une page, "
+                    "une fiche, une collection ou une production."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        CleanupDetailsDialog(
+            parent=self,
+            title="Modèles non utilisés",
+            project_root=root,
+            files=models,
+            dependency_text=(
+                "aucune page, fiche, collection ou production associée"
+            ),
         )
 
     def move_history_only_graphics_to_trash(self) -> None:
@@ -3535,6 +4155,164 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             ]
 
         return value
+
+    def _find_unused_models(
+        self,
+        root: Path,
+    ) -> tuple[list[Path], int]:
+        used_ids = self._used_model_ids(root)
+        models_folder = root / "modeles"
+        unused: list[Path] = []
+        total_size = 0
+
+        if not models_folder.exists():
+            return unused, total_size
+
+        try:
+            candidates = [
+                item
+                for item in models_folder.iterdir()
+                if (
+                    item.is_dir()
+                    and (item / "modele.json").is_file()
+                )
+            ]
+        except OSError:
+            return unused, total_size
+
+        for folder in candidates:
+            model_file = folder / "modele.json"
+
+            try:
+                with model_file.open(
+                    "r",
+                    encoding="utf-8-sig",
+                ) as handle:
+                    data = json.load(handle)
+            except (
+                OSError,
+                UnicodeError,
+                json.JSONDecodeError,
+            ):
+                continue
+
+            identity = data.get("identite", {})
+
+            if not isinstance(identity, dict):
+                continue
+
+            identifier = str(
+                identity.get("identifiant", "")
+            ).strip()
+
+            if not identifier or identifier in used_ids:
+                continue
+
+            unused.append(folder)
+            _, folder_size = self._folder_stats(folder)
+            total_size += folder_size
+
+        unused.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return unused, total_size
+
+    def _used_model_ids(
+        self,
+        root: Path,
+    ) -> set[str]:
+        identifiers: set[str] = set()
+        project_model_id = str(
+            getattr(
+                self.project,
+                "book_model_id",
+                "",
+            )
+        ).strip()
+
+        if project_model_id:
+            identifiers.add(project_model_id)
+
+        search_roots = (
+            root / "projet.json",
+            root / "documents",
+            root / "contenus",
+            root / "productions",
+        )
+
+        for search_root in search_roots:
+            if search_root.is_file():
+                json_files = [search_root]
+            elif search_root.exists():
+                try:
+                    json_files = list(
+                        search_root.rglob("*.json")
+                    )
+                except OSError:
+                    json_files = []
+            else:
+                json_files = []
+
+            for json_file in json_files:
+                try:
+                    with json_file.open(
+                        "r",
+                        encoding="utf-8-sig",
+                    ) as handle:
+                        data = json.load(handle)
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ):
+                    continue
+
+                self._collect_model_reference_ids(
+                    data,
+                    identifiers,
+                )
+
+        return identifiers
+
+    @staticmethod
+    def _collect_model_reference_ids(
+        value,
+        destination: set[str],
+    ) -> None:
+        model_keys = {
+            "book_model",
+            "modele",
+            "modele_identifiant",
+            "modele_prefere",
+            "source_model_id",
+        }
+
+        if isinstance(value, dict):
+            for key, child in value.items():
+                normalized_key = str(key).strip().casefold()
+
+                if (
+                    normalized_key in model_keys
+                    and isinstance(child, str)
+                ):
+                    identifier = child.strip()
+
+                    if identifier:
+                        destination.add(identifier)
+
+                ProjectCleanupDialog._collect_model_reference_ids(
+                    child,
+                    destination,
+                )
+            return
+
+        if isinstance(value, list):
+            for child in value:
+                ProjectCleanupDialog._collect_model_reference_ids(
+                    child,
+                    destination,
+                )
 
     def _find_history_only_graphic_resources(
         self,
