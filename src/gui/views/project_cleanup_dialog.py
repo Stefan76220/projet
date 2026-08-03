@@ -48,10 +48,13 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
         self._unused_visual_references: list[dict] = []
         self._unused_visual_size = 0
         self._latest_trash_visuals: Path | None = None
+        self._unused_graphic_resources: list[Path] = []
+        self._unused_graphic_size = 0
+        self._latest_trash_graphics: Path | None = None
 
         self.title("Nettoyage de la base")
-        self.geometry("900x700")
-        self.minsize(840, 640)
+        self.geometry("940x750")
+        self.minsize(880, 690)
         self.configure(fg_color=Colors.WINDOW)
         self.transient(parent.winfo_toplevel())
         self.protocol("WM_DELETE_WINDOW", self.close)
@@ -361,6 +364,37 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             column=1,
             sticky="e",
             padx=14,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            summary,
+            text="Ressources graphiques non référencées",
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="w",
+        ).grid(
+            row=3,
+            column=0,
+            padx=14,
+            pady=(0, 12),
+        )
+
+        self.unused_graphics_var = tk.StringVar(
+            value="Analyse en cours…"
+        )
+
+        ctk.CTkLabel(
+            summary,
+            textvariable=self.unused_graphics_var,
+            font=Fonts.NORMAL,
+            text_color="#17365D",
+            anchor="e",
+        ).grid(
+            row=3,
+            column=1,
+            sticky="e",
+            padx=14,
             pady=(0, 12),
         )
 
@@ -514,6 +548,45 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             pady=(8, 0),
         )
 
+        self.move_unused_graphics_button = ctk.CTkButton(
+            footer,
+            text="Mettre les ressources graphiques à la corbeille",
+            width=360,
+            height=36,
+            fg_color="#7B61D1",
+            hover_color="#624DB0",
+            text_color="#FFFFFF",
+            command=self.move_unused_graphics_to_trash,
+            state="disabled",
+        )
+        self.move_unused_graphics_button.grid(
+            row=3,
+            column=0,
+            columnspan=3,
+            sticky="w",
+            pady=(8, 0),
+        )
+
+        self.restore_graphics_button = ctk.CTkButton(
+            footer,
+            text="Restaurer les dernières ressources",
+            width=270,
+            height=36,
+            fg_color="#3B7A57",
+            hover_color="#2F6246",
+            text_color="#FFFFFF",
+            command=self.restore_latest_graphics,
+            state="disabled",
+        )
+        self.restore_graphics_button.grid(
+            row=3,
+            column=3,
+            columnspan=2,
+            sticky="e",
+            padx=(8, 0),
+            pady=(8, 0),
+        )
+
     # ==========================================================
     # Analyse
     # ==========================================================
@@ -611,6 +684,33 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             )
         )
 
+        (
+            self._unused_graphic_resources,
+            self._unused_graphic_size,
+        ) = self._find_unused_graphic_resources(root)
+        self.unused_graphics_var.set(
+            f"{len(self._unused_graphic_resources)} fichier(s) — "
+            f"{self._format_size(self._unused_graphic_size)}"
+        )
+        self.move_unused_graphics_button.configure(
+            state=(
+                "normal"
+                if self._unused_graphic_resources
+                else "disabled"
+            )
+        )
+
+        self._latest_trash_graphics = self._find_latest_trash_graphics(
+            root
+        )
+        self.restore_graphics_button.configure(
+            state=(
+                "normal"
+                if self._latest_trash_graphics is not None
+                else "disabled"
+            )
+        )
+
         if self._cache_file_count > 0:
             self.status_var.set(
                 "Le cache peut être déplacé dans la corbeille interne sans suppression définitive."
@@ -634,9 +734,20 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
                 "Le dernier lot de visuels témoins placé dans la corbeille "
                 "peut être restauré."
             )
+        elif self._unused_graphic_resources:
+            self.status_var.set(
+                f"{len(self._unused_graphic_resources)} ressource(s) graphique(s) "
+                "ne sont référencées dans aucun document actif."
+            )
+        elif self._latest_trash_graphics is not None:
+            self.status_var.set(
+                "Le dernier lot de ressources graphiques placé dans la "
+                "corbeille peut être restauré."
+            )
         else:
             self.status_var.set(
-                "Le cache et la corbeille sont vides. Aucun visuel témoin inutilisé."
+                "Le cache et la corbeille sont vides. "
+                "Aucune ressource graphique inutilisée détectée."
             )
 
     def move_cache_to_trash(self) -> None:
@@ -1310,6 +1421,637 @@ class ProjectCleanupDialog(ctk.CTkToplevel):
             candidates,
             key=lambda item: item.name,
         )
+
+    def move_unused_graphics_to_trash(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        unused, unused_size = self._find_unused_graphic_resources(
+            root
+        )
+
+        if not unused:
+            messagebox.showinfo(
+                "Aucune ressource inutilisée",
+                (
+                    "Toutes les ressources graphiques présentes sont "
+                    "référencées dans le projet."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        confirmed = messagebox.askyesno(
+            "Mettre les ressources à la corbeille",
+            (
+                f"{len(unused)} fichier(s), soit "
+                f"{self._format_size(unused_size)}, ne sont référencés "
+                "dans aucun document actif.\n\n"
+                "Ils seront déplacés dans la corbeille interne du projet "
+                "et ne seront pas supprimés définitivement."
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        trash_root = root / "corbeille"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch = trash_root / f"ressources_graphiques_{timestamp}"
+        suffix = 1
+
+        while batch.exists():
+            batch = (
+                trash_root
+                / f"ressources_graphiques_{timestamp}_{suffix}"
+            )
+            suffix += 1
+
+        batch.mkdir(
+            parents=True,
+            exist_ok=False,
+        )
+
+        moved_files: list[tuple[Path, Path]] = []
+        relative_paths: list[str] = []
+
+        original_index = list(
+            getattr(
+                self.project,
+                "ressources",
+                [],
+            )
+        )
+
+        try:
+            for source_path in unused:
+                relative_path = (
+                    source_path.relative_to(root).as_posix()
+                )
+                destination = batch / relative_path
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                moved_files.append(
+                    (source_path, destination)
+                )
+                relative_paths.append(relative_path)
+
+            normalized_paths = {
+                path.casefold()
+                for path in relative_paths
+            }
+
+            retained_index = [
+                summary
+                for summary in original_index
+                if not self._summary_references_paths(
+                    summary,
+                    normalized_paths,
+                )
+            ]
+
+            manifest = {
+                "type": "ressources_graphiques",
+                "date": datetime.now().isoformat(),
+                "projet": str(
+                    getattr(self.project, "name", "")
+                ),
+                "fichiers": relative_paths,
+                "index_retires": [
+                    summary
+                    for summary in original_index
+                    if summary not in retained_index
+                ],
+            }
+
+            with (batch / "manifest.json").open(
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    manifest,
+                    handle,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            if retained_index != original_index:
+                self.project.ressources = retained_index
+
+                try:
+                    self.project.save()
+                except Exception:
+                    self.project.ressources = original_index
+                    raise
+
+        except Exception as exc:
+            self.project.ressources = original_index
+
+            for source_path, destination in reversed(moved_files):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            try:
+                if batch.exists():
+                    shutil.rmtree(batch)
+            except Exception:
+                pass
+
+            messagebox.showerror(
+                "Déplacement impossible",
+                (
+                    "Les ressources graphiques n’ont pas pu être "
+                    f"déplacées correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(relative_paths)} ressource(s) graphique(s) "
+            "placée(s) dans la corbeille."
+        )
+
+        messagebox.showinfo(
+            "Ressources placées dans la corbeille",
+            (
+                f"{len(relative_paths)} fichier(s) ont été retirés "
+                "des bibliothèques actives.\n"
+                "Aucune suppression définitive n’a été effectuée."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _summary_references_paths(
+        summary,
+        paths: set[str],
+    ) -> bool:
+        strings: set[str] = set()
+        ProjectCleanupDialog._collect_string_references(
+            summary,
+            strings,
+        )
+
+        for value in strings:
+            for path in paths:
+                if (
+                    value == path
+                    or value.endswith("/" + path)
+                ):
+                    return True
+
+        return False
+
+    def restore_latest_graphics(self) -> None:
+        root = self._project_root()
+
+        if root is None or not root.exists():
+            messagebox.showerror(
+                "Projet indisponible",
+                "Le dossier du projet est introuvable.",
+                parent=self,
+            )
+            return
+
+        batch = self._find_latest_trash_graphics(root)
+
+        if batch is None:
+            messagebox.showinfo(
+                "Aucune ressource à restaurer",
+                (
+                    "La corbeille ne contient aucun lot de ressources "
+                    "graphiques."
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        manifest_file = batch / "manifest.json"
+
+        try:
+            with manifest_file.open(
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                manifest = json.load(handle)
+        except (
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            messagebox.showerror(
+                "Restauration impossible",
+                (
+                    "Le manifeste du lot est absent ou illisible.\n\n"
+                    f"{exc}"
+                ),
+                parent=self,
+            )
+            return
+
+        files = manifest.get("fichiers", [])
+        removed_index = manifest.get("index_retires", [])
+
+        if not isinstance(files, list) or not files:
+            messagebox.showerror(
+                "Restauration impossible",
+                "Le lot ne contient aucun fichier exploitable.",
+                parent=self,
+            )
+            return
+
+        confirmed = messagebox.askyesno(
+            "Restaurer les ressources graphiques",
+            (
+                f"{len(files)} fichier(s) seront replacés dans les "
+                "bibliothèques graphiques du projet.\n\n"
+                "Confirmer la restauration ?"
+            ),
+            parent=self,
+        )
+
+        if not confirmed:
+            return
+
+        active_index = list(
+            getattr(
+                self.project,
+                "ressources",
+                [],
+            )
+        )
+        restored: list[tuple[Path, Path]] = []
+        path_mapping: dict[str, str] = {}
+
+        try:
+            for value in files:
+                original_relative = str(value).strip()
+
+                if not original_relative:
+                    continue
+
+                source_path = batch / original_relative
+
+                if not source_path.is_file():
+                    raise FileNotFoundError(
+                        "Fichier absent dans la corbeille : "
+                        f"{original_relative}"
+                    )
+
+                destination = root / original_relative
+                destination.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                if destination.exists():
+                    destination = self._available_destination(
+                        destination
+                    )
+
+                restored_relative = (
+                    destination.relative_to(root).as_posix()
+                )
+                path_mapping[original_relative] = restored_relative
+
+                shutil.move(
+                    str(source_path),
+                    str(destination),
+                )
+                restored.append(
+                    (source_path, destination)
+                )
+
+            restored_index = []
+
+            if isinstance(removed_index, list):
+                for summary in removed_index:
+                    if not isinstance(summary, dict):
+                        continue
+
+                    restored_index.append(
+                        self._replace_paths_in_value(
+                            dict(summary),
+                            path_mapping,
+                        )
+                    )
+
+            combined_index = list(active_index)
+            active_identifiers = {
+                str(summary.get("identifiant", "")).strip()
+                for summary in combined_index
+                if isinstance(summary, dict)
+            }
+
+            for summary in restored_index:
+                identifier = str(
+                    summary.get("identifiant", "")
+                ).strip()
+
+                if identifier and identifier in active_identifiers:
+                    continue
+
+                combined_index.append(summary)
+
+                if identifier:
+                    active_identifiers.add(identifier)
+
+            self.project.ressources = combined_index
+
+            try:
+                self.project.save()
+            except Exception:
+                self.project.ressources = active_index
+                raise
+
+            shutil.rmtree(batch)
+
+        except Exception as exc:
+            self.project.ressources = active_index
+
+            for source_path, destination in reversed(restored):
+                try:
+                    source_path.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+
+                    if destination.exists():
+                        shutil.move(
+                            str(destination),
+                            str(source_path),
+                        )
+                except Exception:
+                    pass
+
+            messagebox.showerror(
+                "Restauration incomplète",
+                (
+                    "Les ressources n’ont pas pu être restaurées "
+                    f"correctement.\n\n{exc}"
+                ),
+                parent=self,
+            )
+            self.analyze()
+            return
+
+        self.analyze()
+        self.status_var.set(
+            f"{len(restored)} ressource(s) graphique(s) restaurée(s)."
+        )
+
+        messagebox.showinfo(
+            "Ressources restaurées",
+            (
+                f"{len(restored)} fichier(s) ont été replacés dans "
+                "les bibliothèques graphiques du projet."
+            ),
+            parent=self,
+        )
+
+    @staticmethod
+    def _find_latest_trash_graphics(root: Path) -> Path | None:
+        trash_root = root / "corbeille"
+
+        if not trash_root.exists():
+            return None
+
+        candidates = [
+            item
+            for item in trash_root.iterdir()
+            if (
+                item.is_dir()
+                and item.name.startswith(
+                    "ressources_graphiques_"
+                )
+                and (item / "manifest.json").is_file()
+            )
+        ]
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda item: item.name,
+        )
+
+    @staticmethod
+    def _replace_paths_in_value(
+        value,
+        path_mapping: dict[str, str],
+    ):
+        if isinstance(value, str):
+            normalized = value.replace("\\", "/")
+
+            for old_path, new_path in path_mapping.items():
+                if normalized == old_path:
+                    return new_path
+
+                suffix = "/" + old_path
+
+                if normalized.endswith(suffix):
+                    prefix = normalized[:-len(old_path)]
+                    return prefix + new_path
+
+            return value
+
+        if isinstance(value, dict):
+            return {
+                key: ProjectCleanupDialog._replace_paths_in_value(
+                    child,
+                    path_mapping,
+                )
+                for key, child in value.items()
+            }
+
+        if isinstance(value, list):
+            return [
+                ProjectCleanupDialog._replace_paths_in_value(
+                    child,
+                    path_mapping,
+                )
+                for child in value
+            ]
+
+        return value
+
+    def _find_unused_graphic_resources(
+        self,
+        root: Path,
+    ) -> tuple[list[Path], int]:
+        resource_folders = (
+            root / "ressources" / "images",
+            root / "ressources" / "illustrations",
+            root / "ressources" / "icones",
+            root / "ressources" / "logos",
+        )
+
+        references = self._collect_project_path_references(root)
+        unused: list[Path] = []
+        total_size = 0
+
+        for folder in resource_folders:
+            if not folder.exists():
+                continue
+
+            try:
+                candidates = folder.rglob("*")
+            except OSError:
+                continue
+
+            for candidate in candidates:
+                try:
+                    if not candidate.is_file():
+                        continue
+                except OSError:
+                    continue
+
+                try:
+                    relative_path = candidate.relative_to(root).as_posix()
+                except ValueError:
+                    continue
+
+                normalized_relative = relative_path.casefold()
+                absolute_path = str(candidate.resolve()).replace(
+                    "\\",
+                    "/",
+                ).casefold()
+
+                is_referenced = any(
+                    reference == normalized_relative
+                    or reference == absolute_path
+                    or reference.endswith(
+                        "/" + normalized_relative
+                    )
+                    for reference in references
+                )
+
+                if is_referenced:
+                    continue
+
+                unused.append(candidate)
+
+                try:
+                    total_size += candidate.stat().st_size
+                except OSError:
+                    pass
+
+        unused.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return unused, total_size
+
+    def _collect_project_path_references(
+        self,
+        root: Path,
+    ) -> set[str]:
+        references: set[str] = set()
+        search_roots = (
+            root / "projet.json",
+            root / "documents",
+            root / "modeles",
+            root / "contenus",
+            root / "productions",
+        )
+
+        for search_root in search_roots:
+            if search_root.is_file():
+                json_files = [search_root]
+            elif search_root.exists():
+                try:
+                    json_files = list(
+                        search_root.rglob("*.json")
+                    )
+                except OSError:
+                    json_files = []
+            else:
+                json_files = []
+
+            for json_file in json_files:
+                try:
+                    with json_file.open(
+                        "r",
+                        encoding="utf-8",
+                    ) as handle:
+                        data = json.load(handle)
+                except (
+                    OSError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ):
+                    continue
+
+                self._collect_string_references(
+                    data,
+                    references,
+                )
+
+        return references
+
+    @staticmethod
+    def _collect_string_references(
+        value,
+        destination: set[str],
+    ) -> None:
+        if isinstance(value, str):
+            normalized = value.strip().replace(
+                "\\",
+                "/",
+            ).casefold()
+
+            if normalized:
+                destination.add(normalized)
+
+            return
+
+        if isinstance(value, dict):
+            for child in value.values():
+                ProjectCleanupDialog._collect_string_references(
+                    child,
+                    destination,
+                )
+
+            return
+
+        if isinstance(value, list):
+            for child in value:
+                ProjectCleanupDialog._collect_string_references(
+                    child,
+                    destination,
+                )
 
     def _find_unused_visual_references(
         self,
