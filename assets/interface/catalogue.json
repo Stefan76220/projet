@@ -1,0 +1,15 @@
+﻿{
+    "version": "1.0",
+    "nom": "Bibliothèque visuelle interne PageMaître",
+    "usage": "interface uniquement",
+    "familles": {
+        "textures": "Textures légères de fond, notamment papier",
+        "coins": "Décors discrets placés dans les angles",
+        "filigranes": "Motifs de faible opacité",
+        "separateurs": "Ornements éditoriaux horizontaux ou verticaux",
+        "bandeaux": "Décors légers associés aux titres et panneaux",
+        "livres_et_papier": "Livre ouvert, pages, signets, reliure et imprimerie",
+        "icones_standard": "Icônes temporaires ou génériques",
+        "icones_personnalisees": "Icônes définitives propres à PageMaître"
+    }
+}
