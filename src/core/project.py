@@ -21,7 +21,7 @@ class Project:
     sans supprimer ni déplacer leurs fichiers existants.
     """
 
-    VERSION = "1.3"
+    VERSION = "1.4"
 
     PROJECT_FOLDERS = (
         "documents",
@@ -39,6 +39,7 @@ class Project:
         "exports",
         "cache",
         "corbeille",
+        "maquettage",
     )
 
     def __init__(self) -> None:
@@ -114,6 +115,18 @@ class Project:
     def trash_folder(self) -> Path:
         return self._require_root() / "corbeille"
 
+    @property
+    def mockup_folder(self) -> Path:
+        """Dossier réservé au brouillon visuel du livre."""
+
+        return self._require_root() / "maquettage"
+
+    @property
+    def mockup_file(self) -> Path:
+        """Fichier persistant du pré-chemin de fer."""
+
+        return self.mockup_folder / "premaquette.json"
+
     # ==========================================================
     # Création / Chargement
     # ==========================================================
@@ -140,6 +153,7 @@ class Project:
         self.productions.clear()
 
         self._create_folders()
+        self._ensure_mockup_file()
         self.save()
 
         return self._require_root()
@@ -228,6 +242,7 @@ class Project:
 
         # Mise à niveau silencieuse des anciens projets.
         self._create_folders()
+        self._ensure_mockup_file()
         self.save()
 
         return self
@@ -397,6 +412,125 @@ class Project:
             self.save()
 
         return removed
+
+
+    # ==========================================================
+    # Pré-chemin de fer
+    # ==========================================================
+
+    def load_mockup(self) -> dict[str, Any]:
+        """Charge le brouillon visuel facultatif du livre."""
+
+        self._ensure_mockup_file()
+
+        try:
+            with self.mockup_file.open(
+                "r",
+                encoding="utf-8",
+            ) as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            data = self._default_mockup_data()
+            self.save_mockup(data)
+
+        return self._normalize_mockup_data(data)
+
+    def save_mockup(
+        self,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Enregistre le pré-chemin de fer sans modifier les pages réelles."""
+
+        normalized = self._normalize_mockup_data(data)
+        normalized["date_modification"] = datetime.now().isoformat()
+
+        self.mockup_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        with self.mockup_file.open(
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                normalized,
+                file,
+                indent=4,
+                ensure_ascii=False,
+            )
+
+        return normalized
+
+    def _ensure_mockup_file(self) -> None:
+        self.mockup_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        if self.mockup_file.exists():
+            return
+
+        self.save_mockup(
+            self._default_mockup_data()
+        )
+
+    @staticmethod
+    def _default_mockup_data() -> dict[str, Any]:
+        now = datetime.now().isoformat()
+
+        return {
+            "version": "1.0",
+            "date_creation": now,
+            "date_modification": now,
+            "elements": [],
+        }
+
+    @classmethod
+    def _normalize_mockup_data(
+        cls,
+        data: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(data, dict):
+            return cls._default_mockup_data()
+
+        creation_date = str(
+            data.get(
+                "date_creation",
+                "",
+            )
+        ).strip()
+
+        if not creation_date:
+            creation_date = datetime.now().isoformat()
+
+        elements = data.get(
+            "elements",
+            [],
+        )
+
+        return {
+            "version": str(
+                data.get(
+                    "version",
+                    "1.0",
+                )
+            ),
+            "date_creation": creation_date,
+            "date_modification": str(
+                data.get(
+                    "date_modification",
+                    creation_date,
+                )
+            ),
+            "elements": [
+                dict(element)
+                for element in elements
+                if isinstance(element, dict)
+            ]
+            if isinstance(elements, list)
+            else [],
+        }
 
     # ==========================================================
     # Construction

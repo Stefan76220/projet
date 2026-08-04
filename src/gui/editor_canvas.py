@@ -155,6 +155,13 @@ class EditorCanvas(CTkCanvas):
         self._history_external_restore: Callable[[Any], None] | None = None
         self._undo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
         self._redo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
+        self._history_limit = 250
+        self._history_window: tk.Misc | None = None
+        self._history_window_bindings: dict[str, str] = {}
+        self._interaction_history_state: (
+            tuple[list[CanvasObject], int | None, set[int], Any] | None
+        ) = None
+        self._text_edit_original_text: str | None = None
 
         self._bind_events()
 
@@ -263,6 +270,14 @@ class EditorCanvas(CTkCanvas):
         self.after_idle(
             self._bind_escape_to_window,
         )
+        self.after_idle(
+            self._bind_history_shortcuts_to_window,
+        )
+        self.bind(
+            "<Destroy>",
+            self._on_canvas_destroy,
+            add="+",
+        )
 
         self.bind(
             "<Left>",
@@ -313,6 +328,14 @@ class EditorCanvas(CTkCanvas):
             "<Control-Y>",
             self._redo_last_action,
         )
+        self.bind(
+            "<Control-Shift-z>",
+            self._redo_last_action,
+        )
+        self.bind(
+            "<Control-Shift-Z>",
+            self._redo_last_action,
+        )
 
         self.bind_all(
             "<Control-a>",
@@ -358,6 +381,83 @@ class EditorCanvas(CTkCanvas):
             add="+",
         )
 
+    def _bind_history_shortcuts_to_window(self) -> None:
+        """Rend Annuler/Rétablir disponibles dans tout l'Atelier.
+
+        La liaison globale couvre aussi les fenêtres flottantes de réglage du
+        fond, tout en laissant le champ de texte intégré gérer son historique
+        propre lorsqu'il est en cours d'édition.
+        """
+
+        if self._history_window_bindings:
+            return
+
+        bindings = {
+            "<Control-z>": self._undo_from_window,
+            "<Control-Z>": self._undo_from_window,
+            "<Control-y>": self._redo_from_window,
+            "<Control-Y>": self._redo_from_window,
+            "<Control-Shift-z>": self._redo_from_window,
+            "<Control-Shift-Z>": self._redo_from_window,
+        }
+
+        for sequence, callback in bindings.items():
+            try:
+                binding_id = self.bind_all(
+                    sequence,
+                    callback,
+                    add="+",
+                )
+            except tk.TclError:
+                binding_id = None
+
+            if binding_id:
+                self._history_window_bindings[sequence] = binding_id
+
+    def _unbind_history_shortcuts_from_window(self) -> None:
+        for sequence, binding_id in tuple(
+            self._history_window_bindings.items()
+        ):
+            try:
+                self._root()._unbind(
+                    ("bind", "all", sequence),
+                    binding_id,
+                )
+            except (
+                tk.TclError,
+                AttributeError,
+                TypeError,
+            ):
+                pass
+
+        self._history_window_bindings.clear()
+        self._history_window = None
+
+    def _on_canvas_destroy(self, event=None) -> None:
+        if event is not None and event.widget is not self:
+            return
+        self._unbind_history_shortcuts_from_window()
+
+    def _undo_from_window(self, event=None) -> str | None:
+        # Le champ de texte intégré possède son propre historique pendant
+        # l'édition. Après validation, Ctrl+Z revient à l'historique de page.
+        if self._text_editor is not None:
+            try:
+                if event is not None and event.widget is self._text_editor:
+                    return None
+            except tk.TclError:
+                pass
+        return self._undo_last_action(event)
+
+    def _redo_from_window(self, event=None) -> str | None:
+        if self._text_editor is not None:
+            try:
+                if event is not None and event.widget is self._text_editor:
+                    return None
+            except tk.TclError:
+                pass
+        return self._redo_last_action(event)
+
     def _clear_reference_state(
         self,
         *,
@@ -382,6 +482,7 @@ class EditorCanvas(CTkCanvas):
         self._interaction_original_centers_by_index = {}
         self._interaction_rotation_pivot = None
         self._interaction_start_angle_deg = None
+        self._interaction_history_state = None
         self._marquee_start_mm = None
 
         if self._marquee_rectangle_id is not None:
@@ -453,10 +554,22 @@ class EditorCanvas(CTkCanvas):
             )
 
         return (
-            list(self._objects),
+            deepcopy(self._objects),
             self._selected_object_index,
             set(self._selected_object_indices),
             external_state,
+        )
+
+    @staticmethod
+    def _history_content_equal(
+        first: tuple[list[CanvasObject], int | None, set[int], Any],
+        second: tuple[list[CanvasObject], int | None, set[int], Any],
+    ) -> bool:
+        """Compare le contenu éditorial sans tenir compte de la sélection."""
+
+        return (
+            first[0] == second[0]
+            and first[3] == second[3]
         )
 
     def _restore_state(
@@ -464,8 +577,16 @@ class EditorCanvas(CTkCanvas):
         state: tuple[list[CanvasObject], int | None, set[int], Any],
     ) -> None:
 
+        # Une restauration ne doit jamais laisser une transformation ou une
+        # saisie flottante attachée à l'ancien état.
+        if self._text_editor is not None:
+            self._finish_text_editing(
+                commit=False,
+                redraw=False,
+            )
+
         objects, selected_index, selected_indices, external_state = state
-        self._objects = list(objects)
+        self._objects = deepcopy(objects)
         self._selected_object_index = selected_index
         self._selected_object_indices = {
             index
@@ -479,6 +600,17 @@ class EditorCanvas(CTkCanvas):
                 else None
             )
 
+        self._interaction_mode = None
+        self._interaction_handle = None
+        self._interaction_start_mm = None
+        self._interaction_original_bounds = None
+        self._interaction_original_bounds_by_index = {}
+        self._interaction_original_rotations_by_index = {}
+        self._interaction_original_centers_by_index = {}
+        self._interaction_rotation_pivot = None
+        self._interaction_start_angle_deg = None
+        self._interaction_history_state = None
+
         if self._history_external_restore is not None:
             self._history_external_restore(
                 deepcopy(external_state)
@@ -487,26 +619,120 @@ class EditorCanvas(CTkCanvas):
         self.redraw()
         self._notify_selection()
 
-    def _remember_current_state(self) -> None:
+    def _append_undo_state(
+        self,
+        state: tuple[list[CanvasObject], int | None, set[int], Any],
+    ) -> bool:
+        if (
+            self._undo_history
+            and self._undo_history[-1] == state
+        ):
+            return False
+
+        self._undo_history.append(
+            deepcopy(state),
+        )
+        if len(self._undo_history) > self._history_limit:
+            del self._undo_history[
+                : len(self._undo_history) - self._history_limit
+            ]
+        self._redo_history.clear()
+        return True
+
+    def _remember_current_state(self) -> bool:
+        """Mémorise l'état avant une action unique."""
+
+        return self._append_undo_state(
+            self._snapshot_state()
+        )
+
+    def remember_current_state(self) -> bool:
+        """API publique utilisée par la vue d'édition."""
+
+        return self._remember_current_state()
+
+    def _begin_interaction_history(self) -> None:
+        """Prépare une action souris continue sans créer plusieurs étapes."""
+
+        self._interaction_history_state = self._snapshot_state()
+
+    def _commit_interaction_history(self) -> None:
+        initial_state = self._interaction_history_state
+        self._interaction_history_state = None
+
+        if initial_state is None:
+            return
+
+        current_state = self._snapshot_state()
+        if self._history_content_equal(initial_state, current_state):
+            return
+
+        self._append_undo_state(initial_state)
+
+    def can_undo(self) -> bool:
+        return bool(self._undo_history)
+
+    def can_redo(self) -> bool:
+        return bool(self._redo_history)
+
+    def clear_history(self) -> None:
+        self._undo_history.clear()
+        self._redo_history.clear()
+        self._interaction_history_state = None
+
+    def export_history(
+        self,
+    ) -> tuple[
+        list[tuple[list[CanvasObject], int | None, set[int], Any]],
+        list[tuple[list[CanvasObject], int | None, set[int], Any]],
+    ]:
+        return (
+            deepcopy(self._undo_history),
+            deepcopy(self._redo_history),
+        )
+
+    def import_history(
+        self,
+        undo_history,
+        redo_history,
+    ) -> None:
+        self._undo_history = deepcopy(list(undo_history or []))
+        self._redo_history = deepcopy(list(redo_history or []))
+        if len(self._undo_history) > self._history_limit:
+            self._undo_history = self._undo_history[-self._history_limit :]
+        if len(self._redo_history) > self._history_limit:
+            self._redo_history = self._redo_history[-self._history_limit :]
+
+    def undo(self) -> bool:
+        if not self._undo_history:
+            return False
+
+        self._redo_history.append(
+            self._snapshot_state(),
+        )
+        self._restore_state(
+            self._undo_history.pop(),
+        )
+        return True
+
+    def redo(self) -> bool:
+        if not self._redo_history:
+            return False
 
         self._undo_history.append(
             self._snapshot_state(),
         )
-        self._redo_history.clear()
+        self._restore_state(
+            self._redo_history.pop(),
+        )
+        return True
 
     def _undo_last_action(
         self,
         event=None,
     ) -> str:
 
-        if self._undo_history:
-            self._redo_history.append(
-                self._snapshot_state(),
-            )
-            self._restore_state(
-                self._undo_history.pop(),
-            )
-
+        self.undo()
         return "break"
 
     def _redo_last_action(
@@ -514,14 +740,7 @@ class EditorCanvas(CTkCanvas):
         event=None,
     ) -> str:
 
-        if self._redo_history:
-            self._undo_history.append(
-                self._snapshot_state(),
-            )
-            self._restore_state(
-                self._redo_history.pop(),
-            )
-
+        self.redo()
         return "break"
 
     def _duplicate_selection(
@@ -1226,7 +1445,13 @@ class EditorCanvas(CTkCanvas):
         if current.locked:
             return
 
-        self._objects[self._selected_object_index] = replace(current, **changes)
+        updated = replace(current, **changes)
+        if updated == current:
+            return
+
+        self.commit_active_text_edit()
+        self._remember_current_state()
+        self._objects[self._selected_object_index] = updated
         self.redraw()
         self._notify_selection()
 
@@ -2334,6 +2559,7 @@ class EditorCanvas(CTkCanvas):
             return
 
         self._text_edit_object_index = object_index
+        self._text_edit_original_text = graphic_object.text
         self._text_editor = tk.Text(
             self,
             wrap="word",
@@ -2468,11 +2694,14 @@ class EditorCanvas(CTkCanvas):
                 "1.0",
                 "end-1c",
             )
-            self._objects[object_index] = replace(
-                self._objects[object_index],
-                text=edited_text,
-            )
-            self._notify_selection()
+            current_object = self._objects[object_index]
+            if edited_text != current_object.text:
+                self._remember_current_state()
+                self._objects[object_index] = replace(
+                    current_object,
+                    text=edited_text,
+                )
+                self._notify_selection()
 
         if self._text_editor_window_id is not None:
             self.delete(
@@ -2483,6 +2712,7 @@ class EditorCanvas(CTkCanvas):
         self._text_editor = None
         self._text_editor_window_id = None
         self._text_edit_object_index = None
+        self._text_edit_original_text = None
         self._text_edit_closing = False
 
         self.focus_set()
@@ -2569,7 +2799,7 @@ class EditorCanvas(CTkCanvas):
                     return
 
                 self.commit_active_text_edit()
-                self._remember_current_state()
+                self._begin_interaction_history()
                 self._interaction_mode = "rotate"
                 self._interaction_handle = handle
                 self._interaction_rotation_pivot = Point(
@@ -2632,6 +2862,7 @@ class EditorCanvas(CTkCanvas):
                 self._interaction_original_bounds_by_index = {}
                 self._interaction_original_centers_by_index = {}
 
+            self._begin_interaction_history()
             return
 
         object_index = preliminary_object_index
@@ -2717,6 +2948,7 @@ class EditorCanvas(CTkCanvas):
                 self._interaction_original_centers_by_index = {}
                 self._interaction_rotation_pivot = None
                 self._interaction_start_angle_deg = None
+                self._begin_interaction_history()
 
             elif object_index is not None:
 
@@ -2960,6 +3192,7 @@ class EditorCanvas(CTkCanvas):
                 ),
             )
 
+            self._remember_current_state()
             self._objects.append(
                 graphic_object,
             )
@@ -3010,6 +3243,9 @@ class EditorCanvas(CTkCanvas):
 
             self.redraw()
             self._notify_selection()
+
+        if self._interaction_mode in {"move", "resize", "rotate"}:
+            self._commit_interaction_history()
 
         self._interaction_mode = None
         self._interaction_handle = None

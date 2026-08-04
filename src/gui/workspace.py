@@ -86,48 +86,8 @@ class Workspace:
             self._set_navigation_visible(True)
             self.clear()
 
-            centre = ctk.CTkFrame(
-                self.frame,
-                fg_color=Colors.WINDOW,
-                corner_radius=0,
-            )
-            centre.pack(fill="both", expand=True)
-
-            tools_bar = ctk.CTkFrame(
-                centre,
-                height=48,
-                fg_color=Colors.WINDOW,
-                corner_radius=0,
-            )
-            tools_bar.pack(
-                fill="x",
-                padx=22,
-                pady=(10, 0),
-            )
-            tools_bar.pack_propagate(False)
-
-            ctk.CTkLabel(
-                tools_bar,
-                text="Outils du projet",
-                font=Fonts.NORMAL,
-                text_color=Colors.TEXT_LIGHT,
-            ).pack(side="left", padx=(2, 12))
-
-            ctk.CTkButton(
-                tools_bar,
-                text="Nettoyage de la base",
-                width=190,
-                height=36,
-                corner_radius=10,
-                fg_color="#17365D",
-                hover_color="#244B79",
-                text_color="#FFFFFF",
-                font=Fonts.NORMAL,
-                command=self.show_project_cleanup,
-            ).pack(side="right")
-
             content = ctk.CTkFrame(
-                centre,
+                self.frame,
                 fg_color=Colors.WINDOW,
                 corner_radius=0,
             )
@@ -139,6 +99,7 @@ class Workspace:
                 self.application,
                 on_open_document=self.show_document,
                 on_refresh=self.back_to_documents,
+                on_cleanup=self.show_project_cleanup,
             ).show()
 
             self.frame.update_idletasks()

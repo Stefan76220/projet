@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 import shutil
@@ -2777,6 +2778,10 @@ class PageEditorView:
         self.root = None
         self.workspace: EditorCanvas | None = None
         self.status_bar: StatusBar | None = None
+        self._history_undo_cache = []
+        self._history_redo_cache = []
+        self._header_title_label: ctk.CTkLabel | None = None
+        self._header_type_label: ctk.CTkLabel | None = None
         self._display_retry_count = 0
         self._save_status_text = tk.StringVar(
             value="",
@@ -2841,6 +2846,7 @@ class PageEditorView:
         self._visual_reference_guide_interaction_start_mm: Point | None = None
         self._visual_reference_guide_original_frame: dict[str, float] | None = None
         self._visual_reference_guide_drag_changed = False
+        self._visual_reference_guide_history_recorded = False
         self._visual_reference_window_listbox: tk.Listbox | None = None
         self._visual_reference_window_image_label: tk.Label | None = None
         self._visual_reference_window_title_var = tk.StringVar(value="")
@@ -2877,6 +2883,7 @@ class PageEditorView:
 
     def show(self) -> None:
 
+        self._capture_workspace_history()
         self._clear_parent()
 
         self.root = ctk.CTkFrame(
@@ -3188,14 +3195,15 @@ class PageEditorView:
             else f"{page_title[:33]}…"
         )
 
-        ctk.CTkLabel(
+        self._header_title_label = ctk.CTkLabel(
             header,
             text=displayed_title,
             width=220,
             anchor="w",
             font=Fonts.H2,
             text_color=Colors.TEXT,
-        ).grid(
+        )
+        self._header_title_label.grid(
             row=0,
             column=1,
             padx=(0, 10),
@@ -3265,7 +3273,7 @@ class PageEditorView:
             add="+",
         )
 
-        ctk.CTkLabel(
+        self._header_type_label = ctk.CTkLabel(
             header,
             text=f"{appearance['icone']}  {displayed_type}",
             width=112,
@@ -3274,7 +3282,8 @@ class PageEditorView:
             fg_color=appearance["couleur"],
             font=Fonts.SMALL,
             text_color=Colors.TEXT,
-        ).grid(
+        )
+        self._header_type_label.grid(
             row=0,
             column=4,
             padx=(0, 6),
@@ -5793,6 +5802,13 @@ class PageEditorView:
             self._snapshot_background_history,
             self._restore_background_history,
         )
+        if self._history_undo_cache or self._history_redo_cache:
+            self.workspace.import_history(
+                self._history_undo_cache,
+                self._history_redo_cache,
+            )
+            self._history_undo_cache = []
+            self._history_redo_cache = []
         self._install_page_guides()
 
         self.workspace.add_selection_listener(
@@ -6137,34 +6153,233 @@ class PageEditorView:
             self._save_status_text.set("Fond déverrouillé pour le réglage")
         self._draw_background_controls()
 
+    def _capture_workspace_history(self) -> None:
+        """Conserve l'historique lorsqu'une actualisation recrée le canvas."""
+
+        if self.workspace is None:
+            return
+
+        try:
+            (
+                self._history_undo_cache,
+                self._history_redo_cache,
+            ) = self.workspace.export_history()
+        except (AttributeError, tk.TclError):
+            self._history_undo_cache = []
+            self._history_redo_cache = []
+
     def _remember_background_state(self) -> None:
+        """Mémorise toute la page avant une modification hors canvas."""
+
         if self.workspace is not None:
-            self.workspace._remember_current_state()
+            self.workspace.remember_current_state()
 
     def _snapshot_background_history(self):
-        return dict(getattr(self.page, "background", {}))
+        """Instantané complet des données éditoriales hors objets du canvas."""
+
+        return {
+            "background": deepcopy(
+                getattr(self.page, "background", {})
+            ),
+            "format": str(
+                getattr(self.page, "format", "A5")
+            ),
+            "format_mode": str(
+                getattr(self.page, "format_mode", "preregle")
+            ),
+            "orientation": str(
+                getattr(self.page, "orientation", "Portrait")
+            ),
+            "width_mm": float(
+                getattr(self.page, "width_mm", 148.0)
+            ),
+            "height_mm": float(
+                getattr(self.page, "height_mm", 210.0)
+            ),
+            "margins": {
+                "top": float(
+                    getattr(self.page, "margin_top_mm", 15.0)
+                ),
+                "bottom": float(
+                    getattr(self.page, "margin_bottom_mm", 15.0)
+                ),
+                "inside": float(
+                    getattr(self.page, "margin_inside_mm", 15.0)
+                ),
+                "outside": float(
+                    getattr(self.page, "margin_outside_mm", 15.0)
+                ),
+            },
+            "bleed": {
+                "top": float(
+                    getattr(self.page, "bleed_top_mm", 0.0)
+                ),
+                "right": float(
+                    getattr(self.page, "bleed_right_mm", 0.0)
+                ),
+                "bottom": float(
+                    getattr(self.page, "bleed_bottom_mm", 0.0)
+                ),
+                "left": float(
+                    getattr(self.page, "bleed_left_mm", 0.0)
+                ),
+            },
+            "title": str(
+                getattr(self.page, "title", "")
+            ),
+            "page_type": str(
+                getattr(self.page, "page_type", "Page vide")
+            ),
+            "color": str(
+                getattr(self.page, "color", "#D9D4C7")
+            ),
+            "icon": str(
+                getattr(self.page, "icon", "📄")
+            ),
+            "content": deepcopy(
+                getattr(self.page, "content", {})
+            ),
+        }
 
     def _restore_background_history(self, state) -> None:
+        """Restaure le fond, le format et les métadonnées de la page."""
+
         if not isinstance(state, dict):
             return
+
         try:
+            background = deepcopy(
+                state.get("background", {})
+            )
             if hasattr(self.page, "_normalize_background"):
-                self.page.background = self.page._normalize_background(state)
+                self.page.background = self.page._normalize_background(
+                    background
+                )
             else:
-                self.page.background = dict(state)
+                self.page.background = background
+
+            self.page.format = str(
+                state.get("format", self.page.format)
+            )
+            self.page.format_mode = str(
+                state.get(
+                    "format_mode",
+                    self.page.format_mode,
+                )
+            )
+            self.page.orientation = str(
+                state.get(
+                    "orientation",
+                    self.page.orientation,
+                )
+            )
+            self.page.width_mm = float(
+                state.get("width_mm", self.page.width_mm)
+            )
+            self.page.height_mm = float(
+                state.get("height_mm", self.page.height_mm)
+            )
+
+            margins = state.get("margins", {})
+            self.page.margin_top_mm = float(
+                margins.get(
+                    "top",
+                    self.page.margin_top_mm,
+                )
+            )
+            self.page.margin_bottom_mm = float(
+                margins.get(
+                    "bottom",
+                    self.page.margin_bottom_mm,
+                )
+            )
+            self.page.margin_inside_mm = float(
+                margins.get(
+                    "inside",
+                    self.page.margin_inside_mm,
+                )
+            )
+            self.page.margin_outside_mm = float(
+                margins.get(
+                    "outside",
+                    self.page.margin_outside_mm,
+                )
+            )
+
+            bleed = state.get("bleed", {})
+            self.page.bleed_top_mm = float(
+                bleed.get("top", self.page.bleed_top_mm)
+            )
+            self.page.bleed_right_mm = float(
+                bleed.get(
+                    "right",
+                    self.page.bleed_right_mm,
+                )
+            )
+            self.page.bleed_bottom_mm = float(
+                bleed.get(
+                    "bottom",
+                    self.page.bleed_bottom_mm,
+                )
+            )
+            self.page.bleed_left_mm = float(
+                bleed.get("left", self.page.bleed_left_mm)
+            )
+
+            self.page.title = str(
+                state.get("title", self.page.title)
+            )
+            self.page.page_type = str(
+                state.get(
+                    "page_type",
+                    self.page.page_type,
+                )
+            )
+            self.page.color = str(
+                state.get("color", self.page.color)
+            )
+            self.page.icon = str(
+                state.get("icon", self.page.icon)
+            )
+            self.page.content = deepcopy(
+                state.get("content", self.page.content)
+            )
+
             self.page.save(update_history=False)
             document = self._load_current_document()
             if document is not None:
                 document.update_page_summary(self.page)
-        except (OSError, RuntimeError, TypeError, ValueError):
+        except (
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ):
             return
+
         self._background_selected = bool(
             self._background_edit_mode
             and self.page.background.get("active")
         )
+        self._visual_reference_guide_selected = bool(
+            self._visual_reference_guide_edit_mode
+            and self._visual_reference_guide_state().get(
+                "active"
+            )
+        )
+
         self._invalidate_background_cache()
+        self._invalidate_visual_reference_guide_cache()
+        self._refresh_visual_reference_button()
+        self._refresh_header_identity()
+
         if self.workspace is not None:
+            self.workspace.set_page_format(
+                self._resolve_page_format()
+            )
+            self._install_page_guides()
             self.workspace.redraw()
+
         if (
             self._background_dialog is not None
             and self._background_dialog.winfo_exists()
@@ -6172,6 +6387,44 @@ class PageEditorView:
             self._background_dialog.set_current_frame(
                 self._background_effective_frame_mm()
             )
+
+    def _refresh_header_identity(self) -> None:
+        page_title = str(self.page.display_title)
+        displayed_title = (
+            page_title
+            if len(page_title) <= 34
+            else f"{page_title[:33]}…"
+        )
+
+        if self._header_title_label is not None:
+            try:
+                self._header_title_label.configure(
+                    text=displayed_title
+                )
+            except tk.TclError:
+                self._header_title_label = None
+
+        page_type = str(
+            getattr(self.page, "page_type", "Page vide")
+        )
+        displayed_type = (
+            page_type
+            if len(page_type) <= 16
+            else f"{page_type[:15]}…"
+        )
+        appearance = self._appearance_for_type(page_type)
+
+        if self._header_type_label is not None:
+            try:
+                self._header_type_label.configure(
+                    text=(
+                        f"{appearance['icone']}  "
+                        f"{displayed_type}"
+                    ),
+                    fg_color=appearance["couleur"],
+                )
+            except tk.TclError:
+                self._header_type_label = None
 
     def _apply_background_image(
         self,
@@ -6481,6 +6734,7 @@ class PageEditorView:
                 project.root
             ).as_posix()
 
+            self._remember_background_state()
             project.register_visual_reference(
                 {
                     "identifiant": identifier,
@@ -6681,6 +6935,7 @@ class PageEditorView:
         return normalized
 
     def _set_visual_reference_guide_state(self, payload: dict) -> None:
+        self._remember_background_state()
         state = self._visual_reference_guide_state()
         previous_scope = str(state.get("scope", "page"))
         previous_mode = str(state.get("mode", "remplir"))
@@ -6739,6 +6994,7 @@ class PageEditorView:
             self.workspace.redraw()
 
     def _hide_visual_reference_guide(self) -> None:
+        self._remember_background_state()
         state = self._visual_reference_guide_state()
         state["active"] = False
         self.page.content["visuel_temoin_guide"] = state
@@ -7210,6 +7466,7 @@ class PageEditorView:
             self._visual_reference_guide_frame_mm()
         )
         self._visual_reference_guide_drag_changed = False
+        self._visual_reference_guide_history_recorded = False
         canvas.focus_set()
         self._draw_visual_reference_guide_controls()
         return "break"
@@ -7278,6 +7535,10 @@ class PageEditorView:
 
         if abs(dx) < 0.001 and abs(dy) < 0.001:
             return "break"
+
+        if not self._visual_reference_guide_history_recorded:
+            self._remember_background_state()
+            self._visual_reference_guide_history_recorded = True
 
         if self._visual_reference_guide_interaction_mode == "move":
             scope = self._background_scope_box_mm(
@@ -7348,6 +7609,7 @@ class PageEditorView:
         self._visual_reference_guide_interaction_start_mm = None
         self._visual_reference_guide_original_frame = None
         self._visual_reference_guide_drag_changed = False
+        self._visual_reference_guide_history_recorded = False
 
         if not changed:
             self._draw_visual_reference_guide_controls()
@@ -7392,6 +7654,7 @@ class PageEditorView:
         else:
             return None
 
+        self._remember_background_state()
         state.update(
             {
                 "x_mm": frame["x"] + dx,
@@ -9556,6 +9819,7 @@ class PageEditorView:
         """Applique le format, les marges et les fonds perdus."""
 
         try:
+            self._remember_background_state()
             self._save_page_objects(
                 show_status=False,
             )
@@ -9629,7 +9893,11 @@ class PageEditorView:
             )
             return
 
+        if clean_name == str(self.page.title).strip():
+            return
+
         try:
+            self._remember_background_state()
             self._save_page_objects()
             self.page.rename(clean_name)
 
@@ -9665,9 +9933,15 @@ class PageEditorView:
             )
             return
 
+        if page_type == str(
+            getattr(self.page, "page_type", "")
+        ):
+            return
+
         appearance = self._appearance_for_type(page_type)
 
         try:
+            self._remember_background_state()
             self._save_page_objects()
             self.page.set_type(page_type)
             self.page.color = appearance["couleur"]
