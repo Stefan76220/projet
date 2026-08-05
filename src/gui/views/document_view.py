@@ -400,6 +400,8 @@ class DocumentView:
         self._rail_cards: list[ctk.CTkButton] = []
         self._side_content: ctk.CTkFrame | None = None
         self._side_tab_buttons: dict[str, ctk.CTkButton] = {}
+        self._model_workshop_view: ModelWorkshopView | None = None
+        self._hidden_project_tools: list[tuple[tk.Misc, str, dict]] = []
 
         self.page_type_library = PageTypeLibrary()
         self.page_type_library.load()
@@ -411,16 +413,20 @@ class DocumentView:
     def show(self) -> None:
         self.pages = self._load_project_pages()
 
+        # Le Centre est entièrement construit hors affichage. Le conteneur
+        # principal n'est rendu visible qu'une fois tous ses éléments prêts,
+        # ce qui évite l'apparition successive du bandeau, des outils puis du
+        # contenu central.
         root = ctk.CTkFrame(
             self.parent,
             fg_color=self.WINDOW_BG,
             corner_radius=0,
         )
-        root.pack(fill="both", expand=True)
         root.grid_columnconfigure(0, weight=1)
         root.grid_rowconfigure(2, weight=1)
 
-        self._create_header(root).grid(
+        header = self._create_header(root)
+        header.grid(
             row=0,
             column=0,
             sticky="ew",
@@ -428,7 +434,8 @@ class DocumentView:
             pady=(4, 2),
         )
 
-        self._create_workspace_bar(root).grid(
+        workspace_bar = self._create_workspace_bar(root)
+        workspace_bar.grid(
             row=1,
             column=0,
             sticky="ew",
@@ -436,13 +443,20 @@ class DocumentView:
             pady=(0, 5),
         )
 
-        self._create_main_workspace(root).grid(
+        main_workspace = self._create_main_workspace(root)
+        main_workspace.grid(
             row=2,
             column=0,
             sticky="nsew",
             padx=10,
             pady=(0, 8),
         )
+
+        # Calcule la disposition pendant que le Centre est encore masqué,
+        # puis l'affiche en une seule opération.
+        root.update_idletasks()
+        root.pack(fill="both", expand=True)
+        root.lift()
 
     def _create_header(self, parent) -> ctk.CTkFrame:
         frame = ctk.CTkFrame(
@@ -2244,18 +2258,32 @@ class DocumentView:
         ).show()
 
     def _open_model_workshop(self) -> None:
-        """Ouvre l’Atelier consacré aux gabarits du projet."""
+        """Ouvre l’Atelier en réutilisant l’éditeur déjà construit."""
 
         self._hide_project_tools_for_subspace()
 
-        ModelWorkshopView(
-            parent=self.parent,
-            project=self.project,
-            on_back=self._return_to_project_centre,
-        ).show()
+        if self._model_workshop_view is None:
+            self._model_workshop_view = ModelWorkshopView(
+                parent=self.parent,
+                project=self.project,
+                on_back=self._close_model_workshop,
+            )
+
+        self._model_workshop_view.show()
+
+    def _close_model_workshop(self) -> None:
+        """Revient au Centre sans reconstruire les deux espaces."""
+
+        view = self._model_workshop_view
+        if view is not None:
+            view.hide()
+        self._restore_project_tools_after_subspace()
 
     def _hide_project_tools_for_subspace(self) -> None:
-        """Masque les outils réservés au Centre du projet."""
+        """Masque les outils du Centre tout en mémorisant leur disposition."""
+
+        if self._hidden_project_tools:
+            return
 
         centre = getattr(self.parent, "master", None)
 
@@ -2267,13 +2295,50 @@ class DocumentView:
                 continue
 
             manager = widget.winfo_manager()
+            if not manager:
+                continue
 
-            if manager == "pack":
-                widget.pack_forget()
-            elif manager == "grid":
-                widget.grid_remove()
-            elif manager == "place":
-                widget.place_forget()
+            geometry: dict = {}
+            try:
+                if manager == "pack":
+                    geometry = dict(widget.pack_info())
+                    geometry.pop("in", None)
+                    widget.pack_forget()
+                elif manager == "grid":
+                    geometry = dict(widget.grid_info())
+                    geometry.pop("in", None)
+                    widget.grid_remove()
+                elif manager == "place":
+                    geometry = dict(widget.place_info())
+                    geometry.pop("in", None)
+                    widget.place_forget()
+                else:
+                    continue
+            except tk.TclError:
+                continue
+
+            self._hidden_project_tools.append(
+                (widget, manager, geometry)
+            )
+
+    def _restore_project_tools_after_subspace(self) -> None:
+        """Restaure exactement les outils masqués avant l’ouverture."""
+
+        hidden = tuple(self._hidden_project_tools)
+        self._hidden_project_tools.clear()
+
+        for widget, manager, geometry in hidden:
+            try:
+                if not widget.winfo_exists():
+                    continue
+                if manager == "pack":
+                    widget.pack(**geometry)
+                elif manager == "grid":
+                    widget.grid(**geometry)
+                elif manager == "place":
+                    widget.place(**geometry)
+            except (tk.TclError, TypeError):
+                pass
 
     def _return_to_project_centre(self) -> None:
         """Revient au Centre du projet sans double rafraîchissement visible."""
