@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -36,6 +38,45 @@ class MockupView:
     DONE = Colors.SUCCESS
     DANGER = Colors.ERROR
 
+    DEFAULT_GROUPS: tuple[dict[str, Any], ...] = (
+        {
+            "id": "debut_livre",
+            "title": "Début du livre",
+            "symbol": "◁",
+            "accent": CORAL,
+            "protected": True,
+        },
+        {
+            "id": "pages_interieures",
+            "title": "Pages intérieures",
+            "symbol": "▦",
+            "accent": SKY,
+            "protected": True,
+        },
+        {
+            "id": "fin_livre",
+            "title": "Fin du livre",
+            "symbol": "▷",
+            "accent": CELADON,
+            "protected": True,
+        },
+    )
+
+    START_STRUCTURAL_TYPES: tuple[str, ...] = (
+        "couverture",
+        "deuxieme_couverture",
+    )
+    END_STRUCTURAL_TYPES: tuple[str, ...] = (
+        "troisieme_couverture",
+        "quatrieme",
+    )
+    STRUCTURAL_TYPES: frozenset[str] = frozenset(
+        START_STRUCTURAL_TYPES + END_STRUCTURAL_TYPES
+    )
+    REQUIRED_STRUCTURAL_TYPES: frozenset[str] = frozenset(
+        {"couverture", "quatrieme"}
+    )
+
     PAGE_LIBRARY: tuple[dict[str, Any], ...] = (
         {
             "type": "couverture",
@@ -44,7 +85,22 @@ class MockupView:
             "symbol": "▧",
             "color": "#DDECF4",
             "accent": SKY,
+            "group": "debut_livre",
             "single": True,
+            "locked_position": True,
+            "required": True,
+        },
+        {
+            "type": "deuxieme_couverture",
+            "title": "Deuxième de couverture",
+            "short": "2e couverture",
+            "symbol": "2e",
+            "color": "#E7EEF6",
+            "accent": INK,
+            "group": "debut_livre",
+            "single": True,
+            "locked_position": True,
+            "required": False,
         },
         {
             "type": "page_titre",
@@ -53,6 +109,7 @@ class MockupView:
             "symbol": "T",
             "color": "#F1E7E2",
             "accent": CORAL,
+            "group": "debut_livre",
         },
         {
             "type": "sommaire",
@@ -61,6 +118,7 @@ class MockupView:
             "symbol": "☷",
             "color": "#E1EEE9",
             "accent": CELADON,
+            "group": "debut_livre",
         },
         {
             "type": "avant_propos",
@@ -69,6 +127,7 @@ class MockupView:
             "symbol": "¶",
             "color": "#E3EBF2",
             "accent": SKY,
+            "group": "debut_livre",
         },
         {
             "type": "chapitre",
@@ -77,6 +136,7 @@ class MockupView:
             "symbol": "CH",
             "color": "#F2DDD6",
             "accent": CORAL,
+            "group": "pages_interieures",
         },
         {
             "type": "fiche",
@@ -85,6 +145,7 @@ class MockupView:
             "symbol": "▦",
             "color": "#DFECE5",
             "accent": CELADON,
+            "group": "pages_interieures",
         },
         {
             "type": "texte",
@@ -93,6 +154,7 @@ class MockupView:
             "symbol": "≡",
             "color": "#DFEAF3",
             "accent": SKY,
+            "group": "pages_interieures",
         },
         {
             "type": "illustration",
@@ -101,6 +163,7 @@ class MockupView:
             "symbol": "▣",
             "color": "#E8E1F1",
             "accent": LILAC,
+            "group": "pages_interieures",
         },
         {
             "type": "transition",
@@ -109,6 +172,7 @@ class MockupView:
             "symbol": "◇",
             "color": "#F1E8CD",
             "accent": YELLOW,
+            "group": "pages_interieures",
         },
         {
             "type": "page_blanche",
@@ -117,6 +181,7 @@ class MockupView:
             "symbol": "□",
             "color": "#FAF9F5",
             "accent": "#A4A8A2",
+            "group": "pages_interieures",
         },
         {
             "type": "conclusion",
@@ -125,25 +190,77 @@ class MockupView:
             "symbol": "✓",
             "color": "#E7EDD9",
             "accent": "#8AA55C",
+            "group": "fin_livre",
+        },
+        {
+            "type": "troisieme_couverture",
+            "title": "Troisième de couverture",
+            "short": "3e couverture",
+            "symbol": "3e",
+            "color": "#E1EEE9",
+            "accent": CELADON,
+            "group": "fin_livre",
+            "single": True,
+            "locked_position": True,
+            "required": False,
         },
         {
             "type": "quatrieme",
-            "title": "Quatrième",
+            "title": "Quatrième de couverture",
             "short": "Quatrième",
             "symbol": "◁",
             "color": "#ECDCD8",
             "accent": CORAL,
+            "group": "fin_livre",
             "single": True,
-        },
-        {
-            "type": "autre",
-            "title": "Autre page",
-            "short": "Autre",
-            "symbol": "✦",
-            "color": "#E6E8ED",
-            "accent": INK,
+            "locked_position": True,
+            "required": True,
         },
     )
+
+    UNKNOWN_PAGE: dict[str, Any] = {
+        "type": "inconnu",
+        "title": "Type de page inconnu",
+        "short": "Inconnu",
+        "symbol": "?",
+        "color": "#E6E8ED",
+        "accent": INK,
+        "group": "pages_interieures",
+    }
+
+    TYPE_COLOR_CHOICES: dict[str, tuple[str, str]] = {
+        "Bleu ciel": ("#DFEAF3", SKY),
+        "Vert céladon": ("#DFECE5", CELADON),
+        "Lilas": ("#E8E1F1", LILAC),
+        "Corail": ("#F2DDD6", CORAL),
+        "Jaune doux": ("#F1E8CD", YELLOW),
+        "Bleu encre": ("#E7EEF6", INK),
+        "Gris doux": ("#EEF0F2", "#7C838D"),
+    }
+
+    GROUP_COLOR_CHOICES: dict[str, str] = {
+        "Bleu ciel": SKY,
+        "Vert céladon": CELADON,
+        "Lilas": LILAC,
+        "Corail": CORAL,
+        "Jaune doux": YELLOW,
+        "Bleu encre": INK,
+    }
+
+    ICON_CHOICES: tuple[str, ...] = (
+        "▦",
+        "▧",
+        "◇",
+        "○",
+        "□",
+        "T",
+        "CH",
+        "¶",
+        "≡",
+        "✓",
+        "✦",
+    )
+
 
     def __init__(
         self,
@@ -155,12 +272,30 @@ class MockupView:
         self.project = project
         self.on_back = on_back
 
+        self._last_structure_issues: list[dict[str, str]] = []
         self.data: dict[str, Any] = self._load_data()
+        self._run_silent_structure_check()
         self._root: ctk.CTkFrame | None = None
         self._sequence_frame: ctk.CTkScrollableFrame | None = None
         self._summary_label: ctk.CTkLabel | None = None
         self._progress_label: ctk.CTkLabel | None = None
         self._preview_window: ctk.CTkToplevel | None = None
+        self._manage_window: ctk.CTkToplevel | None = None
+        self._recto_verso_window: ctk.CTkToplevel | None = None
+        self._recto_rule_editor_id: str | None = None
+        self._ribbon_frame: ctk.CTkFrame | None = None
+        self._ribbon_group_widgets: dict[str, ctk.CTkFrame] = {}
+        self._dragged_group_id: str | None = None
+        self._drag_group_start_x = 0
+        self._drag_group_has_moved = False
+        self._group_drop_indicator: ctk.CTkFrame | None = None
+        self._dragged_page_id: str | None = None
+        self._drag_page_start_y = 0
+        self._drag_page_has_moved = False
+        self._page_drop_indicator: ctk.CTkFrame | None = None
+        self._page_type_buttons: dict[str, ctk.CTkButton] = {}
+        self._sequence_row_widgets: dict[str, dict[str, Any]] = {}
+        self._sequence_empty_label: ctk.CTkLabel | None = None
         self._preview_body: ctk.CTkFrame | None = None
         self._preview_nav: ctk.CTkFrame | None = None
         self._preview_position_label: ctk.CTkLabel | None = None
@@ -178,6 +313,15 @@ class MockupView:
                 int | None,
             ]
         ] = []
+        self._undo_stack: list[dict[str, Any]] = []
+        self._redo_stack: list[dict[str, Any]] = []
+        self._history_limit = 50
+        self._undo_button: ctk.CTkButton | None = None
+        self._redo_button: ctk.CTkButton | None = None
+        self._selected_ribbon_group_id = "debut_livre"
+        self._ribbon_groups_panel: ctk.CTkFrame | None = None
+        self._ribbon_types_panel: ctk.CTkFrame | None = None
+        self._drag_group_start_y = 0
 
     # ==========================================================
     # Affichage principal
@@ -185,6 +329,11 @@ class MockupView:
 
     def show(self) -> None:
         self._clear_parent()
+
+        # Les références aux widgets appartiennent à l'écran courant.
+        self._page_type_buttons.clear()
+        self._sequence_row_widgets.clear()
+        self._sequence_empty_label = None
 
         self._root = ctk.CTkFrame(
             self.parent,
@@ -203,7 +352,8 @@ class MockupView:
             pady=(6, 4),
         )
 
-        self._create_ribbon(self._root).grid(
+        self._ribbon_frame = self._create_ribbon(self._root)
+        self._ribbon_frame.grid(
             row=1,
             column=0,
             sticky="ew",
@@ -259,144 +409,1739 @@ class MockupView:
         return frame
 
     def _create_ribbon(self, parent) -> ctk.CTkFrame:
+        """Construit un ruban compact dans l'esprit de Paint.
+
+        Tous les types de pages restent visibles. Les groupes sont disposés
+        côte à côte et ne passent sur une seconde rangée que lorsque la
+        largeur disponible est réellement insuffisante.
+        """
+        self._page_type_buttons.clear()
+        self._ribbon_group_widgets.clear()
+        self._ribbon_types_panel = None
+
+        groups = self._groups()
+
         ribbon = ctk.CTkFrame(
             parent,
             fg_color=self.RIBBON_BG,
-            corner_radius=0,
-            height=112,
+            corner_radius=6,
+            border_width=1,
+            border_color=self.BORDER,
         )
         ribbon.grid_columnconfigure(0, weight=1)
-        ribbon.grid_propagate(False)
+        ribbon.grid_columnconfigure(1, weight=0)
+        ribbon.grid_rowconfigure(0, weight=1)
 
-        scroll = ctk.CTkScrollableFrame(
+        self._ribbon_groups_panel = ctk.CTkFrame(
             ribbon,
             fg_color="transparent",
             corner_radius=0,
-            orientation="horizontal",
+        )
+        self._ribbon_groups_panel.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(5, 2),
+            pady=4,
+        )
+        self._ribbon_groups_panel.grid_columnconfigure(0, weight=1)
+
+        try:
+            window_width = int(parent.winfo_toplevel().winfo_width())
+        except Exception:
+            window_width = 1280
+        if window_width <= 100:
+            window_width = 1280
+
+        tools_width = 212
+        available_width = max(520, window_width - tools_width - 54)
+
+        rows: list[list[tuple[dict[str, Any], int]]] = [[]]
+        row_width = 0
+        for group_definition in groups:
+            group_id = str(group_definition.get("id", ""))
+            type_count = sum(
+                1
+                for definition in self._page_types()
+                if str(definition.get("group", "")) == group_id
+            )
+            columns = max(1, (type_count + 1) // 2)
+            estimated_width = max(
+                82,
+                columns * 66 + max(0, columns - 1) * 3 + 10,
+                min(230, len(str(group_definition.get("title", ""))) * 7 + 24),
+            )
+
+            needed = estimated_width + (5 if rows[-1] else 0)
+            if rows[-1] and row_width + needed > available_width:
+                rows.append([])
+                row_width = 0
+                needed = estimated_width
+
+            rows[-1].append((group_definition, estimated_width))
+            row_width += needed
+
+        for row_index, row_groups in enumerate(rows):
+            row_frame = ctk.CTkFrame(
+                self._ribbon_groups_panel,
+                fg_color="transparent",
+                corner_radius=0,
+            )
+            row_frame.grid(
+                row=row_index,
+                column=0,
+                sticky="w",
+                pady=(0, 3 if row_index < len(rows) - 1 else 0),
+            )
+
+            for group_index, (group_definition, group_width) in enumerate(row_groups):
+                if group_index:
+                    ctk.CTkFrame(
+                        row_frame,
+                        width=1,
+                        height=100,
+                        fg_color=self.BORDER,
+                        corner_radius=0,
+                    ).pack(side="left", fill="y", padx=2, pady=3)
+
+                group_id = str(group_definition.get("id", ""))
+                block = self._create_group_block(
+                    row_frame,
+                    group_definition,
+                    width=group_width,
+                )
+                block.pack(side="left", padx=1)
+                self._ribbon_group_widgets[group_id] = block
+
+        tools = self._create_fixed_tools_panel(ribbon)
+        tools.grid(row=0, column=1, sticky="ne", padx=(2, 5), pady=4)
+
+        self._update_page_type_button_states()
+        self._update_history_buttons()
+        return ribbon
+
+    def _create_group_block(
+        self,
+        parent,
+        group_definition: dict[str, Any],
+        width: int,
+    ) -> ctk.CTkFrame:
+        """Crée un groupe compact avec deux rangées de types de pages."""
+        group_id = str(group_definition.get("id", ""))
+        title = str(group_definition.get("title", "Groupe"))
+        symbol = str(group_definition.get("symbol", "▦"))
+        accent = str(group_definition.get("accent", self.INK))
+        protected = bool(group_definition.get("protected", False))
+
+        block = ctk.CTkFrame(
+            parent,
+            width=width,
             height=104,
+            fg_color="transparent",
+            corner_radius=4,
+            border_width=0,
         )
-        scroll.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        block.pack_propagate(False)
+        block.grid_propagate(False)
+        block.grid_columnconfigure(0, weight=1)
+        block.grid_rowconfigure(0, weight=1)
 
-        groups = (
-            (
-                "Début du livre",
-                {"couverture", "page_titre", "sommaire", "avant_propos"},
-            ),
-            (
-                "Pages intérieures",
-                {
-                    "chapitre",
-                    "fiche",
-                    "texte",
-                    "illustration",
-                    "transition",
-                    "page_blanche",
-                },
-            ),
-            (
-                "Fin du livre",
-                {"conclusion", "quatrieme", "autre"},
-            ),
+        definitions = [
+            definition
+            for definition in self._page_types()
+            if str(definition.get("group", "")) == group_id
+        ]
+        type_columns = max(1, (len(definitions) + 1) // 2)
+
+        types_frame = ctk.CTkFrame(block, fg_color="transparent")
+        types_frame.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=3,
+            pady=(2, 1),
         )
+        for column in range(type_columns):
+            types_frame.grid_columnconfigure(column, weight=0)
+        for row in range(2):
+            types_frame.grid_rowconfigure(row, weight=1)
 
-        column = 0
-        for title, page_types in groups:
-            definitions = [
-                definition
-                for definition in self.PAGE_LIBRARY
-                if definition["type"] in page_types
-            ]
-            group = self._create_ribbon_group(scroll, title, definitions)
-            group.grid(row=0, column=column, sticky="ns", padx=(0, 5))
-            column += 1
+        if definitions:
+            for index, definition in enumerate(definitions):
+                column = index // 2
+                row = index % 2
+                button = self._create_page_type_button(types_frame, definition)
+                button.grid(
+                    row=row,
+                    column=column,
+                    sticky="nsew",
+                    padx=1,
+                    pady=1,
+                )
+        else:
+            ctk.CTkLabel(
+                types_frame,
+                text="Aucun type",
+                font=(Fonts.FAMILY, 9),
+                text_color=self.TEXT_LIGHT,
+            ).grid(row=0, column=0, rowspan=2, padx=8, pady=10)
 
-        display_group = ctk.CTkFrame(
-            scroll,
-            width=88,
-            height=94,
+        title_bar = ctk.CTkFrame(
+            block,
+            height=18,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        title_bar.grid(row=1, column=0, sticky="ew", padx=2, pady=(0, 1))
+        title_bar.grid_propagate(False)
+        title_bar.grid_columnconfigure(0, weight=1)
+
+        title_label = ctk.CTkLabel(
+            title_bar,
+            text=f"{symbol}  {title}",
+            font=(Fonts.FAMILY, 9, "bold"),
+            text_color=accent,
+            anchor="center",
+        )
+        title_label.grid(row=0, column=0, sticky="nsew", padx=3)
+
+        if not protected:
+            self._bind_custom_group_drag(title_bar, title_label, group_id)
+
+        return block
+
+    def _create_page_type_button(
+        self,
+        parent,
+        definition: dict[str, Any],
+    ) -> ctk.CTkButton:
+        page_accent = str(definition.get("accent", self.INK))
+        page_type = str(definition.get("type", ""))
+        full_title = str(definition.get("title", "Page"))
+        short_title = str(definition.get("short", full_title))
+        symbol = str(definition.get("symbol", "?"))
+
+        button = ctk.CTkButton(
+            parent,
+            text=f"{symbol}\n{short_title}",
+            width=66,
+            height=39,
+            corner_radius=5,
             fg_color=self.GROUP_BG,
-            corner_radius=10,
+            hover_color=str(definition.get("color", self.ACCENT_SOFT)),
+            text_color=page_accent,
+            border_width=1,
+            border_color=self.BORDER,
+            font=(Fonts.FAMILY, 9),
+            command=lambda selected=definition: self._add_item(selected),
         )
-        display_group.grid(row=0, column=column, sticky="ns", padx=(0, 4))
-        display_group.grid_propagate(False)
-        display_group.grid_columnconfigure(0, weight=1)
+        self._attach_tooltip(button, full_title)
+        if page_type:
+            self._page_type_buttons[page_type] = button
+        return button
+
+    def _create_fixed_tools_panel(self, parent) -> ctk.CTkFrame:
+        tools = ctk.CTkFrame(
+            parent,
+            width=212,
+            height=104,
+            fg_color="transparent",
+            corner_radius=0,
+            border_width=0,
+        )
+        tools.grid_propagate(False)
+        for column in range(3):
+            tools.grid_columnconfigure(column, weight=1, uniform="tools")
+        tools.grid_rowconfigure(0, weight=0, minsize=40)
+        tools.grid_rowconfigure(1, weight=0, minsize=40)
+        tools.grid_rowconfigure(2, weight=0, minsize=18)
+
+        self._undo_button = self._make_ribbon_tool_button(
+            tools,
+            text="↶\nAnnuler",
+            color="#F1E7E2",
+            accent=self.CORAL,
+            command=self._undo,
+        )
+        self._undo_button.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+
+        self._redo_button = self._make_ribbon_tool_button(
+            tools,
+            text="↷\nRétablir",
+            color="#E8E1F1",
+            accent=self.LILAC,
+            command=self._redo,
+        )
+        self._redo_button.grid(row=1, column=0, sticky="nsew", padx=1, pady=1)
+
+        self._make_ribbon_tool_button(
+            tools,
+            text="＋\nCréer",
+            color="#E1EEE9",
+            accent=self.CELADON,
+            command=self._open_create_menu,
+        ).grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
+
+        self._make_ribbon_tool_button(
+            tools,
+            text="⚙\nGérer",
+            color="#F1E8CD",
+            accent=self.YELLOW,
+            command=self._open_manage_dialog,
+        ).grid(row=1, column=1, sticky="nsew", padx=1, pady=1)
+
+        self._make_ribbon_tool_button(
+            tools,
+            text="▣\nAperçu",
+            color=self.ACCENT_SOFT,
+            accent=self.SKY,
+            command=self._open_preview,
+        ).grid(row=0, column=2, sticky="nsew", padx=1, pady=1)
+
+        self._make_ribbon_tool_button(
+            tools,
+            text="⇄\nRecto-verso",
+            color="#E7EEF6",
+            accent=self.INK,
+            command=self._open_recto_verso_dialog,
+        ).grid(row=1, column=2, sticky="nsew", padx=1, pady=1)
+
+        tools_title = ctk.CTkFrame(
+            tools,
+            height=18,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        tools_title.grid(row=2, column=0, columnspan=3, sticky="ew")
+        tools_title.grid_propagate(False)
+        tools_title.grid_columnconfigure(0, weight=1)
+        ctk.CTkFrame(
+            tools_title,
+            height=1,
+            fg_color=self.BORDER,
+            corner_radius=0,
+        ).place(relx=0, rely=0, relwidth=1)
+        ctk.CTkLabel(
+            tools_title,
+            text="Outils",
+            font=(Fonts.FAMILY, 9, "bold"),
+            text_color=self.INK,
+        ).place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        return tools
+
+    def _make_ribbon_tool_button(
+        self,
+        parent,
+        text: str,
+        color: str,
+        accent: str,
+        command: Callable[[], None] | None,
+        state: str = "normal",
+    ) -> ctk.CTkButton:
+        button = ctk.CTkButton(
+            parent,
+            text=text,
+            height=39,
+            corner_radius=5,
+            fg_color=self.GROUP_BG,
+            hover_color=color,
+            text_color=accent,
+            border_width=1,
+            border_color=self.BORDER,
+            font=(Fonts.FAMILY, 9),
+            command=command,
+            state=state,
+        )
+        return button
+
+    def _attach_tooltip(self, widget, text: str) -> None:
+        """Affiche le libellé complet après un court survol."""
+        state: dict[str, Any] = {"after": None, "window": None}
+
+        def hide(_event=None) -> None:
+            after_id = state.get("after")
+            if after_id is not None:
+                try:
+                    widget.after_cancel(after_id)
+                except Exception:
+                    pass
+                state["after"] = None
+
+            window = state.get("window")
+            if window is not None:
+                try:
+                    window.destroy()
+                except Exception:
+                    pass
+                state["window"] = None
+
+        def show() -> None:
+            state["after"] = None
+            try:
+                if not widget.winfo_exists():
+                    return
+                x = int(widget.winfo_pointerx()) + 12
+                y = int(widget.winfo_pointery()) + 18
+                window = ctk.CTkToplevel(widget)
+                window.withdraw()
+                window.overrideredirect(True)
+                try:
+                    window.attributes("-topmost", True)
+                except Exception:
+                    pass
+                tip_frame = ctk.CTkFrame(
+                    window,
+                    fg_color=self.INK,
+                    corner_radius=5,
+                    border_width=0,
+                )
+                tip_frame.pack()
+                ctk.CTkLabel(
+                    tip_frame,
+                    text=text,
+                    text_color="#FFFFFF",
+                    font=(Fonts.FAMILY, 9),
+                ).pack(padx=7, pady=4)
+                window.geometry(f"+{x}+{y}")
+                window.deiconify()
+                state["window"] = window
+            except Exception:
+                hide()
+
+        def schedule(_event=None) -> None:
+            hide()
+            try:
+                state["after"] = widget.after(550, show)
+            except Exception:
+                state["after"] = None
+
+        widget.bind("<Enter>", schedule, add="+")
+        widget.bind("<Leave>", hide, add="+")
+        widget.bind("<ButtonPress-1>", hide, add="+")
+
+    def _select_ribbon_group(self, group_id: str) -> None:
+        if group_id == self._selected_ribbon_group_id:
+            return
+        if not any(
+            str(group.get("id", "")) == group_id
+            for group in self._groups()
+        ):
+            return
+        self._selected_ribbon_group_id = group_id
+        self._refresh_ribbon()
+
+    def _refresh_ribbon(self) -> None:
+        """Reconstruit uniquement le ruban, sans fermer toute la page."""
+        self._hide_group_drop_indicator()
+        if self._root is None or not self._root.winfo_exists():
+            return
+
+        old_ribbon = self._ribbon_frame
+        self._ribbon_frame = self._create_ribbon(self._root)
+        self._ribbon_frame.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=12,
+            pady=(0, 8),
+        )
+
+        if old_ribbon is not None:
+            try:
+                old_ribbon.destroy()
+            except Exception:
+                pass
+
+    # ==========================================================
+    # Déplacement des groupes personnalisés
+    # ==========================================================
+
+    def _bind_custom_group_drag(
+        self,
+        group_widget: ctk.CTkFrame,
+        title_widget: ctk.CTkLabel,
+        group_id: str,
+    ) -> None:
+        """Le bandeau inférieur du groupe sert de poignée de déplacement."""
+        for widget in (group_widget, title_widget):
+            widget.bind(
+                "<ButtonPress-1>",
+                lambda event, selected=group_id: self._start_group_drag(
+                    event,
+                    selected,
+                ),
+            )
+            widget.bind("<B1-Motion>", self._continue_group_drag)
+            widget.bind("<ButtonRelease-1>", self._finish_group_drag)
+            try:
+                widget.configure(cursor="hand2")
+            except Exception:
+                pass
+
+    def _start_group_drag(self, event, group_id: str) -> None:
+        group = self._group_for(group_id)
+        if bool(group.get("protected", False)):
+            return
+
+        self._dragged_group_id = group_id
+        self._drag_group_start_x = int(getattr(event, "x_root", 0))
+        self._drag_group_start_y = int(getattr(event, "y_root", 0))
+        self._drag_group_has_moved = False
+
+        widget = self._ribbon_group_widgets.get(group_id)
+        if widget is not None:
+            try:
+                widget.configure(
+                    border_width=2,
+                    border_color=str(group.get("accent", self.INK)),
+                )
+            except Exception:
+                pass
+
+    def _continue_group_drag(self, event) -> None:
+        group_id = self._dragged_group_id
+        if group_id is None:
+            return
+
+        current_x = int(getattr(event, "x_root", self._drag_group_start_x))
+        current_y = int(getattr(event, "y_root", self._drag_group_start_y))
+        if (
+            abs(current_x - self._drag_group_start_x) >= 5
+            or abs(current_y - self._drag_group_start_y) >= 5
+        ):
+            self._drag_group_has_moved = True
+
+        if self._drag_group_has_moved:
+            self._show_group_drop_indicator(group_id, current_x, current_y)
+
+    def _finish_group_drag(self, event) -> None:
+        group_id = self._dragged_group_id
+        moved = self._drag_group_has_moved
+        self._dragged_group_id = None
+        self._drag_group_has_moved = False
+        self._hide_group_drop_indicator()
+
+        if group_id is None:
+            return
+
+        widget = self._ribbon_group_widgets.get(group_id)
+        if widget is not None and not moved:
+            try:
+                widget.configure(border_width=0)
+            except Exception:
+                pass
+
+        if moved:
+            pointer_x = int(getattr(event, "x_root", self._drag_group_start_x))
+            pointer_y = int(getattr(event, "y_root", self._drag_group_start_y))
+            self._place_custom_group_at_pointer(group_id, pointer_x, pointer_y)
+
+    def _custom_group_drop_plan(
+        self,
+        group_id: str,
+        pointer_x: int,
+        pointer_y: int,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], int] | None:
+        groups = self._groups()
+        source = next(
+            (
+                group
+                for group in groups
+                if str(group.get("id", "")) == group_id
+                and not bool(group.get("protected", False))
+            ),
+            None,
+        )
+        if source is None:
+            return None
+
+        remaining = [
+            group
+            for group in groups
+            if str(group.get("id", "")) != group_id
+        ]
+
+        visual_entries: list[dict[str, Any]] = []
+        for logical_index, group in enumerate(remaining):
+            candidate_id = str(group.get("id", ""))
+            widget = self._ribbon_group_widgets.get(candidate_id)
+            if widget is None:
+                continue
+            try:
+                left = int(widget.winfo_rootx())
+                top = int(widget.winfo_rooty())
+                width = int(widget.winfo_width())
+                height = int(widget.winfo_height())
+            except Exception:
+                continue
+            visual_entries.append(
+                {
+                    "logical_index": logical_index,
+                    "left": left,
+                    "right": left + width,
+                    "top": top,
+                    "bottom": top + height,
+                    "center_x": left + width / 2,
+                    "center_y": top + height / 2,
+                }
+            )
+
+        insert_at = len(remaining)
+        if visual_entries:
+            visual_entries.sort(key=lambda entry: (entry["top"], entry["left"]))
+            rows: list[list[dict[str, Any]]] = []
+            for entry in visual_entries:
+                if not rows:
+                    rows.append([entry])
+                    continue
+                row_center = sum(
+                    item["center_y"] for item in rows[-1]
+                ) / len(rows[-1])
+                if abs(entry["center_y"] - row_center) <= 12:
+                    rows[-1].append(entry)
+                else:
+                    rows.append([entry])
+
+            def vertical_distance(row: list[dict[str, Any]]) -> float:
+                top = min(item["top"] for item in row)
+                bottom = max(item["bottom"] for item in row)
+                if top <= pointer_y <= bottom:
+                    return 0.0
+                return min(abs(pointer_y - top), abs(pointer_y - bottom))
+
+            selected_row = min(rows, key=vertical_distance)
+            selected_row.sort(key=lambda entry: entry["left"])
+
+            insert_at = selected_row[-1]["logical_index"] + 1
+            for entry in selected_row:
+                if pointer_x < entry["center_x"]:
+                    insert_at = entry["logical_index"]
+                    break
+
+        start_index = next(
+            (
+                index
+                for index, group in enumerate(remaining)
+                if str(group.get("id", "")) == "debut_livre"
+            ),
+            0,
+        )
+        end_index = next(
+            (
+                index
+                for index, group in enumerate(remaining)
+                if str(group.get("id", "")) == "fin_livre"
+            ),
+            len(remaining),
+        )
+
+        insert_at = max(start_index + 1, min(insert_at, end_index))
+        return source, remaining, insert_at
+
+    @staticmethod
+    def _screen_geometry_for_place(
+        parent,
+        root_x: float,
+        root_y: float,
+        width: float,
+        height: float,
+    ) -> tuple[int, int, int, int]:
+        """Convertit les pixels écran en unités de placement CustomTkinter."""
+        local_x = float(root_x) - float(parent.winfo_rootx())
+        local_y = float(root_y) - float(parent.winfo_rooty())
+
+        reverse_scaling = getattr(parent, "_reverse_widget_scaling", None)
+        if callable(reverse_scaling):
+            try:
+                local_x = float(reverse_scaling(local_x))
+                local_y = float(reverse_scaling(local_y))
+                width = float(reverse_scaling(width))
+                height = float(reverse_scaling(height))
+            except Exception:
+                pass
+
+        return (
+            int(round(local_x)),
+            int(round(local_y)),
+            max(1, int(round(width))),
+            max(1, int(round(height))),
+        )
+
+    def _show_group_drop_indicator(
+        self,
+        group_id: str,
+        pointer_x: int,
+        pointer_y: int,
+    ) -> None:
+        """Affiche la ligne sur la frontière réelle entre deux groupes."""
+        plan = self._custom_group_drop_plan(group_id, pointer_x, pointer_y)
+        overlay = self._root
+        if plan is None or overlay is None:
+            self._hide_group_drop_indicator()
+            return
+
+        _, remaining, insert_at = plan
+        if not (0 < insert_at < len(remaining)):
+            self._hide_group_drop_indicator()
+            return
+
+        previous_id = str(remaining[insert_at - 1].get("id", ""))
+        next_id = str(remaining[insert_at].get("id", ""))
+        previous_widget = self._ribbon_group_widgets.get(previous_id)
+        next_widget = self._ribbon_group_widgets.get(next_id)
+        source_widget = self._ribbon_group_widgets.get(group_id)
+        if previous_widget is None or next_widget is None:
+            self._hide_group_drop_indicator()
+            return
+
+        marker_width_px = 4
+        try:
+            overlay.update_idletasks()
+            previous_left = previous_widget.winfo_rootx()
+            previous_right = previous_left + previous_widget.winfo_width()
+            previous_top = previous_widget.winfo_rooty()
+            previous_bottom = previous_top + previous_widget.winfo_height()
+
+            next_left = next_widget.winfo_rootx()
+            next_right = next_left + next_widget.winfo_width()
+            next_top = next_widget.winfo_rooty()
+            next_bottom = next_top + next_widget.winfo_height()
+
+            same_row = abs(previous_top - next_top) <= 12
+            if same_row:
+                left_widget = previous_widget
+                right_widget = next_widget
+
+                if source_widget is not None:
+                    source_left = source_widget.winfo_rootx()
+                    source_right = source_left + source_widget.winfo_width()
+                    source_top = source_widget.winfo_rooty()
+                    if (
+                        abs(source_top - previous_top) <= 12
+                        and previous_right <= source_left
+                        and source_right <= next_left
+                    ):
+                        source_middle = (source_left + source_right) / 2
+                        if pointer_x < source_middle:
+                            right_widget = source_widget
+                            next_left = source_left
+                        else:
+                            left_widget = source_widget
+                            previous_right = source_right
+
+                gap_center = (previous_right + next_left) / 2
+                marker_root_x = gap_center - marker_width_px / 2
+                marker_top = max(
+                    left_widget.winfo_rooty(),
+                    right_widget.winfo_rooty(),
+                ) + 4
+                marker_bottom = min(
+                    left_widget.winfo_rooty() + left_widget.winfo_height(),
+                    right_widget.winfo_rooty() + right_widget.winfo_height(),
+                ) - 4
+                marker_height_px = max(18, marker_bottom - marker_top)
+            else:
+                # À un retour de ligne, l'insertion se matérialise juste avant
+                # le premier groupe de la ligne suivante.
+                marker_root_x = next_left - 5
+                marker_top = next_top + 4
+                marker_height_px = max(18, next_bottom - next_top - 8)
+
+            local_x, local_y, marker_width, marker_height = (
+                self._screen_geometry_for_place(
+                    overlay,
+                    marker_root_x,
+                    marker_top,
+                    marker_width_px,
+                    marker_height_px,
+                )
+            )
+        except Exception:
+            self._hide_group_drop_indicator()
+            return
+
+        if self._group_drop_indicator is None:
+            self._group_drop_indicator = ctk.CTkFrame(
+                overlay,
+                width=marker_width,
+                height=marker_height,
+                fg_color=self.CORAL,
+                corner_radius=2,
+                border_width=1,
+                border_color=self.INK,
+            )
+
+        try:
+            self._group_drop_indicator.configure(
+                width=marker_width,
+                height=marker_height,
+            )
+            self._group_drop_indicator.place(x=local_x, y=local_y)
+            self._group_drop_indicator.lift()
+        except Exception:
+            self._hide_group_drop_indicator()
+
+    def _hide_group_drop_indicator(self) -> None:
+        indicator = self._group_drop_indicator
+        self._group_drop_indicator = None
+        if indicator is not None:
+            try:
+                indicator.destroy()
+            except Exception:
+                pass
+
+    def _place_custom_group_at_pointer(
+        self,
+        group_id: str,
+        pointer_x: int,
+        pointer_y: int,
+    ) -> None:
+        groups = self._groups()
+        plan = self._custom_group_drop_plan(group_id, pointer_x, pointer_y)
+        if plan is None:
+            return
+
+        source, remaining, insert_at = plan
+        old_order = [str(group.get("id", "")) for group in groups]
+        remaining.insert(insert_at, source)
+        new_order = [str(group.get("id", "")) for group in remaining]
+        self._selected_ribbon_group_id = group_id
+
+        if new_order == old_order:
+            self._refresh_ribbon()
+            return
+
+        self._record_history()
+        groups[:] = remaining
+        self._save_data()
+        self._refresh_ribbon()
+
+    # ==========================================================
+    # Création de groupes et de types de pages
+    # ==========================================================
+
+    def _open_create_menu(self) -> None:
+        window = self._new_dialog("Créer", "460x270")
+
+        ctk.CTkLabel(
+            window,
+            text="Que souhaitez-vous créer ?",
+            font=Fonts.H2,
+            text_color=self.INK,
+        ).pack(pady=(24, 18))
+
+        buttons = ctk.CTkFrame(window, fg_color="transparent")
+        buttons.pack(fill="x", padx=28)
+        buttons.grid_columnconfigure(0, weight=1)
+        buttons.grid_columnconfigure(1, weight=1)
 
         ctk.CTkButton(
-            display_group,
-            text="▣\nAperçu",
-            width=68,
-            height=58,
-            corner_radius=8,
-            fg_color=self.ACCENT_SOFT,
-            hover_color=self.GROUP_BG,
+            buttons,
+            text="▦\nNouveau type de page",
+            height=92,
+            corner_radius=10,
+            fg_color="#E7EEF6",
+            hover_color="#DCE7F2",
             text_color=self.INK,
             border_width=1,
             border_color=self.SKY,
-            font=(Fonts.FAMILY, 11),
-            command=self._open_preview,
-        ).grid(row=0, column=0, padx=8, pady=(7, 1))
+            font=Fonts.NORMAL,
+            command=lambda: self._replace_dialog(
+                window,
+                self._open_create_page_type_dialog,
+            ),
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 7))
+
+        ctk.CTkButton(
+            buttons,
+            text="＋\nNouveau groupe de pages",
+            height=92,
+            corner_radius=10,
+            fg_color="#E1EEE9",
+            hover_color="#D8E9E1",
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.CELADON,
+            font=Fonts.NORMAL,
+            command=lambda: self._replace_dialog(
+                window,
+                self._open_create_group_dialog,
+            ),
+        ).grid(row=0, column=1, sticky="ew", padx=(7, 0))
+
+        ctk.CTkButton(
+            window,
+            text="Annuler",
+            width=100,
+            height=30,
+            corner_radius=7,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=window.destroy,
+        ).pack(pady=(22, 18))
+
+    def _open_manage_dialog(self) -> None:
+        """Ouvre le rangement volontaire de la palette de pages."""
+
+        if self._manage_window is not None:
+            try:
+                if self._manage_window.winfo_exists():
+                    self._manage_window.deiconify()
+                    self._manage_window.lift()
+                    self._manage_window.focus_set()
+                    return
+            except Exception:
+                self._manage_window = None
+
+        # Fenêtre volontairement simple et stable sous Windows :
+        # pas de retrait/réapparition, pas de bascule topmost.
+        owner = self.parent.winfo_toplevel()
+        window = ctk.CTkToplevel(owner)
+        self._manage_window = window
+        window.title("Gérer les types et groupes")
+        window.geometry("720x620")
+        window.minsize(620, 500)
+        window.resizable(True, True)
+        window.configure(fg_color=self.WINDOW_BG)
+        window.transient(owner)
+        window.protocol("WM_DELETE_WINDOW", self._close_manage_dialog)
+
+        header = ctk.CTkFrame(window, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(20, 10))
+        header.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
-            display_group,
-            text="Affichage",
+            header,
+            text="Nettoyer la palette",
+            font=Fonts.H2,
+            text_color=self.INK,
+        ).grid(row=0, column=0, sticky="w")
+
+        ctk.CTkLabel(
+            header,
+            text=(
+                "Seuls les groupes et types créés par l’utilisateur "
+                "peuvent être supprimés."
+            ),
             font=Fonts.SMALL,
             text_color=self.TEXT_MUTED,
-            height=18,
-        ).grid(row=1, column=0, sticky="s", padx=5, pady=(0, 4))
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
 
-        return ribbon
+        body = ctk.CTkScrollableFrame(
+            window,
+            fg_color=self.RIBBON_BG,
+            corner_radius=8,
+        )
+        body.pack(fill="both", expand=True, padx=24, pady=(0, 12))
+        body.grid_columnconfigure(0, weight=1)
 
-    def _create_ribbon_group(
+        custom_types = [
+            definition
+            for definition in self._page_types()
+            if bool(definition.get("custom", False))
+        ]
+        custom_groups = [
+            group
+            for group in self._groups()
+            if not bool(group.get("protected", False))
+        ]
+
+        row = 0
+        ctk.CTkLabel(
+            body,
+            text="Types de pages personnalisés",
+            font=Fonts.NORMAL,
+            text_color=self.INK,
+        ).grid(row=row, column=0, sticky="w", padx=10, pady=(12, 6))
+        row += 1
+
+        if custom_types:
+            for definition in custom_types:
+                self._create_manage_type_row(
+                    body,
+                    definition,
+                    window,
+                ).grid(
+                    row=row,
+                    column=0,
+                    sticky="ew",
+                    padx=8,
+                    pady=3,
+                )
+                row += 1
+        else:
+            ctk.CTkLabel(
+                body,
+                text="Aucun type personnalisé à retirer.",
+                font=Fonts.SMALL,
+                text_color=self.TEXT_LIGHT,
+            ).grid(row=row, column=0, sticky="w", padx=16, pady=(2, 10))
+            row += 1
+
+        ctk.CTkFrame(
+            body,
+            height=1,
+            fg_color=self.BORDER,
+            corner_radius=0,
+        ).grid(row=row, column=0, sticky="ew", padx=10, pady=12)
+        row += 1
+
+        ctk.CTkLabel(
+            body,
+            text="Groupes personnalisés",
+            font=Fonts.NORMAL,
+            text_color=self.INK,
+        ).grid(row=row, column=0, sticky="w", padx=10, pady=(0, 6))
+        row += 1
+
+        if custom_groups:
+            for group in custom_groups:
+                self._create_manage_group_row(
+                    body,
+                    group,
+                    window,
+                ).grid(
+                    row=row,
+                    column=0,
+                    sticky="ew",
+                    padx=8,
+                    pady=3,
+                )
+                row += 1
+        else:
+            ctk.CTkLabel(
+                body,
+                text="Aucun groupe personnalisé à retirer.",
+                font=Fonts.SMALL,
+                text_color=self.TEXT_LIGHT,
+            ).grid(row=row, column=0, sticky="w", padx=16, pady=(2, 10))
+
+        ctk.CTkButton(
+            window,
+            text="Fermer",
+            width=104,
+            height=32,
+            corner_radius=7,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=self._close_manage_dialog,
+        ).pack(pady=(0, 20))
+
+        # Le grab est posé seulement après la construction complète.
+        def activate() -> None:
+            try:
+                if window.winfo_exists():
+                    window.lift()
+                    window.focus_set()
+                    window.grab_set()
+            except Exception:
+                pass
+
+        window.after(120, activate)
+
+    def _create_manage_type_row(
         self,
         parent,
-        title: str,
-        definitions: list[dict[str, Any]],
+        definition: dict[str, Any],
+        owner,
     ) -> ctk.CTkFrame:
-        width = max(86, 14 + len(definitions) * 70)
-        group = ctk.CTkFrame(
+        row = ctk.CTkFrame(
             parent,
-            width=width,
-            height=94,
+            height=48,
             fg_color=self.GROUP_BG,
-            corner_radius=10,
+            corner_radius=7,
+            border_width=1,
+            border_color=self.BORDER,
         )
-        group.grid_propagate(False)
+        row.grid_columnconfigure(1, weight=1)
+        row.grid_propagate(False)
 
-        controls = ctk.CTkFrame(group, fg_color="transparent")
-        controls.pack(fill="both", expand=True, padx=5, pady=(5, 1))
-
-        for column, definition in enumerate(definitions):
-            accent = str(definition.get("accent", self.INK))
-            button = ctk.CTkButton(
-                controls,
-                text=f"{definition['symbol']}\n{definition.get('short', definition['title'])}",
-                width=66,
-                height=58,
-                corner_radius=8,
-                fg_color=str(definition["color"]),
-                hover_color=self.GROUP_BG,
-                text_color=accent,
-                border_width=1,
-                border_color=accent,
-                font=(Fonts.FAMILY, 11),
-                command=lambda selected=definition: self._add_item(selected),
-            )
-            button.grid(
-                row=0,
-                column=column,
-                padx=(2 if column else 1, 2),
-                pady=2,
-            )
-
+        accent = str(definition.get("accent", self.INK))
         ctk.CTkLabel(
-            group,
-            text=title,
+            row,
+            text=str(definition.get("symbol", "▦")),
+            width=38,
+            font=(Fonts.FAMILY, 15, "bold"),
+            text_color=accent,
+        ).grid(row=0, column=0, padx=(8, 3))
+
+        group = self._group_for(str(definition.get("group", "")))
+        ctk.CTkLabel(
+            row,
+            text=(
+                f"{definition.get('title', 'Type de page')}"
+                f"   ·   {group.get('title', 'Groupe')}"
+            ),
+            font=Fonts.SMALL,
+            text_color=self.INK,
+            anchor="w",
+        ).grid(row=0, column=1, sticky="ew", padx=5)
+
+        page_type = str(definition.get("type", ""))
+        used_count = sum(
+            max(1, int(item.get("count", 1)))
+            for item in self._items()
+            if str(item.get("type", "")) == page_type
+        )
+        status = "Non utilisé" if used_count == 0 else f"Utilisé : {used_count} p."
+        ctk.CTkLabel(
+            row,
+            text=status,
+            width=92,
             font=Fonts.SMALL,
             text_color=self.TEXT_MUTED,
-            height=18,
-        ).pack(side="bottom", fill="x", pady=(0, 4))
+        ).grid(row=0, column=2, padx=6)
 
-        return group
+        ctk.CTkButton(
+            row,
+            text="Supprimer",
+            width=82,
+            height=28,
+            corner_radius=6,
+            fg_color=self.GROUP_BG,
+            hover_color="#F3E4E1",
+            text_color=self.DANGER,
+            border_width=1,
+            border_color="#E0B9B0",
+            font=Fonts.SMALL,
+            state="normal" if used_count == 0 else "disabled",
+            command=lambda: self._delete_custom_page_type(page_type, owner),
+        ).grid(row=0, column=3, padx=(4, 8))
+
+        return row
+
+    def _create_manage_group_row(
+        self,
+        parent,
+        group: dict[str, Any],
+        owner,
+    ) -> ctk.CTkFrame:
+        row = ctk.CTkFrame(
+            parent,
+            height=48,
+            fg_color=self.GROUP_BG,
+            corner_radius=7,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        row.grid_columnconfigure(1, weight=1)
+        row.grid_propagate(False)
+
+        accent = str(group.get("accent", self.INK))
+        ctk.CTkLabel(
+            row,
+            text=str(group.get("symbol", "▦")),
+            width=38,
+            font=(Fonts.FAMILY, 15, "bold"),
+            text_color=accent,
+        ).grid(row=0, column=0, padx=(8, 3))
+
+        ctk.CTkLabel(
+            row,
+            text=str(group.get("title", "Groupe")),
+            font=Fonts.SMALL,
+            text_color=self.INK,
+            anchor="w",
+        ).grid(row=0, column=1, sticky="ew", padx=5)
+
+        group_id = str(group.get("id", ""))
+        type_count = sum(
+            1
+            for definition in self._page_types()
+            if str(definition.get("group", "")) == group_id
+        )
+        status = "Vide" if type_count == 0 else f"{type_count} type(s)"
+        ctk.CTkLabel(
+            row,
+            text=status,
+            width=92,
+            font=Fonts.SMALL,
+            text_color=self.TEXT_MUTED,
+        ).grid(row=0, column=2, padx=6)
+
+        ctk.CTkButton(
+            row,
+            text="Supprimer",
+            width=82,
+            height=28,
+            corner_radius=6,
+            fg_color=self.GROUP_BG,
+            hover_color="#F3E4E1",
+            text_color=self.DANGER,
+            border_width=1,
+            border_color="#E0B9B0",
+            font=Fonts.SMALL,
+            state="normal" if type_count == 0 else "disabled",
+            command=lambda: self._delete_custom_group(group_id, owner),
+        ).grid(row=0, column=3, padx=(4, 8))
+
+        return row
+
+    def _delete_custom_page_type(self, page_type: str, owner) -> None:
+        if any(
+            str(item.get("type", "")) == page_type
+            for item in self._items()
+        ):
+            return
+
+        definitions = self._page_types()
+        filtered = [
+            definition
+            for definition in definitions
+            if not (
+                str(definition.get("type", "")) == page_type
+                and bool(definition.get("custom", False))
+            )
+        ]
+        if len(filtered) == len(definitions):
+            return
+
+        self._record_history()
+        definitions[:] = filtered
+        self._save_data()
+        self._close_dialog(owner)
+        self._refresh_ribbon()
+
+    def _delete_custom_group(self, group_id: str, owner) -> None:
+        if any(
+            str(definition.get("group", "")) == group_id
+            for definition in self._page_types()
+        ):
+            return
+
+        groups = self._groups()
+        filtered = [
+            group
+            for group in groups
+            if not (
+                str(group.get("id", "")) == group_id
+                and not bool(group.get("protected", False))
+            )
+        ]
+        if len(filtered) == len(groups):
+            return
+
+        self._record_history()
+        groups[:] = filtered
+        self._save_data()
+        self._close_dialog(owner)
+        self._refresh_ribbon()
+
+    def _group_for(self, group_id: str) -> dict[str, Any]:
+        for group in self._groups():
+            if str(group.get("id", "")) == group_id:
+                return group
+        return {
+            "id": "",
+            "title": "Groupe inconnu",
+            "symbol": "?",
+            "accent": self.INK,
+            "protected": True,
+        }
+
+    def _open_create_group_dialog(self) -> None:
+        window = self._new_dialog("Nouveau groupe de pages", "560x520")
+        body = self._dialog_body(window)
+
+        name_entry = self._dialog_entry(body, 0, "Nom du groupe")
+
+        color_names = list(self.GROUP_COLOR_CHOICES)
+        color_var = ctk.StringVar(value=color_names[0])
+        self._dialog_option(body, 1, "Couleur", color_var, color_names)
+
+        icon_var = ctk.StringVar(value=self.ICON_CHOICES[0])
+        self._dialog_option(
+            body,
+            2,
+            "Icône",
+            icon_var,
+            list(self.ICON_CHOICES),
+        )
+
+        movable_predecessors = [
+            group
+            for group in self._groups()
+            if str(group.get("id", "")) != "fin_livre"
+        ]
+        group_titles = [
+            str(group.get("title", "Groupe"))
+            for group in movable_predecessors
+        ]
+        position_values = ["À la fin"] + [
+            f"Après : {title}"
+            for title in group_titles
+        ]
+        position_var = ctk.StringVar(value="À la fin")
+        self._dialog_option(
+            body,
+            3,
+            "Position",
+            position_var,
+            position_values,
+        )
+
+        message = self._dialog_message(body, 4)
+
+        self._dialog_actions(
+            window,
+            on_cancel=window.destroy,
+            on_validate=lambda: self._create_group_from_dialog(
+                window,
+                name_entry.get(),
+                color_var.get(),
+                icon_var.get(),
+                position_var.get(),
+                message,
+            ),
+        )
+
+    def _open_create_page_type_dialog(self) -> None:
+        window = self._new_dialog("Nouveau type de page", "590x650")
+        body = self._dialog_body(window)
+
+        name_entry = self._dialog_entry(body, 0, "Nom du type de page")
+        short_entry = self._dialog_entry(body, 1, "Nom court dans le bouton")
+
+        groups = self._groups()
+        group_titles = [str(group.get("title", "Groupe")) for group in groups]
+        group_var = ctk.StringVar(value=group_titles[0] if group_titles else "")
+        self._dialog_option(body, 2, "Groupe", group_var, group_titles)
+
+        color_names = list(self.TYPE_COLOR_CHOICES)
+        color_var = ctk.StringVar(value=color_names[0])
+        self._dialog_option(body, 3, "Couleur", color_var, color_names)
+
+        icon_var = ctk.StringVar(value=self.ICON_CHOICES[0])
+        self._dialog_option(
+            body,
+            4,
+            "Icône",
+            icon_var,
+            list(self.ICON_CHOICES),
+        )
+
+        ctk.CTkLabel(
+            body,
+            text="Description",
+            font=Fonts.SMALL,
+            text_color=self.INK,
+        ).grid(row=10, column=0, sticky="w", pady=(10, 4))
+
+        description = ctk.CTkTextbox(
+            body,
+            height=76,
+            corner_radius=7,
+            border_width=1,
+            border_color=self.BORDER,
+            fg_color=self.GROUP_BG,
+            text_color=self.INK,
+            font=Fonts.SMALL,
+        )
+        description.grid(row=11, column=0, sticky="ew")
+
+        single_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            body,
+            text="Ce type ne peut apparaître qu’une seule fois",
+            variable=single_var,
+            checkbox_width=18,
+            checkbox_height=18,
+            fg_color=self.CELADON,
+            hover_color=self.DONE,
+            text_color=self.INK,
+            font=Fonts.SMALL,
+        ).grid(row=12, column=0, sticky="w", pady=(12, 0))
+
+        message = self._dialog_message(body, 7)
+
+        self._dialog_actions(
+            window,
+            on_cancel=window.destroy,
+            on_validate=lambda: self._create_page_type_from_dialog(
+                window,
+                name_entry.get(),
+                short_entry.get(),
+                group_var.get(),
+                color_var.get(),
+                icon_var.get(),
+                description.get("1.0", "end").strip(),
+                single_var.get(),
+                message,
+            ),
+        )
+
+    def _create_group_from_dialog(
+        self,
+        window,
+        name: str,
+        color_name: str,
+        symbol: str,
+        position: str,
+        message: ctk.CTkLabel,
+    ) -> None:
+        title = name.strip()
+        if not title:
+            message.configure(text="Indiquez un nom pour le groupe.")
+            return
+
+        if any(
+            str(group.get("title", "")).casefold() == title.casefold()
+            for group in self._groups()
+        ):
+            message.configure(text="Un groupe porte déjà ce nom.")
+            return
+
+        group_id = self._unique_identifier(
+            title,
+            {str(group.get("id")) for group in self._groups()},
+        )
+        new_group = {
+            "id": group_id,
+            "title": title,
+            "symbol": symbol or "▦",
+            "accent": self.GROUP_COLOR_CHOICES.get(color_name, self.SKY),
+            "protected": False,
+        }
+
+        groups = self._groups()
+        fin_index = next(
+            (
+                index
+                for index, group in enumerate(groups)
+                if str(group.get("id", "")) == "fin_livre"
+            ),
+            len(groups),
+        )
+        insert_at = fin_index
+        if position.startswith("Après : "):
+            selected_title = position.removeprefix("Après : ")
+            for index, group in enumerate(groups):
+                if str(group.get("title", "")) == selected_title:
+                    insert_at = min(index + 1, fin_index)
+                    break
+
+        # Début du livre reste toujours le premier groupe et Fin du livre
+        # reste toujours le dernier.
+        insert_at = max(1, min(insert_at, fin_index))
+        self._record_history()
+        groups.insert(insert_at, new_group)
+        self._save_data()
+        self._close_dialog(window)
+        self._refresh_ribbon()
+
+    def _create_page_type_from_dialog(
+        self,
+        window,
+        name: str,
+        short_name: str,
+        group_title: str,
+        color_name: str,
+        symbol: str,
+        description: str,
+        single: bool,
+        message: ctk.CTkLabel,
+    ) -> None:
+        title = name.strip()
+        if not title:
+            message.configure(text="Indiquez un nom pour le type de page.")
+            return
+
+        if any(
+            str(definition.get("title", "")).casefold() == title.casefold()
+            for definition in self._page_types()
+        ):
+            message.configure(text="Un type de page porte déjà ce nom.")
+            return
+
+        selected_group = next(
+            (
+                group
+                for group in self._groups()
+                if str(group.get("title", "")) == group_title
+            ),
+            None,
+        )
+        if selected_group is None:
+            message.configure(text="Choisissez un groupe valide.")
+            return
+
+        existing_ids = {str(item.get("type")) for item in self._page_types()}
+        page_type_id = self._unique_identifier(title, existing_ids)
+        background, accent = self.TYPE_COLOR_CHOICES.get(
+            color_name,
+            self.TYPE_COLOR_CHOICES["Bleu ciel"],
+        )
+
+        definition = {
+            "type": page_type_id,
+            "title": title,
+            "short": (short_name.strip() or title)[:18],
+            "symbol": symbol or "▦",
+            "color": background,
+            "accent": accent,
+            "group": str(selected_group.get("id")),
+            "single": bool(single),
+            "description": description,
+            "custom": True,
+        }
+
+        self._record_history()
+        self._page_types().append(definition)
+        self._save_data()
+        self._close_dialog(window)
+        self._refresh_ribbon()
+
+    def _new_dialog(
+        self,
+        title: str,
+        geometry: str,
+        *,
+        modal: bool = True,
+    ) -> ctk.CTkToplevel:
+        owner = self.parent.winfo_toplevel()
+        window = ctk.CTkToplevel(owner)
+        window.withdraw()
+        window.title(title)
+        window.geometry(geometry)
+        window.resizable(False, False)
+        window.configure(fg_color=self.WINDOW_BG)
+        window.transient(owner)
+        window.protocol(
+            "WM_DELETE_WINDOW",
+            lambda current=window: self._close_dialog(current),
+        )
+        window.bind(
+            "<Destroy>",
+            lambda event, current=window: self._dialog_destroyed(
+                event,
+                current,
+            ),
+            add="+",
+        )
+
+        self._center_dialog(window, owner, geometry)
+        window.deiconify()
+        window.after_idle(
+            lambda current=window, use_grab=modal: self._activate_dialog(
+                current,
+                use_grab,
+            )
+        )
+        return window
+
+    def _activate_dialog(self, window, modal: bool) -> None:
+        if not self._dialog_exists(window):
+            return
+
+        self._bring_dialog_to_front(window)
+        if modal:
+            try:
+                window.grab_set()
+            except Exception:
+                # La fenêtre reste utilisable même si Windows refuse
+                # momentanément la prise de focus.
+                pass
+
+    def _bring_dialog_to_front(self, window) -> None:
+        if not self._dialog_exists(window):
+            return
+
+        try:
+            window.deiconify()
+            window.lift()
+            window.attributes("-topmost", True)
+            window.after(120, lambda: self._remove_temporary_topmost(window))
+            window.focus_force()
+        except Exception:
+            pass
+
+    def _remove_temporary_topmost(self, window) -> None:
+        if not self._dialog_exists(window):
+            return
+        try:
+            window.attributes("-topmost", False)
+        except Exception:
+            pass
+
+    def _close_manage_dialog(self) -> None:
+        window = self._manage_window
+        self._manage_window = None
+        if window is not None:
+            self._close_dialog(window)
+
+    def _close_dialog(self, window) -> None:
+        if window is None:
+            return
+
+        try:
+            if window.grab_current() is window:
+                window.grab_release()
+        except Exception:
+            pass
+
+        if self._manage_window is window:
+            self._manage_window = None
+
+        try:
+            if window.winfo_exists():
+                window.destroy()
+        except Exception:
+            pass
+
+    def _dialog_destroyed(self, event, window) -> None:
+        if getattr(event, "widget", None) is not window:
+            return
+        if self._manage_window is window:
+            self._manage_window = None
+
+    @staticmethod
+    def _dialog_exists(window) -> bool:
+        try:
+            return bool(window is not None and window.winfo_exists())
+        except Exception:
+            return False
+
+    @staticmethod
+    def _center_dialog(window, owner, geometry: str) -> None:
+        match = re.match(r"^(\d+)x(\d+)", geometry)
+        if match is None:
+            return
+
+        width = int(match.group(1))
+        height = int(match.group(2))
+        try:
+            owner.update_idletasks()
+            x = owner.winfo_rootx() + max(0, (owner.winfo_width() - width) // 2)
+            y = owner.winfo_rooty() + max(0, (owner.winfo_height() - height) // 2)
+            window.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            pass
+
+    def _replace_dialog(self, window, callback) -> None:
+        self._close_dialog(window)
+        self.parent.after_idle(callback)
+
+    def _dialog_body(self, window) -> ctk.CTkFrame:
+        body = ctk.CTkFrame(window, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=28, pady=(22, 8))
+        body.grid_columnconfigure(0, weight=1)
+        return body
+
+    def _dialog_entry(self, parent, row: int, label: str) -> ctk.CTkEntry:
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            font=Fonts.SMALL,
+            text_color=self.INK,
+        ).grid(row=row * 2, column=0, sticky="w", pady=(7 if row else 0, 4))
+
+        entry = ctk.CTkEntry(
+            parent,
+            height=34,
+            corner_radius=7,
+            border_width=1,
+            border_color=self.BORDER,
+            fg_color=self.GROUP_BG,
+            text_color=self.INK,
+            font=Fonts.NORMAL,
+        )
+        entry.grid(row=row * 2 + 1, column=0, sticky="ew")
+        return entry
+
+    def _dialog_option(
+        self,
+        parent,
+        row: int,
+        label: str,
+        variable: ctk.StringVar,
+        values: list[str],
+    ) -> None:
+        base_row = row * 2
+        ctk.CTkLabel(
+            parent,
+            text=label,
+            font=Fonts.SMALL,
+            text_color=self.INK,
+        ).grid(row=base_row, column=0, sticky="w", pady=(10, 4))
+
+        ctk.CTkOptionMenu(
+            parent,
+            variable=variable,
+            values=values or [""],
+            height=34,
+            corner_radius=7,
+            fg_color=self.ACCENT_SOFT,
+            button_color=self.SKY,
+            button_hover_color=self.INK,
+            text_color=self.INK,
+            font=Fonts.SMALL,
+            dropdown_font=Fonts.SMALL,
+        ).grid(row=base_row + 1, column=0, sticky="ew")
+
+    def _dialog_message(self, parent, row: int) -> ctk.CTkLabel:
+        label = ctk.CTkLabel(
+            parent,
+            text="",
+            font=Fonts.SMALL,
+            text_color=self.DANGER,
+            anchor="w",
+        )
+        label.grid(row=row * 2, column=0, sticky="ew", pady=(8, 0))
+        return label
+
+    def _dialog_actions(self, window, on_cancel, on_validate) -> None:
+        actions = ctk.CTkFrame(window, fg_color="transparent")
+        actions.pack(fill="x", padx=28, pady=(0, 22))
+        actions.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(
+            actions,
+            text="Annuler",
+            width=100,
+            height=32,
+            corner_radius=7,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=on_cancel,
+        ).grid(row=0, column=0, sticky="e", padx=(0, 8))
+
+        ctk.CTkButton(
+            actions,
+            text="Créer",
+            width=108,
+            height=32,
+            corner_radius=7,
+            fg_color=self.CELADON,
+            hover_color=self.DONE,
+            text_color="#FFFFFF",
+            font=Fonts.SMALL,
+            command=on_validate,
+        ).grid(row=0, column=1, sticky="e")
+
+    @staticmethod
+    def _unique_identifier(label: str, existing: set[str]) -> str:
+        base = re.sub(r"[^a-z0-9]+", "_", label.casefold()).strip("_")
+        base = base or "element"
+        candidate = base
+        suffix = 2
+        while candidate in existing:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        return candidate
 
     def _create_sequence_panel(self, parent) -> ctk.CTkFrame:
         panel = ctk.CTkFrame(
@@ -454,37 +2199,72 @@ class MockupView:
         return panel
 
     def _refresh_sequence(self) -> None:
+        """Synchronise les lignes sans effacer puis reconstruire la page."""
+        self._hide_page_drop_indicator()
         if self._sequence_frame is None:
             return
 
-        for child in self._sequence_frame.winfo_children():
-            child.destroy()
-
         items = self._items()
+        active_ids = {str(item.get("id", "")) for item in items}
+
+        # Retire uniquement les lignes réellement supprimées.
+        for item_id in list(self._sequence_row_widgets):
+            if item_id in active_ids:
+                continue
+            record = self._sequence_row_widgets.pop(item_id)
+            try:
+                record["row"].destroy()
+            except Exception:
+                pass
 
         if not items:
-            ctk.CTkLabel(
-                self._sequence_frame,
-                text="Clique sur une page pour commencer.",
-                font=Fonts.NORMAL,
-                text_color=self.TEXT_LIGHT,
-            ).grid(row=0, column=0, sticky="nsew", padx=20, pady=28)
-        else:
-            for index, item in enumerate(items):
-                self._create_sequence_row(
+            if self._sequence_empty_label is None:
+                self._sequence_empty_label = ctk.CTkLabel(
                     self._sequence_frame,
-                    item,
-                    index,
-                    len(items),
-                ).grid(
-                    row=index,
-                    column=0,
-                    sticky="ew",
-                    padx=4,
-                    pady=3,
+                    text="Clique sur une page pour commencer.",
+                    font=Fonts.NORMAL,
+                    text_color=self.TEXT_LIGHT,
                 )
+            self._sequence_empty_label.grid(
+                row=0,
+                column=0,
+                sticky="nsew",
+                padx=20,
+                pady=28,
+            )
+        else:
+            if self._sequence_empty_label is not None:
+                self._sequence_empty_label.grid_remove()
+
+            total = len(items)
+            for index, item in enumerate(items):
+                item_id = str(item.get("id", ""))
+                if item_id not in self._sequence_row_widgets:
+                    row = self._create_sequence_row(
+                        self._sequence_frame,
+                        item,
+                        index,
+                        total,
+                    )
+                    row.grid(
+                        row=index,
+                        column=0,
+                        sticky="ew",
+                        padx=4,
+                        pady=3,
+                    )
+                else:
+                    self._update_sequence_row(item, index, total)
+                    self._sequence_row_widgets[item_id]["row"].grid_configure(
+                        row=index,
+                        column=0,
+                        sticky="ew",
+                        padx=4,
+                        pady=3,
+                    )
 
         self._update_summary()
+        self._update_page_type_button_states()
 
     def _create_sequence_row(
         self,
@@ -493,9 +2273,8 @@ class MockupView:
         index: int,
         total_items: int,
     ) -> ctk.CTkFrame:
-        definition = self._definition_for(item.get("type", "autre"))
-        count = max(1, int(item.get("count", 1)))
-        done = bool(item.get("done", False))
+        item_id = str(item.get("id", ""))
+        definition = self._definition_for(item.get("type", "inconnu"))
         accent = str(definition.get("accent", self.INK))
 
         row = ctk.CTkFrame(
@@ -504,7 +2283,7 @@ class MockupView:
             fg_color=self.CARD_BG,
             corner_radius=7,
             border_width=1,
-            border_color=(self.DONE if done else self.BORDER),
+            border_color=self.BORDER,
         )
         row.grid_columnconfigure(1, weight=1)
         row.grid_propagate(False)
@@ -513,7 +2292,7 @@ class MockupView:
             row,
             width=38,
             height=44,
-            fg_color=definition["color"],
+            fg_color=str(definition.get("color", self.GROUP_BG)),
             corner_radius=5,
             border_width=1,
             border_color=accent,
@@ -521,71 +2300,73 @@ class MockupView:
         thumbnail.grid(row=0, column=0, padx=(5, 7), pady=4)
         thumbnail.grid_propagate(False)
 
-        ctk.CTkLabel(
+        symbol_label = ctk.CTkLabel(
             thumbnail,
-            text=str(definition["symbol"]),
+            text=str(definition.get("symbol", "?")),
             font=(Fonts.FAMILY, 14, "bold"),
             text_color=accent,
-        ).place(relx=0.5, rely=0.37, anchor="center")
+        )
+        symbol_label.place(relx=0.5, rely=0.37, anchor="center")
 
-        ctk.CTkLabel(
+        count_badge = ctk.CTkLabel(
             thumbnail,
-            text=(f"×{count}" if count > 1 else "1"),
+            text="1",
             font=(Fonts.FAMILY, 10),
             text_color=self.INK,
-        ).place(relx=0.5, rely=0.78, anchor="center")
+        )
+        count_badge.place(relx=0.5, rely=0.78, anchor="center")
 
-        ctk.CTkLabel(
+        title_label = ctk.CTkLabel(
             row,
-            text=str(item.get("title") or definition["title"]),
+            text="",
             font=Fonts.NORMAL,
-            text_color=(self.DONE if done else self.INK),
+            text_color=self.INK,
             anchor="w",
-        ).grid(row=0, column=1, sticky="w", padx=(0, 8))
+        )
+        title_label.grid(row=0, column=1, sticky="w", padx=(0, 8))
 
         controls = ctk.CTkFrame(row, fg_color="transparent")
         controls.grid(row=0, column=2, sticky="e", padx=(4, 5))
 
-        self._small_button(
+        up_button = self._small_button(
             controls,
             "↑",
-            lambda: self._move_item(index, -1),
-            disabled=index == 0,
-        ).grid(row=0, column=0, padx=1)
+            lambda current=item_id: self._move_item_by_id(current, -1),
+        )
+        up_button.grid(row=0, column=0, padx=1)
 
-        self._small_button(
+        down_button = self._small_button(
             controls,
             "↓",
-            lambda: self._move_item(index, 1),
-            disabled=index >= total_items - 1,
-        ).grid(row=0, column=1, padx=1)
+            lambda current=item_id: self._move_item_by_id(current, 1),
+        )
+        down_button.grid(row=0, column=1, padx=1)
 
-        single = bool(definition.get("single", False))
-
-        self._small_button(
+        minus_button = self._small_button(
             controls,
             "−",
-            lambda: self._change_count(index, -1),
-            disabled=single or count <= 1,
-        ).grid(row=0, column=2, padx=(7, 1))
+            lambda current=item_id: self._change_count_by_id(current, -1),
+        )
+        minus_button.grid(row=0, column=2, padx=(7, 1))
 
-        ctk.CTkLabel(
+        count_label = ctk.CTkLabel(
             controls,
-            text=str(count),
+            text="1",
             width=24,
             font=Fonts.SMALL,
             text_color=self.INK,
-        ).grid(row=0, column=3)
+        )
+        count_label.grid(row=0, column=3)
 
-        self._small_button(
+        plus_button = self._small_button(
             controls,
             "+",
-            lambda: self._change_count(index, 1),
-            disabled=single,
-        ).grid(row=0, column=4, padx=1)
+            lambda current=item_id: self._change_count_by_id(current, 1),
+        )
+        plus_button.grid(row=0, column=4, padx=1)
 
-        done_var = ctk.BooleanVar(value=done)
-        ctk.CTkCheckBox(
+        done_var = ctk.BooleanVar(value=False)
+        done_check = ctk.CTkCheckBox(
             controls,
             text="Fait",
             width=52,
@@ -596,10 +2377,13 @@ class MockupView:
             text_color=self.INK,
             fg_color=self.CELADON,
             hover_color=self.DONE,
-            command=lambda: self._set_done(index, done_var.get()),
-        ).grid(row=0, column=5, padx=(7, 3))
+            command=lambda current=item_id, variable=done_var: (
+                self._set_done_by_id(current, variable.get())
+            ),
+        )
+        done_check.grid(row=0, column=5, padx=(7, 3))
 
-        ctk.CTkButton(
+        delete_button = ctk.CTkButton(
             controls,
             text="×",
             width=24,
@@ -611,10 +2395,414 @@ class MockupView:
             border_width=1,
             border_color="#E0B9B0",
             font=Fonts.NORMAL,
-            command=lambda: self._remove_item(index),
-        ).grid(row=0, column=6, padx=(3, 0))
+            command=lambda current=item_id: self._remove_item_by_id(current),
+        )
+        delete_button.grid(row=0, column=6, padx=(3, 0))
 
+        self._sequence_row_widgets[item_id] = {
+            "row": row,
+            "thumbnail": thumbnail,
+            "symbol_label": symbol_label,
+            "count_badge": count_badge,
+            "title_label": title_label,
+            "up_button": up_button,
+            "down_button": down_button,
+            "minus_button": minus_button,
+            "count_label": count_label,
+            "plus_button": plus_button,
+            "done_var": done_var,
+            "done_check": done_check,
+            "delete_button": delete_button,
+        }
+
+        self._bind_sequence_page_drag(
+            item_id,
+            row,
+            thumbnail,
+            symbol_label,
+            count_badge,
+            title_label,
+        )
+        self._update_sequence_row(item, index, total_items)
         return row
+
+    def _bind_sequence_page_drag(
+        self,
+        item_id: str,
+        *widgets,
+    ) -> None:
+        """Rend la partie descriptive d'une ligne déplaçable verticalement."""
+        for widget in widgets:
+            widget.bind(
+                "<ButtonPress-1>",
+                lambda event, current=item_id: self._start_page_drag(
+                    event,
+                    current,
+                ),
+            )
+            widget.bind("<B1-Motion>", self._continue_page_drag)
+            widget.bind("<ButtonRelease-1>", self._finish_page_drag)
+
+    def _start_page_drag(self, event, item_id: str) -> None:
+        index = self._item_index(item_id)
+        if index is None:
+            return
+
+        current_item = self._items()[index]
+        page_type = str(current_item.get("type", ""))
+        if bool(current_item.get("automatic_recto_verso", False)):
+            return
+        if self._is_locked_structural_type(page_type):
+            return
+
+        self._dragged_page_id = item_id
+        self._drag_page_start_y = int(getattr(event, "y_root", 0))
+        self._drag_page_has_moved = False
+
+        record = self._sequence_row_widgets.get(item_id)
+        if record is not None:
+            try:
+                record["row"].configure(
+                    border_color=self.ACCENT,
+                    border_width=2,
+                )
+            except Exception:
+                pass
+
+    def _continue_page_drag(self, event) -> None:
+        item_id = self._dragged_page_id
+        if item_id is None:
+            return
+
+        current_y = int(getattr(event, "y_root", self._drag_page_start_y))
+        if abs(current_y - self._drag_page_start_y) >= 5:
+            self._drag_page_has_moved = True
+
+        if self._drag_page_has_moved:
+            self._show_page_drop_indicator(item_id, current_y)
+
+    def _finish_page_drag(self, event) -> None:
+        item_id = self._dragged_page_id
+        moved = self._drag_page_has_moved
+        self._dragged_page_id = None
+        self._drag_page_has_moved = False
+        self._hide_page_drop_indicator()
+
+        if item_id is None:
+            return
+
+        if moved:
+            pointer_y = int(getattr(event, "y_root", self._drag_page_start_y))
+            self._place_page_at_pointer(item_id, pointer_y)
+        else:
+            self._refresh_sequence()
+
+    def _page_drop_plan(
+        self,
+        item_id: str,
+        pointer_y: int,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], int] | None:
+        items = self._items()
+        dragged = next(
+            (
+                item
+                for item in items
+                if str(item.get("id", "")) == item_id
+            ),
+            None,
+        )
+        if dragged is None:
+            return None
+
+        page_type = str(dragged.get("type", ""))
+        if bool(dragged.get("automatic_recto_verso", False)):
+            return None
+        if self._is_locked_structural_type(page_type):
+            return None
+
+        remaining_regular = [
+            item
+            for item in items
+            if str(item.get("id", "")) != item_id
+            and not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        ]
+
+        insertion_index = len(remaining_regular)
+        for position, item in enumerate(remaining_regular):
+            other_id = str(item.get("id", ""))
+            record = self._sequence_row_widgets.get(other_id)
+            if record is None:
+                continue
+            try:
+                row = record["row"]
+                row_middle = row.winfo_rooty() + (row.winfo_height() / 2)
+            except Exception:
+                continue
+            if pointer_y < row_middle:
+                insertion_index = position
+                break
+
+        return dragged, remaining_regular, insertion_index
+
+    def _show_page_drop_indicator(
+        self,
+        item_id: str,
+        pointer_y: int,
+    ) -> None:
+        """Affiche la ligne sur la frontière visuelle entre deux pages."""
+        plan = self._page_drop_plan(item_id, pointer_y)
+        overlay = self._root
+        if plan is None or overlay is None:
+            self._hide_page_drop_indicator()
+            return
+
+        _, remaining_regular, insertion_index = plan
+        items = self._items()
+
+        previous_item = None
+        next_item = None
+        if insertion_index > 0:
+            previous_item = remaining_regular[insertion_index - 1]
+        else:
+            start_items = [
+                item
+                for item in items
+                if str(item.get("id", "")) != item_id
+                and str(item.get("type", "")) in self.START_STRUCTURAL_TYPES
+            ]
+            if start_items:
+                previous_item = start_items[-1]
+
+        if insertion_index < len(remaining_regular):
+            next_item = remaining_regular[insertion_index]
+        else:
+            end_items = [
+                item
+                for item in items
+                if str(item.get("id", "")) != item_id
+                and str(item.get("type", "")) in self.END_STRUCTURAL_TYPES
+            ]
+            if end_items:
+                next_item = end_items[0]
+
+        if previous_item is None or next_item is None:
+            self._hide_page_drop_indicator()
+            return
+
+        previous_record = self._sequence_row_widgets.get(
+            str(previous_item.get("id", ""))
+        )
+        next_record = self._sequence_row_widgets.get(
+            str(next_item.get("id", ""))
+        )
+        source_record = self._sequence_row_widgets.get(item_id)
+        previous_row = previous_record.get("row") if previous_record else None
+        next_row = next_record.get("row") if next_record else None
+        source_row = source_record.get("row") if source_record else None
+        if previous_row is None or next_row is None:
+            self._hide_page_drop_indicator()
+            return
+
+        marker_height_px = 4
+        try:
+            overlay.update_idletasks()
+
+            upper_row = previous_row
+            lower_row = next_row
+            previous_bottom = (
+                previous_row.winfo_rooty() + previous_row.winfo_height()
+            )
+            next_top = next_row.winfo_rooty()
+
+            # Si la page source occupe encore l'emplacement final, la ligne
+            # se place sur son bord supérieur ou inférieur, jamais au milieu.
+            if source_row is not None:
+                source_top = source_row.winfo_rooty()
+                source_bottom = source_top + source_row.winfo_height()
+                if previous_bottom <= source_top and source_bottom <= next_top:
+                    source_middle = (source_top + source_bottom) / 2
+                    if pointer_y < source_middle:
+                        lower_row = source_row
+                        next_top = source_top
+                    else:
+                        upper_row = source_row
+                        previous_bottom = source_bottom
+
+            gap_center = (previous_bottom + next_top) / 2
+            marker_root_y = gap_center - marker_height_px / 2
+
+            left_px = max(
+                upper_row.winfo_rootx(),
+                lower_row.winfo_rootx(),
+            )
+            right_px = min(
+                upper_row.winfo_rootx() + upper_row.winfo_width(),
+                lower_row.winfo_rootx() + lower_row.winfo_width(),
+            )
+            marker_width_px = max(80, right_px - left_px)
+
+            local_x, local_y, marker_width, marker_height = (
+                self._screen_geometry_for_place(
+                    overlay,
+                    left_px,
+                    marker_root_y,
+                    marker_width_px,
+                    marker_height_px,
+                )
+            )
+        except Exception:
+            self._hide_page_drop_indicator()
+            return
+
+        if self._page_drop_indicator is None:
+            self._page_drop_indicator = ctk.CTkFrame(
+                overlay,
+                width=marker_width,
+                height=marker_height,
+                fg_color=self.CORAL,
+                corner_radius=2,
+                border_width=1,
+                border_color=self.INK,
+            )
+
+        try:
+            self._page_drop_indicator.configure(
+                width=marker_width,
+                height=marker_height,
+            )
+            self._page_drop_indicator.place(x=local_x, y=local_y)
+            self._page_drop_indicator.lift()
+        except Exception:
+            self._hide_page_drop_indicator()
+
+    def _hide_page_drop_indicator(self) -> None:
+        indicator = self._page_drop_indicator
+        self._page_drop_indicator = None
+        if indicator is not None:
+            try:
+                indicator.destroy()
+            except Exception:
+                pass
+
+    def _place_page_at_pointer(self, item_id: str, pointer_y: int) -> None:
+        """Place une page ordinaire à l'endroit vertical indiqué."""
+        items = self._items()
+        plan = self._page_drop_plan(item_id, pointer_y)
+        if plan is None:
+            self._refresh_sequence()
+            return
+
+        dragged, remaining_regular, insertion_index = plan
+        old_regular_order = [
+            str(item.get("id", ""))
+            for item in items
+            if not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        ]
+        remaining_regular.insert(insertion_index, dragged)
+        new_regular_order = [
+            str(item.get("id", ""))
+            for item in remaining_regular
+        ]
+        if new_regular_order == old_regular_order:
+            self._refresh_sequence()
+            return
+
+        structural_items = [
+            item
+            for item in items
+            if self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        ]
+        self._record_history()
+        items[:] = remaining_regular + structural_items
+        self._enforce_structural_order()
+        self._save_data()
+        self._refresh_sequence()
+
+    def _update_sequence_row(
+        self,
+        item: dict[str, Any],
+        index: int,
+        total_items: int,
+    ) -> None:
+        item_id = str(item.get("id", ""))
+        record = self._sequence_row_widgets.get(item_id)
+        if record is None:
+            return
+
+        definition = self._definition_for(item.get("type", "inconnu"))
+        count = max(1, int(item.get("count", 1)))
+        done = bool(item.get("done", False))
+        single = bool(definition.get("single", False))
+        required = bool(definition.get("required", False))
+        automatic_blank = bool(item.get("automatic_recto_verso", False))
+        accent = str(definition.get("accent", self.INK))
+
+        record["row"].configure(
+            border_color=self.DONE if done else self.BORDER,
+        )
+        record["thumbnail"].configure(
+            fg_color=str(definition.get("color", self.GROUP_BG)),
+            border_color=accent,
+        )
+        record["symbol_label"].configure(
+            text=str(definition.get("symbol", "?")),
+            text_color=accent,
+        )
+        record["count_badge"].configure(
+            text=f"×{count}" if count > 1 else "1",
+        )
+        title_text = str(item.get("title") or definition.get("title", "Page"))
+        if automatic_blank:
+            position_text = (
+                "avant" if item.get("recto_position") == "before" else "après"
+            )
+            title_text = f"Page blanche automatique — {position_text}"
+        record["title_label"].configure(
+            text=title_text,
+            text_color=self.TEXT_MUTED if automatic_blank else (
+                self.DONE if done else self.INK
+            ),
+        )
+        record["count_label"].configure(text=str(count))
+        record["done_var"].set(done)
+
+        record["up_button"].configure(
+            state=(
+                "normal"
+                if self._can_move_item(index, -1)
+                else "disabled"
+            ),
+        )
+        record["down_button"].configure(
+            state=(
+                "normal"
+                if self._can_move_item(index, 1)
+                else "disabled"
+            ),
+        )
+        record["minus_button"].configure(
+            state=(
+                "disabled"
+                if automatic_blank or single or count <= 1
+                else "normal"
+            ),
+        )
+        record["plus_button"].configure(
+            state="disabled" if automatic_blank or single else "normal",
+        )
+        record["done_check"].configure(
+            state="disabled" if automatic_blank else "normal",
+        )
+        record["delete_button"].configure(
+            state="disabled" if automatic_blank or required else "normal",
+        )
 
     def _small_button(
         self,
@@ -638,6 +2826,777 @@ class MockupView:
             state="disabled" if disabled else "normal",
             command=command,
         )
+
+    def _update_page_type_button_states(self) -> None:
+        present_types = {
+            str(item.get("type", ""))
+            for item in self._items()
+        }
+
+        for page_type, button in self._page_type_buttons.items():
+            definition = self._definition_for(page_type)
+            is_single = bool(definition.get("single", False))
+            button.configure(
+                state=(
+                    "disabled"
+                    if is_single and page_type in present_types
+                    else "normal"
+                )
+            )
+
+    def _is_locked_structural_type(self, page_type: str) -> bool:
+        definition = self._definition_for(page_type)
+        return bool(definition.get("locked_position", False))
+
+    def _can_move_item(self, index: int, delta: int) -> bool:
+        items = self._items()
+        target = index + delta
+        if not (0 <= index < len(items) and 0 <= target < len(items)):
+            return False
+
+        current_type = str(items[index].get("type", ""))
+        target_type = str(items[target].get("type", ""))
+        if bool(items[index].get("automatic_recto_verso", False)):
+            return False
+        if bool(items[target].get("automatic_recto_verso", False)):
+            return False
+        if self._is_locked_structural_type(current_type):
+            return False
+        if self._is_locked_structural_type(target_type):
+            return False
+        return True
+
+    def _new_item_from_definition(
+        self,
+        definition: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+            "type": str(definition["type"]),
+            "title": str(definition["title"]),
+            "count": 1,
+            "done": False,
+        }
+
+    def _enforce_structural_order(self) -> None:
+        items = self._items()
+
+        # La couverture et la quatrième sont les deux bornes obligatoires
+        # de tout projet. Elles sont recréées si un ancien fichier ou une
+        # donnée endommagée ne les contient pas.
+        present_types = {str(item.get("type", "")) for item in items}
+        for page_type in ("couverture", "quatrieme"):
+            if page_type not in present_types:
+                definition = self._definition_for(page_type)
+                items.append(self._new_item_from_definition(definition))
+                present_types.add(page_type)
+
+        seen_single_types: set[str] = set()
+        unique_items: list[dict[str, Any]] = []
+
+        for item in items:
+            page_type = str(item.get("type", ""))
+            definition = self._definition_for(page_type)
+            if bool(definition.get("single", False)):
+                if page_type in seen_single_types:
+                    continue
+                seen_single_types.add(page_type)
+            unique_items.append(item)
+
+        structural_items: dict[str, dict[str, Any]] = {}
+        regular_items: list[dict[str, Any]] = []
+        for item in unique_items:
+            page_type = str(item.get("type", ""))
+            if page_type in self.STRUCTURAL_TYPES:
+                structural_items[page_type] = item
+            else:
+                regular_items.append(item)
+
+        ordered: list[dict[str, Any]] = []
+        for page_type in self.START_STRUCTURAL_TYPES:
+            item = structural_items.get(page_type)
+            if item is not None:
+                ordered.append(item)
+
+        ordered.extend(regular_items)
+
+        for page_type in self.END_STRUCTURAL_TYPES:
+            item = structural_items.get(page_type)
+            if item is not None:
+                ordered.append(item)
+
+        items[:] = ordered
+        self._apply_recto_verso_rules()
+
+    # ==========================================================
+    # Règles recto-verso
+    # ==========================================================
+
+    def _recto_verso_rules(self) -> list[dict[str, Any]]:
+        rules = self.data.setdefault("recto_verso_rules", [])
+        if not isinstance(rules, list):
+            rules = []
+            self.data["recto_verso_rules"] = rules
+        return rules
+
+    def _eligible_recto_verso_types(self) -> list[dict[str, Any]]:
+        # La quatrième peut recevoir une page blanche avant le bloc de fin.
+        # Les autres pages structurelles restent exclues pour préserver leurs
+        # positions verrouillées.
+        excluded = {
+            "couverture",
+            "deuxieme_couverture",
+            "troisieme_couverture",
+            "page_blanche",
+        }
+        return [
+            definition
+            for definition in self._page_types()
+            if str(definition.get("type", "")) not in excluded
+        ]
+
+    def _open_recto_verso_dialog(self) -> None:
+        if self._recto_verso_window is not None:
+            try:
+                if self._recto_verso_window.winfo_exists():
+                    self._recto_verso_window.deiconify()
+                    self._recto_verso_window.lift()
+                    self._recto_verso_window.focus_set()
+                    return
+            except Exception:
+                self._recto_verso_window = None
+
+        owner = self.parent.winfo_toplevel()
+        window = ctk.CTkToplevel(owner)
+        self._recto_verso_window = window
+        self._recto_rule_editor_id = None
+        window.title("Règles recto-verso")
+        window.geometry("900x650")
+        window.minsize(760, 560)
+        window.configure(fg_color=self.WINDOW_BG)
+        window.transient(owner)
+        window.protocol("WM_DELETE_WINDOW", self._close_recto_verso_dialog)
+
+        header = ctk.CTkFrame(window, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(20, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="Règles recto-verso du projet",
+            font=Fonts.H2,
+            text_color=self.INK,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            header,
+            text=(
+                "Sélectionnez plusieurs types de pages, puis choisissez "
+                "l’ajout d’une page blanche avant ou après."
+            ),
+            font=Fonts.SMALL,
+            text_color=self.TEXT_MUTED,
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+
+        body = ctk.CTkFrame(window, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=24, pady=(0, 12))
+        body.grid_columnconfigure(0, weight=1, uniform="recto")
+        body.grid_columnconfigure(1, weight=1, uniform="recto")
+        body.grid_rowconfigure(0, weight=1)
+
+        rules_panel = ctk.CTkFrame(
+            body,
+            fg_color=self.RIBBON_BG,
+            corner_radius=8,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        rules_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        rules_panel.grid_columnconfigure(0, weight=1)
+        rules_panel.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(
+            rules_panel,
+            text="Règles enregistrées",
+            font=Fonts.NORMAL,
+            text_color=self.INK,
+        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 7))
+        rules_scroll = ctk.CTkScrollableFrame(
+            rules_panel,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        rules_scroll.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        rules_scroll.grid_columnconfigure(0, weight=1)
+
+        editor_panel = ctk.CTkFrame(
+            body,
+            fg_color=self.RIBBON_BG,
+            corner_radius=8,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        editor_panel.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
+        editor_panel.grid_columnconfigure(0, weight=1)
+        editor_panel.grid_rowconfigure(2, weight=1)
+
+        editor_title = ctk.CTkLabel(
+            editor_panel,
+            text="Nouvelle règle",
+            font=Fonts.NORMAL,
+            text_color=self.INK,
+        )
+        editor_title.grid(row=0, column=0, sticky="w", padx=14, pady=(12, 7))
+
+        position_var = ctk.StringVar(value="before")
+        position_frame = ctk.CTkFrame(editor_panel, fg_color="transparent")
+        position_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
+        ctk.CTkRadioButton(
+            position_frame,
+            text="Page blanche avant",
+            value="before",
+            variable=position_var,
+            font=Fonts.SMALL,
+            text_color=self.INK,
+            fg_color=self.SKY,
+            hover_color=self.INK,
+        ).pack(side="left", padx=(0, 12))
+        ctk.CTkRadioButton(
+            position_frame,
+            text="Page blanche après",
+            value="after",
+            variable=position_var,
+            font=Fonts.SMALL,
+            text_color=self.INK,
+            fg_color=self.SKY,
+            hover_color=self.INK,
+        ).pack(side="left")
+
+        types_scroll = ctk.CTkScrollableFrame(
+            editor_panel,
+            fg_color=self.GROUP_BG,
+            corner_radius=6,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        types_scroll.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 8))
+        types_scroll.grid_columnconfigure(0, weight=1)
+
+        type_vars: dict[str, ctk.BooleanVar] = {}
+        type_checks: dict[str, ctk.CTkCheckBox] = {}
+        row_index = 0
+        for group in self._groups():
+            group_id = str(group.get("id", ""))
+            definitions = [
+                definition
+                for definition in self._eligible_recto_verso_types()
+                if str(definition.get("group", "")) == group_id
+            ]
+            if not definitions:
+                continue
+            ctk.CTkLabel(
+                types_scroll,
+                text=str(group.get("title", "Groupe")),
+                font=(Fonts.FAMILY, 10, "bold"),
+                text_color=str(group.get("accent", self.INK)),
+            ).grid(row=row_index, column=0, sticky="w", padx=8, pady=(8, 3))
+            row_index += 1
+            for definition in definitions:
+                page_type = str(definition.get("type", ""))
+                variable = ctk.BooleanVar(value=False)
+                type_vars[page_type] = variable
+                checkbox_text = str(definition.get("title", "Page"))
+                if page_type == "quatrieme":
+                    checkbox_text += " — avant uniquement"
+                checkbox = ctk.CTkCheckBox(
+                    types_scroll,
+                    text=checkbox_text,
+                    variable=variable,
+                    checkbox_width=17,
+                    checkbox_height=17,
+                    font=Fonts.SMALL,
+                    text_color=self.INK,
+                    fg_color=str(definition.get("accent", self.CELADON)),
+                    hover_color=self.INK,
+                )
+                checkbox.grid(
+                    row=row_index,
+                    column=0,
+                    sticky="w",
+                    padx=14,
+                    pady=2,
+                )
+                type_checks[page_type] = checkbox
+                row_index += 1
+
+        def update_position_constraints(*_args: Any) -> None:
+            fourth_var = type_vars.get("quatrieme")
+            fourth_check = type_checks.get("quatrieme")
+            if fourth_var is None or fourth_check is None:
+                return
+            if position_var.get() == "after":
+                fourth_var.set(False)
+                fourth_check.configure(state="disabled")
+            else:
+                fourth_check.configure(state="normal")
+
+        position_var.trace_add("write", update_position_constraints)
+        update_position_constraints()
+
+        status_label = ctk.CTkLabel(
+            editor_panel,
+            text="",
+            font=Fonts.SMALL,
+            text_color=self.CORAL,
+            anchor="w",
+        )
+        status_label.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 4))
+
+        actions = ctk.CTkFrame(editor_panel, fg_color="transparent")
+        actions.grid(row=4, column=0, sticky="ew", padx=12, pady=(0, 12))
+        actions.grid_columnconfigure(0, weight=1)
+        save_button = ctk.CTkButton(
+            actions,
+            text="Ajouter la règle",
+            height=32,
+            corner_radius=7,
+            fg_color=self.INK,
+            hover_color="#35537E",
+            text_color="#FFFFFF",
+            font=Fonts.SMALL,
+        )
+        save_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        cancel_edit_button = ctk.CTkButton(
+            actions,
+            text="Annuler la modification",
+            width=150,
+            height=32,
+            corner_radius=7,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            state="disabled",
+        )
+        cancel_edit_button.grid(row=0, column=1, padx=(5, 0))
+
+        def clear_editor() -> None:
+            self._recto_rule_editor_id = None
+            for variable in type_vars.values():
+                variable.set(False)
+            position_var.set("before")
+            editor_title.configure(text="Nouvelle règle")
+            save_button.configure(text="Ajouter la règle")
+            cancel_edit_button.configure(state="disabled")
+            status_label.configure(text="")
+
+        def render_rules() -> None:
+            for child in rules_scroll.winfo_children():
+                child.destroy()
+            rules = self._recto_verso_rules()
+            if not rules:
+                ctk.CTkLabel(
+                    rules_scroll,
+                    text="Aucune règle définie pour ce projet.",
+                    font=Fonts.SMALL,
+                    text_color=self.TEXT_LIGHT,
+                ).grid(row=0, column=0, sticky="w", padx=8, pady=10)
+                return
+            for row, rule in enumerate(rules):
+                rule_id = str(rule.get("id", ""))
+                names = [
+                    str(self._definition_for(page_type).get("short", page_type))
+                    for page_type in rule.get("page_types", [])
+                ]
+                position_text = (
+                    "Page blanche avant" if rule.get("position") == "before"
+                    else "Page blanche après"
+                )
+                card = ctk.CTkFrame(
+                    rules_scroll,
+                    fg_color=self.GROUP_BG,
+                    corner_radius=7,
+                    border_width=1,
+                    border_color=self.BORDER,
+                )
+                card.grid(row=row, column=0, sticky="ew", padx=2, pady=3)
+                card.grid_columnconfigure(0, weight=1)
+                ctk.CTkLabel(
+                    card,
+                    text=position_text,
+                    font=(Fonts.FAMILY, 10, "bold"),
+                    text_color=self.INK,
+                    anchor="w",
+                ).grid(row=0, column=0, sticky="w", padx=10, pady=(7, 1))
+                ctk.CTkLabel(
+                    card,
+                    text=", ".join(names),
+                    font=Fonts.SMALL,
+                    text_color=self.TEXT_MUTED,
+                    anchor="w",
+                    wraplength=260,
+                    justify="left",
+                ).grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 7))
+                buttons = ctk.CTkFrame(card, fg_color="transparent")
+                buttons.grid(row=0, column=1, rowspan=2, padx=7, pady=6)
+                ctk.CTkButton(
+                    buttons,
+                    text="Modifier",
+                    width=68,
+                    height=25,
+                    corner_radius=6,
+                    fg_color=self.GROUP_BG,
+                    hover_color=Colors.BUTTON_HOVER,
+                    text_color=self.INK,
+                    border_width=1,
+                    border_color=self.BORDER,
+                    font=(Fonts.FAMILY, 9),
+                    command=lambda current=rule_id: edit_rule(current),
+                ).pack(pady=(0, 3))
+                ctk.CTkButton(
+                    buttons,
+                    text="Supprimer",
+                    width=68,
+                    height=25,
+                    corner_radius=6,
+                    fg_color=self.GROUP_BG,
+                    hover_color="#F3E4E1",
+                    text_color=self.DANGER,
+                    border_width=1,
+                    border_color="#E0B9B0",
+                    font=(Fonts.FAMILY, 9),
+                    command=lambda current=rule_id: delete_rule(current),
+                ).pack()
+
+        def edit_rule(rule_id: str) -> None:
+            rule = next(
+                (item for item in self._recto_verso_rules()
+                 if str(item.get("id", "")) == rule_id),
+                None,
+            )
+            if rule is None:
+                return
+            clear_editor()
+            self._recto_rule_editor_id = rule_id
+            for page_type in rule.get("page_types", []):
+                variable = type_vars.get(str(page_type))
+                if variable is not None:
+                    variable.set(True)
+            position_var.set(str(rule.get("position", "before")))
+            editor_title.configure(text="Modifier la règle")
+            save_button.configure(text="Enregistrer")
+            cancel_edit_button.configure(state="normal")
+
+        def delete_rule(rule_id: str) -> None:
+            rules = self._recto_verso_rules()
+            new_rules = [
+                rule for rule in rules
+                if str(rule.get("id", "")) != rule_id
+            ]
+            if len(new_rules) == len(rules):
+                return
+            self._record_history()
+            self.data["recto_verso_rules"] = new_rules
+            self._enforce_structural_order()
+            self._save_data()
+            self._refresh_sequence()
+            clear_editor()
+            render_rules()
+
+        def save_rule() -> None:
+            selected = [
+                page_type
+                for page_type, variable in type_vars.items()
+                if variable.get()
+            ]
+            if not selected:
+                status_label.configure(
+                    text="Sélectionnez au moins un type de page."
+                )
+                return
+            position = position_var.get()
+            if position == "after" and "quatrieme" in selected:
+                status_label.configure(
+                    text=(
+                        "La quatrième de couverture accepte uniquement "
+                        "une page blanche avant."
+                    )
+                )
+                return
+            editing_id = self._recto_rule_editor_id
+            rules = deepcopy(self._recto_verso_rules())
+
+            # Une même page ne reçoit qu’une fois la même consigne.
+            for rule in rules:
+                if str(rule.get("id", "")) == str(editing_id or ""):
+                    continue
+                if str(rule.get("position", "")) != position:
+                    continue
+                overlap = set(rule.get("page_types", [])) & set(selected)
+                if overlap:
+                    labels = [
+                        str(self._definition_for(value).get("short", value))
+                        for value in sorted(overlap)
+                    ]
+                    status_label.configure(
+                        text=(
+                            "Règle déjà présente pour : "
+                            + ", ".join(labels)
+                        )
+                    )
+                    return
+
+            rule_value = {
+                "id": editing_id or f"RECTO-{uuid4().hex[:10].upper()}",
+                "page_types": selected,
+                "position": position,
+            }
+            if editing_id:
+                rules = [
+                    rule_value
+                    if str(rule.get("id", "")) == editing_id
+                    else rule
+                    for rule in rules
+                ]
+            else:
+                rules.append(rule_value)
+
+            self._record_history()
+            self.data["recto_verso_rules"] = rules
+            self._enforce_structural_order()
+            self._save_data()
+            self._refresh_sequence()
+            clear_editor()
+            render_rules()
+
+        save_button.configure(command=save_rule)
+        cancel_edit_button.configure(command=clear_editor)
+        render_rules()
+
+        footer = ctk.CTkFrame(window, fg_color="transparent")
+        footer.pack(fill="x", padx=24, pady=(0, 18))
+        ctk.CTkLabel(
+            footer,
+            text=(
+                "Les pages blanches automatiques restent liées à leur règle "
+                "et ne sont pas déplaçables manuellement."
+            ),
+            font=Fonts.SMALL,
+            text_color=self.TEXT_MUTED,
+        ).pack(side="left")
+        ctk.CTkButton(
+            footer,
+            text="Fermer",
+            width=100,
+            height=32,
+            corner_radius=7,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=self._close_recto_verso_dialog,
+        ).pack(side="right")
+
+        def activate() -> None:
+            try:
+                if window.winfo_exists():
+                    window.lift()
+                    window.focus_set()
+                    window.grab_set()
+            except Exception:
+                pass
+        window.after(120, activate)
+
+    def _close_recto_verso_dialog(self) -> None:
+        window = self._recto_verso_window
+        self._recto_verso_window = None
+        self._recto_rule_editor_id = None
+        if window is None:
+            return
+        try:
+            window.grab_release()
+        except Exception:
+            pass
+        try:
+            if window.winfo_exists():
+                window.destroy()
+        except Exception:
+            pass
+
+    def _normalize_recto_verso_rules(
+        self,
+        raw_rules: Any,
+    ) -> list[dict[str, Any]]:
+        eligible = {
+            str(definition.get("type", ""))
+            for definition in self._eligible_recto_verso_types()
+        }
+        normalized: list[dict[str, Any]] = []
+        if not isinstance(raw_rules, list):
+            return normalized
+        occupied: set[tuple[str, str]] = set()
+        for raw in raw_rules:
+            if not isinstance(raw, dict):
+                continue
+            position = str(raw.get("position", "before"))
+            if position not in {"before", "after"}:
+                position = "before"
+            values: list[str] = []
+            for value in raw.get("page_types", []):
+                page_type = str(value)
+                key = (position, page_type)
+                if page_type == "quatrieme" and position == "after":
+                    continue
+                if page_type in eligible and key not in occupied:
+                    values.append(page_type)
+                    occupied.add(key)
+            if not values:
+                continue
+            normalized.append(
+                {
+                    "id": str(raw.get("id") or f"RECTO-{uuid4().hex[:10].upper()}"),
+                    "page_types": values,
+                    "position": position,
+                }
+            )
+        return normalized
+
+    def _new_automatic_blank(
+        self,
+        target_id: str,
+        position: str,
+        count: int = 1,
+    ) -> dict[str, Any]:
+        definition = self._definition_for("page_blanche")
+        item = self._new_item_from_definition(definition)
+        normalized_count = max(1, int(count))
+        item["count"] = normalized_count
+        item["automatic_recto_verso"] = True
+        item["recto_target_id"] = target_id
+        item["recto_position"] = position
+        item["title"] = (
+            "Page blanche automatique"
+            if normalized_count == 1
+            else "Pages blanches automatiques"
+        )
+        return item
+
+    def _recto_rule_type_sets(self) -> tuple[set[str], set[str]]:
+        before_types: set[str] = set()
+        after_types: set[str] = set()
+        for rule in self._recto_verso_rules():
+            destination = (
+                before_types
+                if str(rule.get("position", "before")) == "before"
+                else after_types
+            )
+            destination.update(
+                str(value) for value in rule.get("page_types", [])
+            )
+        # La quatrième est une borne finale : une consigne « après » serait
+        # incohérente et est donc toujours neutralisée.
+        after_types.discard("quatrieme")
+        return before_types, after_types
+
+    def _apply_recto_verso_rules(self) -> None:
+        before_types, after_types = self._recto_rule_type_sets()
+
+        base_items = [
+            item
+            for item in self._items()
+            if not bool(item.get("automatic_recto_verso", False))
+        ]
+        rebuilt: list[dict[str, Any]] = []
+
+        for index, item in enumerate(base_items):
+            page_type = str(item.get("type", ""))
+            item_id = str(item.get("id", ""))
+            count = max(1, int(item.get("count", 1)))
+            previous_type = (
+                str(base_items[index - 1].get("type", ""))
+                if index > 0
+                else ""
+            )
+            next_type = (
+                str(base_items[index + 1].get("type", ""))
+                if index + 1 < len(base_items)
+                else ""
+            )
+
+            # Une règle visant la quatrième se place avant tout le bloc de fin.
+            # Si la troisième existe, elle reste donc immédiatement accolée à la
+            # quatrième, conformément à sa position structurelle verrouillée.
+            fourth_rule_before_end_block = (
+                page_type == "troisieme_couverture"
+                and next_type == "quatrieme"
+                and "quatrieme" in before_types
+            )
+            wants_before = page_type in before_types or fourth_rule_before_end_block
+            if page_type == "quatrieme" and previous_type == "troisieme_couverture":
+                wants_before = False
+
+            if wants_before:
+                # Pour une page répétée, la règle concerne chaque occurrence.
+                # Lorsque la même page reçoit aussi une règle « après », les
+                # blancs intermédiaires sont partagés : un seul blanc initial
+                # reste à représenter avant le bloc.
+                before_count = 1 if page_type in after_types else count
+
+                previous_base_type = previous_type
+                previous_has_after = previous_base_type in after_types
+                if previous_has_after and previous_base_type != "page_blanche":
+                    # Le dernier blanc « après » de la page précédente satisfait
+                    # aussi le premier blanc « avant » de la page courante.
+                    before_count = max(0, before_count - 1)
+
+                if before_count > 0:
+                    if rebuilt and bool(
+                        rebuilt[-1].get("automatic_recto_verso", False)
+                    ):
+                        merged_count = (
+                            max(1, int(rebuilt[-1].get("count", 1)))
+                            + before_count
+                        )
+                        rebuilt[-1]["count"] = merged_count
+                        rebuilt[-1]["title"] = "Pages blanches automatiques"
+                        rebuilt[-1]["recto_shared"] = True
+                    else:
+                        rebuilt.append(
+                            self._new_automatic_blank(
+                                item_id,
+                                "before",
+                                before_count,
+                            )
+                        )
+
+            rebuilt.append(item)
+
+            if page_type in after_types:
+                rebuilt.append(
+                    self._new_automatic_blank(item_id, "after", count)
+                )
+
+        # Sécurité finale : deux blocs automatiques voisins sont fusionnés.
+        compacted: list[dict[str, Any]] = []
+        for item in rebuilt:
+            if (
+                compacted
+                and bool(item.get("automatic_recto_verso", False))
+                and bool(compacted[-1].get("automatic_recto_verso", False))
+            ):
+                merged_count = (
+                    max(1, int(compacted[-1].get("count", 1)))
+                    + max(1, int(item.get("count", 1)))
+                )
+                compacted[-1]["count"] = merged_count
+                compacted[-1]["title"] = "Pages blanches automatiques"
+                compacted[-1]["recto_shared"] = True
+                continue
+            compacted.append(item)
+
+        self._items()[:] = compacted
 
     def _open_preview(self) -> None:
         if self._preview_window is not None:
@@ -899,21 +3858,74 @@ class MockupView:
             ]
         ] = []
 
-        covers = [item for item in items if item.get("type") == "couverture"]
-        fourths = [item for item in items if item.get("type") == "quatrieme"]
-        interiors = [
+        base_items = [
             item
             for item in items
-            if item.get("type") not in {"couverture", "quatrieme"}
+            if not bool(item.get("automatic_recto_verso", False))
+        ]
+        covers = [
+            item for item in base_items if item.get("type") == "couverture"
+        ]
+        fourths = [
+            item for item in base_items if item.get("type") == "quatrieme"
         ]
 
         if covers:
             spreads.append((None, covers[0], None, None))
 
+        before_types, after_types = self._recto_rule_type_sets()
         expanded_pages: list[dict[str, Any]] = []
-        for item in interiors:
+
+        def append_preview_blank(target: dict[str, Any], position: str) -> None:
+            # Deux blancs automatiques ne se suivent jamais. Un blanc manuel
+            # reste en revanche un choix explicite et peut créer un doublon.
+            if (
+                expanded_pages
+                and bool(
+                    expanded_pages[-1].get("automatic_recto_verso", False)
+                )
+            ):
+                return
+            expanded_pages.append(
+                self._new_automatic_blank(
+                    str(target.get("id", "")),
+                    position,
+                    1,
+                )
+            )
+
+        third_present = any(
+            str(item.get("type", "")) == "troisieme_couverture"
+            for item in base_items
+        )
+
+        for item in base_items:
+            page_type = str(item.get("type", ""))
+            if page_type == "couverture":
+                continue
+
             count = max(1, int(item.get("count", 1)))
-            expanded_pages.extend([item] * count)
+            for _occurrence in range(count):
+                wants_before = page_type in before_types
+                if (
+                    page_type == "troisieme_couverture"
+                    and third_present
+                    and "quatrieme" in before_types
+                ):
+                    wants_before = True
+                if page_type == "quatrieme" and third_present:
+                    wants_before = False
+
+                if wants_before:
+                    append_preview_blank(item, "before")
+
+                if page_type == "quatrieme":
+                    continue
+
+                expanded_pages.append(item)
+
+                if page_type in after_types:
+                    append_preview_blank(item, "after")
 
         index = 0
         page_number = 1
@@ -1299,29 +4311,121 @@ class MockupView:
 
 
     # ==========================================================
+    # Historique Annuler / Rétablir
+    # ==========================================================
+
+    def _record_history(self) -> None:
+        """Mémorise l'état courant avant une modification utilisateur."""
+        self._undo_stack.append(deepcopy(self.data))
+        if len(self._undo_stack) > self._history_limit:
+            del self._undo_stack[0]
+        self._redo_stack.clear()
+        self._update_history_buttons()
+
+    def _undo(self) -> None:
+        if not self._undo_stack:
+            return
+
+        self._close_manage_dialog()
+        self._close_recto_verso_dialog()
+        self._close_preview()
+        self._redo_stack.append(deepcopy(self.data))
+        self.data = self._undo_stack.pop()
+        self._enforce_structural_order()
+        self._save_data()
+        self._refresh_ribbon()
+        self._refresh_sequence()
+        self._update_history_buttons()
+
+    def _redo(self) -> None:
+        if not self._redo_stack:
+            return
+
+        self._close_manage_dialog()
+        self._close_recto_verso_dialog()
+        self._close_preview()
+        self._undo_stack.append(deepcopy(self.data))
+        self.data = self._redo_stack.pop()
+        self._enforce_structural_order()
+        self._save_data()
+        self._refresh_ribbon()
+        self._refresh_sequence()
+        self._update_history_buttons()
+
+    def _update_history_buttons(self) -> None:
+        if self._undo_button is not None:
+            try:
+                self._undo_button.configure(
+                    state="normal" if self._undo_stack else "disabled"
+                )
+            except Exception:
+                pass
+
+        if self._redo_button is not None:
+            try:
+                self._redo_button.configure(
+                    state="normal" if self._redo_stack else "disabled"
+                )
+            except Exception:
+                pass
+
+    # ==========================================================
     # Actions utilisateur
     # ==========================================================
 
     def _add_item(self, definition: dict[str, Any]) -> None:
-        item = {
-            "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
-            "type": str(definition["type"]),
-            "title": str(definition["title"]),
-            "count": 1,
-            "done": False,
-        }
-        self._items().append(item)
+        page_type = str(definition.get("type", ""))
+        if not page_type:
+            return
+
+        if bool(definition.get("single", False)) and any(
+            str(item.get("type", "")) == page_type
+            for item in self._items()
+        ):
+            return
+
+        self._record_history()
+        self._items().append(self._new_item_from_definition(definition))
+        self._enforce_structural_order()
         self._save_data()
         self._refresh_sequence()
+
+    def _item_index(self, item_id: str) -> int | None:
+        for index, item in enumerate(self._items()):
+            if str(item.get("id", "")) == item_id:
+                return index
+        return None
+
+    def _move_item_by_id(self, item_id: str, delta: int) -> None:
+        index = self._item_index(item_id)
+        if index is not None:
+            self._move_item(index, delta)
+
+    def _change_count_by_id(self, item_id: str, delta: int) -> None:
+        index = self._item_index(item_id)
+        if index is not None:
+            self._change_count(index, delta)
+
+    def _set_done_by_id(self, item_id: str, done: bool) -> None:
+        index = self._item_index(item_id)
+        if index is not None:
+            self._set_done(index, done)
+
+    def _remove_item_by_id(self, item_id: str) -> None:
+        index = self._item_index(item_id)
+        if index is not None:
+            self._remove_item(index)
 
     def _move_item(self, index: int, delta: int) -> None:
         items = self._items()
         target = index + delta
 
-        if not (0 <= index < len(items) and 0 <= target < len(items)):
+        if not self._can_move_item(index, delta):
             return
 
+        self._record_history()
         items[index], items[target] = items[target], items[index]
+        self._enforce_structural_order()
         self._save_data()
         self._refresh_sequence()
 
@@ -1330,12 +4434,22 @@ class MockupView:
         if not 0 <= index < len(items):
             return
 
+        if bool(items[index].get("automatic_recto_verso", False)):
+            return
         definition = self._definition_for(items[index].get("type", "autre"))
         if definition.get("single"):
             return
 
         current = max(1, int(items[index].get("count", 1)))
-        items[index]["count"] = max(1, min(9999, current + delta))
+        new_count = max(1, min(9999, current + delta))
+        if new_count == current:
+            return
+
+        self._record_history()
+        items[index]["count"] = new_count
+        # Le nombre de blancs automatiques liés doit suivre immédiatement le
+        # nombre d’occurrences de la page concernée.
+        self._enforce_structural_order()
         self._save_data()
         self._refresh_sequence()
 
@@ -1344,7 +4458,12 @@ class MockupView:
         if not 0 <= index < len(items):
             return
 
-        items[index]["done"] = bool(done)
+        new_value = bool(done)
+        if bool(items[index].get("done", False)) == new_value:
+            return
+
+        self._record_history()
+        items[index]["done"] = new_value
         self._save_data()
         self._refresh_sequence()
 
@@ -1353,11 +4472,22 @@ class MockupView:
         if not 0 <= index < len(items):
             return
 
+        if bool(items[index].get("automatic_recto_verso", False)):
+            return
+        definition = self._definition_for(str(items[index].get("type", "")))
+        if bool(definition.get("required", False)):
+            return
+
+        self._record_history()
         del items[index]
+        self._enforce_structural_order()
         self._save_data()
         self._refresh_sequence()
 
     def _go_back(self) -> None:
+        self._close_manage_dialog()
+        self._close_recto_verso_dialog()
+        self._close_preview()
         if self.on_back is not None:
             self.on_back()
 
@@ -1371,6 +4501,20 @@ class MockupView:
             items = []
             self.data["items"] = items
         return items
+
+    def _groups(self) -> list[dict[str, Any]]:
+        groups = self.data.setdefault("groups", [])
+        if not isinstance(groups, list):
+            groups = []
+            self.data["groups"] = groups
+        return groups
+
+    def _page_types(self) -> list[dict[str, Any]]:
+        definitions = self.data.setdefault("page_types", [])
+        if not isinstance(definitions, list):
+            definitions = []
+            self.data["page_types"] = definitions
+        return definitions
 
     def _load_data(self) -> dict[str, Any]:
         path = self._mockup_file()
@@ -1391,24 +4535,39 @@ class MockupView:
         if not isinstance(data, dict):
             data = self._empty_data()
 
+        groups = self._normalize_groups(data.get("groups"))
+        page_types = self._normalize_page_types(data.get("page_types"), groups)
+
+        self.data = data
+        self.data["groups"] = groups
+        self.data["page_types"] = page_types
+        self.data["recto_verso_rules"] = self._normalize_recto_verso_rules(
+            data.get("recto_verso_rules")
+        )
+
         items = data.get("items", [])
         if not isinstance(items, list):
             items = []
 
-        data["version"] = 1
+        data["version"] = 6
+        data["groups"] = groups
+        data["page_types"] = page_types
         data["items"] = [
             self._normalize_item(item)
             for item in items
             if isinstance(item, dict)
         ]
+        self._enforce_structural_order()
         data.setdefault("created_at", datetime.now().isoformat())
         data.setdefault("updated_at", datetime.now().isoformat())
 
+        self._write_json(path, data)
         return data
 
     def _save_data(self) -> None:
-        self.data["version"] = 1
+        self.data["version"] = 6
         self.data["updated_at"] = datetime.now().isoformat()
+        self._run_silent_structure_check()
         self._write_json(self._mockup_file(), self.data)
 
     def _mockup_file(self) -> Path:
@@ -1422,20 +4581,137 @@ class MockupView:
 
         return Path(root) / "maquettage" / "premaquette.json"
 
-    @staticmethod
-    def _empty_data() -> dict[str, Any]:
+    @classmethod
+    def _empty_data(cls) -> dict[str, Any]:
         now = datetime.now().isoformat()
+        definitions = {
+            str(definition["type"]): definition
+            for definition in cls.PAGE_LIBRARY
+        }
+
+        required_items: list[dict[str, Any]] = []
+        for page_type in ("couverture", "quatrieme"):
+            definition = definitions[page_type]
+            required_items.append(
+                {
+                    "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+                    "type": page_type,
+                    "title": str(definition["title"]),
+                    "count": 1,
+                    "done": False,
+                }
+            )
+
         return {
-            "version": 1,
+            "version": 6,
             "created_at": now,
             "updated_at": now,
-            "items": [],
+            "groups": [dict(group) for group in cls.DEFAULT_GROUPS],
+            "page_types": [dict(definition) for definition in cls.PAGE_LIBRARY],
+            "recto_verso_rules": [],
+            "items": required_items,
         }
 
     @classmethod
-    def _normalize_item(cls, item: dict[str, Any]) -> dict[str, Any]:
-        page_type = str(item.get("type", "autre"))
-        definition = cls._definition_for(page_type)
+    def _normalize_groups(cls, raw_groups) -> list[dict[str, Any]]:
+        defaults = {
+            str(group["id"]): dict(group)
+            for group in cls.DEFAULT_GROUPS
+        }
+        middle: list[dict[str, Any]] = []
+        known_ids: set[str] = {"debut_livre", "fin_livre"}
+        pages_interieures_seen = False
+
+        if isinstance(raw_groups, list):
+            for raw in raw_groups:
+                if not isinstance(raw, dict):
+                    continue
+
+                group_id = str(raw.get("id", "")).strip()
+                title = str(raw.get("title", "")).strip()
+                if not group_id or not title:
+                    continue
+
+                if group_id in {"debut_livre", "fin_livre"}:
+                    continue
+
+                if group_id == "pages_interieures":
+                    if not pages_interieures_seen:
+                        middle.append(dict(defaults["pages_interieures"]))
+                        pages_interieures_seen = True
+                    continue
+
+                if group_id in known_ids:
+                    continue
+
+                middle.append(
+                    {
+                        "id": group_id,
+                        "title": title,
+                        "symbol": str(raw.get("symbol") or "▦"),
+                        "accent": str(raw.get("accent") or cls.SKY),
+                        "protected": False,
+                    }
+                )
+                known_ids.add(group_id)
+
+        if not pages_interieures_seen:
+            # Ancien projet sans ordre personnalisé : le groupe standard
+            # conserve sa position habituelle au début de la zone centrale.
+            middle.insert(0, dict(defaults["pages_interieures"]))
+
+        return [
+            dict(defaults["debut_livre"]),
+            *middle,
+            dict(defaults["fin_livre"]),
+        ]
+
+    @classmethod
+    def _normalize_page_types(
+        cls,
+        raw_definitions,
+        groups: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        definitions = [dict(definition) for definition in cls.PAGE_LIBRARY]
+        known_types = {str(definition["type"]) for definition in definitions}
+        group_ids = {str(group["id"]) for group in groups}
+
+        if isinstance(raw_definitions, list):
+            for raw in raw_definitions:
+                if not isinstance(raw, dict):
+                    continue
+                page_type = str(raw.get("type", "")).strip()
+                title = str(raw.get("title", "")).strip()
+                group_id = str(raw.get("group", "")).strip()
+                if (
+                    not page_type
+                    or not title
+                    or page_type in known_types
+                    or group_id not in group_ids
+                ):
+                    continue
+
+                definitions.append(
+                    {
+                        "type": page_type,
+                        "title": title,
+                        "short": str(raw.get("short") or title)[:18],
+                        "symbol": str(raw.get("symbol") or "▦"),
+                        "color": str(raw.get("color") or "#EEF0F2"),
+                        "accent": str(raw.get("accent") or cls.INK),
+                        "group": group_id,
+                        "single": bool(raw.get("single", False)),
+                        "description": str(raw.get("description") or ""),
+                        "custom": True,
+                    }
+                )
+                known_types.add(page_type)
+
+        return definitions
+
+    def _normalize_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        page_type = str(item.get("type", "inconnu"))
+        definition = self._definition_for(page_type)
         count = item.get("count", 1)
 
         try:
@@ -1446,13 +4722,18 @@ class MockupView:
         if definition.get("single"):
             normalized_count = 1
 
-        return {
+        normalized = {
             "id": str(item.get("id") or f"MAQUETTE-{uuid4().hex[:12].upper()}"),
             "type": page_type,
             "title": str(item.get("title") or definition["title"]),
             "count": normalized_count,
             "done": bool(item.get("done", False)),
         }
+        if bool(item.get("automatic_recto_verso", False)):
+            normalized["automatic_recto_verso"] = True
+            normalized["recto_target_id"] = str(item.get("recto_target_id", ""))
+            normalized["recto_position"] = str(item.get("recto_position", "before"))
+        return normalized
 
     @staticmethod
     def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -1463,6 +4744,199 @@ class MockupView:
             json.dump(data, file, indent=4, ensure_ascii=False)
 
         temporary.replace(path)
+
+    # ==========================================================
+    # Contrôle automatique de la structure
+    # ==========================================================
+
+    def _structure_issues(self) -> list[dict[str, str]]:
+        """Retourne les incohérences détectées sans modifier le projet."""
+        issues: list[dict[str, str]] = []
+        items = list(self._items())
+        page_types = {
+            str(definition.get("type", ""))
+            for definition in self._page_types()
+            if str(definition.get("type", ""))
+        }
+        groups = {
+            str(group.get("id", ""))
+            for group in self._groups()
+            if str(group.get("id", ""))
+        }
+
+        def add(level: str, title: str, detail: str) -> None:
+            issues.append(
+                {
+                    "level": level,
+                    "title": title,
+                    "detail": detail,
+                }
+            )
+
+        item_types = [str(item.get("type", "")) for item in items]
+
+        for required_type, label in (
+            ("couverture", "Couverture"),
+            ("quatrieme", "Quatrième de couverture"),
+        ):
+            count = item_types.count(required_type)
+            if count == 0:
+                add(
+                    "error",
+                    f"{label} absente",
+                    "Cette page obligatoire doit toujours être présente.",
+                )
+            elif count > 1:
+                add(
+                    "error",
+                    f"{label} présente plusieurs fois",
+                    "Une seule occurrence est autorisée.",
+                )
+
+        if items and item_types[0] != "couverture":
+            add(
+                "error",
+                "La couverture n’est pas en première position",
+                "Elle doit rester la première page du projet.",
+            )
+
+        if items and item_types[-1] != "quatrieme":
+            add(
+                "error",
+                "La quatrième n’est pas en dernière position",
+                "Elle doit rester la dernière page du projet.",
+            )
+
+        if item_types.count("deuxieme_couverture") > 1:
+            add(
+                "error",
+                "Deuxième de couverture dupliquée",
+                "Cette page facultative ne peut apparaître qu’une seule fois.",
+            )
+        elif "deuxieme_couverture" in item_types:
+            second_index = item_types.index("deuxieme_couverture")
+            if second_index != 1:
+                add(
+                    "error",
+                    "Deuxième de couverture mal placée",
+                    "Elle doit être immédiatement après la couverture.",
+                )
+
+        if item_types.count("troisieme_couverture") > 1:
+            add(
+                "error",
+                "Troisième de couverture dupliquée",
+                "Cette page facultative ne peut apparaître qu’une seule fois.",
+            )
+        elif "troisieme_couverture" in item_types:
+            third_index = item_types.index("troisieme_couverture")
+            fourth_index = (
+                item_types.index("quatrieme")
+                if "quatrieme" in item_types
+                else len(item_types)
+            )
+            if third_index != fourth_index - 1:
+                add(
+                    "error",
+                    "Troisième de couverture mal placée",
+                    "Elle doit être immédiatement avant la quatrième.",
+                )
+
+        for definition in self._page_types():
+            page_type = str(definition.get("type", ""))
+            if not page_type or not bool(definition.get("single", False)):
+                continue
+            count = item_types.count(page_type)
+            if count > 1:
+                add(
+                    "error",
+                    f"« {definition.get('title', page_type)} » est dupliquée",
+                    "Ce type de page est limité à un seul exemplaire.",
+                )
+
+        unknown_types = sorted(
+            {
+                page_type
+                for page_type in item_types
+                if page_type and page_type not in page_types
+            }
+        )
+        for page_type in unknown_types:
+            add(
+                "error",
+                "Type de page inconnu",
+                f"Le type « {page_type} » n’existe plus dans la palette.",
+            )
+
+        seen_ids: set[str] = set()
+        for item in items:
+            item_id = str(item.get("id", ""))
+            if not item_id:
+                add(
+                    "warning",
+                    "Page sans identifiant",
+                    "Cette page devra recevoir un identifiant interne.",
+                )
+                continue
+            if item_id in seen_ids:
+                add(
+                    "error",
+                    "Identifiant de page dupliqué",
+                    f"L’identifiant interne « {item_id} » est utilisé plusieurs fois.",
+                )
+            seen_ids.add(item_id)
+
+        for previous, current in zip(items, items[1:]):
+            if (
+                bool(previous.get("automatic_recto_verso", False))
+                and bool(current.get("automatic_recto_verso", False))
+            ):
+                add(
+                    "error",
+                    "Deux blancs automatiques consécutifs",
+                    "Ils doivent être fusionnés en une seule page blanche automatique.",
+                )
+                break
+
+        for definition in self._page_types():
+            page_type = str(definition.get("type", ""))
+            group_id = str(definition.get("group", ""))
+            if page_type and group_id not in groups:
+                add(
+                    "warning",
+                    f"Groupe introuvable pour « {definition.get('title', page_type)} »",
+                    "Ce type de page doit être rattaché à un groupe existant.",
+                )
+
+        valid_rule_types = page_types - {
+            "couverture",
+            "deuxieme_couverture",
+            "troisieme_couverture",
+            "page_blanche",
+        }
+        for rule in self._recto_verso_rules():
+            position = str(rule.get("position", "before"))
+            for page_type in rule.get("page_types", []):
+                page_type = str(page_type)
+                if page_type not in valid_rule_types:
+                    add(
+                        "warning",
+                        "Règle recto-verso devenue invalide",
+                        f"Le type « {page_type} » n’est plus disponible pour cette règle.",
+                    )
+                elif page_type == "quatrieme" and position == "after":
+                    add(
+                        "error",
+                        "Règle impossible après la quatrième",
+                        "La quatrième étant la dernière page, seul un blanc avant est autorisé.",
+                    )
+
+        return issues
+
+    def _run_silent_structure_check(self) -> list[dict[str, str]]:
+        """Mémorise les anomalies techniques sans ajouter de bouton à l’écran."""
+        self._last_structure_issues = self._structure_issues()
+        return list(self._last_structure_issues)
 
     # ==========================================================
     # Résumé et utilitaires
@@ -1491,12 +4965,11 @@ class MockupView:
                 text=(f"Fait : {done_pages}/{total_pages}" if total_pages else "")
             )
 
-    @classmethod
-    def _definition_for(cls, page_type: str) -> dict[str, Any]:
-        for definition in cls.PAGE_LIBRARY:
-            if definition["type"] == page_type:
+    def _definition_for(self, page_type: str) -> dict[str, Any]:
+        for definition in self._page_types():
+            if str(definition.get("type")) == page_type:
                 return definition
-        return cls.PAGE_LIBRARY[-1]
+        return dict(self.UNKNOWN_PAGE)
 
     def _clear_parent(self) -> None:
         for child in self.parent.winfo_children():
