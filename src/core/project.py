@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ class Project:
     """
 
     VERSION = "1.4"
+    MOCKUP_VERSION = 6
 
     PROJECT_FOLDERS = (
         "documents",
@@ -419,7 +421,7 @@ class Project:
     # ==========================================================
 
     def load_mockup(self) -> dict[str, Any]:
-        """Charge le brouillon visuel facultatif du livre."""
+        """Charge le maquettage sans réduire ni perdre son schéma actuel."""
 
         self._ensure_mockup_file()
 
@@ -431,36 +433,25 @@ class Project:
                 data = json.load(file)
         except (OSError, json.JSONDecodeError):
             data = self._default_mockup_data()
-            self.save_mockup(data)
+            self._write_mockup_data(data)
+            return deepcopy(data)
 
-        return self._normalize_mockup_data(data)
+        normalized = self._normalize_mockup_data(data)
+        if normalized != data:
+            self._write_mockup_data(normalized)
+
+        return deepcopy(normalized)
 
     def save_mockup(
         self,
         data: dict[str, Any],
     ) -> dict[str, Any]:
-        """Enregistre le pré-chemin de fer sans modifier les pages réelles."""
+        """Enregistre atomiquement le maquettage complet du projet."""
 
         normalized = self._normalize_mockup_data(data)
-        normalized["date_modification"] = datetime.now().isoformat()
-
-        self.mockup_folder.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        with self.mockup_file.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                normalized,
-                file,
-                indent=4,
-                ensure_ascii=False,
-            )
-
-        return normalized
+        normalized["updated_at"] = datetime.now().isoformat()
+        self._write_mockup_data(normalized)
+        return deepcopy(normalized)
 
     def _ensure_mockup_file(self) -> None:
         self.mockup_folder.mkdir(
@@ -471,19 +462,24 @@ class Project:
         if self.mockup_file.exists():
             return
 
-        self.save_mockup(
+        self._write_mockup_data(
             self._default_mockup_data()
         )
 
-    @staticmethod
-    def _default_mockup_data() -> dict[str, Any]:
+    @classmethod
+    def _default_mockup_data(cls) -> dict[str, Any]:
+        """Crée un conteneur compatible avec le Maquettage actuel."""
+
         now = datetime.now().isoformat()
 
         return {
-            "version": "1.0",
-            "date_creation": now,
-            "date_modification": now,
-            "elements": [],
+            "version": cls.MOCKUP_VERSION,
+            "created_at": now,
+            "updated_at": now,
+            "groups": [],
+            "page_types": [],
+            "recto_verso_rules": [],
+            "items": [],
         }
 
     @classmethod
@@ -491,46 +487,119 @@ class Project:
         cls,
         data: Any,
     ) -> dict[str, Any]:
+        """Préserve le schéma 6 et migre l'ancien schéma sans perte."""
+
         if not isinstance(data, dict):
             return cls._default_mockup_data()
 
-        creation_date = str(
-            data.get(
-                "date_creation",
-                "",
+        now = datetime.now().isoformat()
+        has_current_schema = any(
+            key in data
+            for key in (
+                "groups",
+                "page_types",
+                "recto_verso_rules",
+                "items",
             )
-        ).strip()
-
-        if not creation_date:
-            creation_date = datetime.now().isoformat()
-
-        elements = data.get(
-            "elements",
-            [],
         )
 
-        return {
-            "version": str(
-                data.get(
-                    "version",
-                    "1.0",
-                )
-            ),
-            "date_creation": creation_date,
-            "date_modification": str(
-                data.get(
-                    "date_modification",
-                    creation_date,
-                )
-            ),
-            "elements": [
-                dict(element)
-                for element in elements
-                if isinstance(element, dict)
-            ]
-            if isinstance(elements, list)
-            else [],
-        }
+        # Les premières versions utilisaient seulement ``elements``.
+        # Ils sont conservés à part afin qu'aucune ancienne donnée ne soit
+        # silencieusement supprimée pendant la migration.
+        if not has_current_schema and "elements" in data:
+            normalized = cls._default_mockup_data()
+            normalized["created_at"] = str(
+                data.get("date_creation") or now
+            )
+            normalized["updated_at"] = str(
+                data.get("date_modification")
+                or normalized["created_at"]
+            )
+
+            elements = data.get("elements", [])
+            if isinstance(elements, list):
+                legacy_elements = [
+                    deepcopy(element)
+                    for element in elements
+                    if isinstance(element, dict)
+                ]
+                if legacy_elements:
+                    normalized["legacy_elements"] = legacy_elements
+
+            return normalized
+
+        normalized = deepcopy(data)
+        created_at = str(
+            data.get("created_at")
+            or data.get("date_creation")
+            or now
+        )
+        updated_at = str(
+            data.get("updated_at")
+            or data.get("date_modification")
+            or created_at
+        )
+
+        normalized["version"] = cls.MOCKUP_VERSION
+        normalized["created_at"] = created_at
+        normalized["updated_at"] = updated_at
+
+        for key in (
+            "groups",
+            "page_types",
+            "recto_verso_rules",
+            "items",
+        ):
+            values = data.get(key, [])
+            normalized[key] = (
+                [
+                    deepcopy(value)
+                    for value in values
+                    if isinstance(value, dict)
+                ]
+                if isinstance(values, list)
+                else []
+            )
+
+        elements = normalized.pop("elements", None)
+        if isinstance(elements, list) and elements:
+            normalized.setdefault(
+                "legacy_elements",
+                [
+                    deepcopy(element)
+                    for element in elements
+                    if isinstance(element, dict)
+                ],
+            )
+
+        normalized.pop("date_creation", None)
+        normalized.pop("date_modification", None)
+        return normalized
+
+    def _write_mockup_data(
+        self,
+        data: dict[str, Any],
+    ) -> None:
+        """Écrit le JSON par remplacement atomique du fichier précédent."""
+
+        self.mockup_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        temporary = self.mockup_file.with_suffix(".tmp")
+
+        with temporary.open(
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                data,
+                file,
+                indent=4,
+                ensure_ascii=False,
+            )
+
+        temporary.replace(self.mockup_file)
 
     # ==========================================================
     # Construction

@@ -1,51 +1,66 @@
-from pathlib import Path
-import sys
+from __future__ import annotations
 
-# Ajoute la racine du projet au chemin de recherche Python
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import unittest
 
 from src.library.book_models.book_model import BookModel
 from src.library.book_models.book_model_library import BookModelLibrary
 
 
-def main():
+class BookModelLibraryTests(unittest.TestCase):
+    """Vérifie la bibliothèque sans toucher aux données réelles du projet."""
 
-    library = BookModelLibrary()
+    def setUp(self) -> None:
+        self._temporary_directory = TemporaryDirectory()
+        self.library = BookModelLibrary()
+        self.library.storage_path = Path(self._temporary_directory.name)
 
-    # Nettoyage
-    library.clear()
+    def tearDown(self) -> None:
+        self._temporary_directory.cleanup()
 
-    # Création d'un modèle
-    model = BookModel(
-        id="guide_plantes",
-        name="Guide des plantes",
-        description="Modèle de test"
-    )
+    def test_save_then_load_restores_complete_book_model(self) -> None:
+        model = BookModel(
+            id="guide_plantes_test",
+            name="Guide des plantes de test",
+            description="Modèle temporaire utilisé uniquement par les tests.",
+            page_types=["text_page", "image_page"],
+            parameters={"format": "A4", "recto_verso": True},
+        )
 
-    # Ajout
-    library.add(model)
+        self.library.add(model)
+        self.library.save()
 
-    print("=== Avant sauvegarde ===")
-    for m in library.all():
-        print(m)
+        self.assertTrue(
+            (self.library.storage_path / "guide_plantes_test.json").is_file()
+        )
 
-    # Sauvegarde
-    library.save()
+        self.library.clear()
+        self.assertEqual(self.library.all(), [])
 
-    # Vidage mémoire
-    library.clear()
+        self.library.load()
 
-    print("\n=== Après clear() ===")
-    print(library.all())
+        restored = self.library.get("guide_plantes_test")
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.name, "Guide des plantes de test")
+        self.assertEqual(
+            restored.description,
+            "Modèle temporaire utilisé uniquement par les tests.",
+        )
+        self.assertEqual(restored.page_types, ["text_page", "image_page"])
+        self.assertEqual(
+            restored.parameters,
+            {"format": "A4", "recto_verso": True},
+        )
 
-    # Rechargement
-    library.load()
+    def test_load_creates_default_only_inside_temporary_directory(self) -> None:
+        self.library.load()
 
-    print("\n=== Après load() ===")
-    for m in library.all():
-        print(m)
+        self.assertTrue(self.library.exists("empty_book"))
+        self.assertTrue(
+            (self.library.storage_path / "empty_book.json").is_file()
+        )
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()
