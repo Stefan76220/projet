@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import customtkinter as ctk
 
+from src.gui.shortcut_manager import get_global_shortcut_manager
 from src.theme.colors import Colors
 from src.theme.fonts import Fonts
 
@@ -290,11 +291,21 @@ class MockupView:
         self._drag_group_has_moved = False
         self._group_drop_indicator: ctk.CTkFrame | None = None
         self._dragged_page_id: str | None = None
+        self._dragged_page_ids: tuple[str, ...] = ()
         self._drag_page_start_y = 0
         self._drag_page_has_moved = False
+        self._drag_page_press_state = 0
         self._page_drop_indicator: ctk.CTkFrame | None = None
+        self._selected_page_ids: set[str] = set()
+        self._rendered_selected_page_ids: set[str] = set()
+        self._selection_anchor_id: str | None = None
+        self._selection_bar: ctk.CTkFrame | None = None
+        self._selection_label: ctk.CTkLabel | None = None
+        self._selection_duplicate_button: ctk.CTkButton | None = None
+        self._selection_delete_button: ctk.CTkButton | None = None
         self._page_type_buttons: dict[str, ctk.CTkButton] = {}
         self._sequence_row_widgets: dict[str, dict[str, Any]] = {}
+        self._sequence_row_signatures: dict[str, tuple[Any, ...]] = {}
         self._sequence_empty_label: ctk.CTkLabel | None = None
         self._preview_body: ctk.CTkFrame | None = None
         self._preview_nav: ctk.CTkFrame | None = None
@@ -322,17 +333,21 @@ class MockupView:
         self._ribbon_groups_panel: ctk.CTkFrame | None = None
         self._ribbon_types_panel: ctk.CTkFrame | None = None
         self._drag_group_start_y = 0
+        self._shortcut_manager = None
 
     # ==========================================================
     # Affichage principal
     # ==========================================================
 
     def show(self) -> None:
+        self._deactivate_global_shortcuts()
         self._clear_parent()
 
         # Les références aux widgets appartiennent à l'écran courant.
         self._page_type_buttons.clear()
         self._sequence_row_widgets.clear()
+        self._sequence_row_signatures.clear()
+        self._rendered_selected_page_ids.clear()
         self._sequence_empty_label = None
 
         self._root = ctk.CTkFrame(
@@ -343,6 +358,8 @@ class MockupView:
         self._root.pack(fill="both", expand=True)
         self._root.grid_columnconfigure(0, weight=1)
         self._root.grid_rowconfigure(2, weight=1)
+        self._root.bind("<Destroy>", self._on_root_destroyed, add="+")
+        self._activate_global_shortcuts()
 
         self._create_header(self._root).grid(
             row=0,
@@ -832,14 +849,22 @@ class MockupView:
         self._refresh_ribbon()
 
     def _refresh_ribbon(self) -> None:
-        """Reconstruit uniquement le ruban, sans fermer toute la page."""
+        """Remplace le ruban en une seule bascule visuelle."""
         self._hide_group_drop_indicator()
         if self._root is None or not self._root.winfo_exists():
             return
 
         old_ribbon = self._ribbon_frame
-        self._ribbon_frame = self._create_ribbon(self._root)
-        self._ribbon_frame.grid(
+        new_ribbon = self._create_ribbon(self._root)
+
+        if old_ribbon is not None:
+            try:
+                old_ribbon.grid_remove()
+            except Exception:
+                pass
+
+        self._ribbon_frame = new_ribbon
+        new_ribbon.grid(
             row=1,
             column=0,
             sticky="ew",
@@ -849,9 +874,12 @@ class MockupView:
 
         if old_ribbon is not None:
             try:
-                old_ribbon.destroy()
+                self._root.after_idle(old_ribbon.destroy)
             except Exception:
-                pass
+                try:
+                    old_ribbon.destroy()
+                except Exception:
+                    pass
 
     # ==========================================================
     # Déplacement des groupes personnalisés
@@ -2152,7 +2180,7 @@ class MockupView:
             border_color=self.BORDER,
         )
         panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(1, weight=1)
+        panel.grid_rowconfigure(2, weight=1)
 
         title_row = ctk.CTkFrame(panel, fg_color="transparent", height=32)
         title_row.grid(row=0, column=0, sticky="ew", padx=10, pady=(4, 3))
@@ -2182,13 +2210,103 @@ class MockupView:
         )
         self._summary_label.grid(row=0, column=2, sticky="e")
 
+        self._selection_bar = ctk.CTkFrame(
+            panel,
+            height=30,
+            fg_color="#EAF1F7",
+            corner_radius=6,
+            border_width=1,
+            border_color="#C9D8E6",
+        )
+        self._selection_bar.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=7,
+            pady=(0, 5),
+        )
+        self._selection_bar.grid_columnconfigure(0, weight=1)
+        self._selection_bar.grid_propagate(False)
+
+        self._selection_label = ctk.CTkLabel(
+            self._selection_bar,
+            text="",
+            font=Fonts.SMALL,
+            text_color=self.INK,
+            anchor="w",
+        )
+        self._selection_label.grid(row=0, column=0, sticky="w", padx=(9, 6))
+
+        self._selection_duplicate_button = ctk.CTkButton(
+            self._selection_bar,
+            text="Dupliquer",
+            width=76,
+            height=22,
+            corner_radius=5,
+            fg_color=self.GROUP_BG,
+            hover_color=self.ACCENT_SOFT,
+            text_color=self.INK,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=self._duplicate_selected_pages,
+        )
+        self._selection_duplicate_button.grid(
+            row=0,
+            column=1,
+            padx=2,
+            pady=3,
+        )
+
+        self._selection_delete_button = ctk.CTkButton(
+            self._selection_bar,
+            text="Supprimer",
+            width=76,
+            height=22,
+            corner_radius=5,
+            fg_color=self.GROUP_BG,
+            hover_color="#F3E4E1",
+            text_color=self.DANGER,
+            border_width=1,
+            border_color="#E0B9B0",
+            font=Fonts.SMALL,
+            command=self._delete_selected_pages,
+        )
+        self._selection_delete_button.grid(
+            row=0,
+            column=2,
+            padx=2,
+            pady=3,
+        )
+
+        ctk.CTkButton(
+            self._selection_bar,
+            text="×",
+            width=24,
+            height=22,
+            corner_radius=5,
+            fg_color=self.GROUP_BG,
+            hover_color=Colors.BUTTON_HOVER,
+            text_color=self.TEXT_MUTED,
+            border_width=1,
+            border_color=self.BORDER,
+            font=Fonts.SMALL,
+            command=self._clear_page_selection,
+        ).grid(row=0, column=3, padx=(2, 5), pady=3)
+
+        self._selection_label.configure(
+            text="Clique : sélectionner · Ctrl : ajouter · Maj : plage"
+        )
+        self._selection_duplicate_button.configure(state="disabled")
+        self._selection_delete_button.configure(state="disabled")
+
         self._sequence_frame = ctk.CTkScrollableFrame(
             panel,
             fg_color=self.RIBBON_BG,
             corner_radius=6,
         )
         self._sequence_frame.grid(
-            row=1,
+            row=2,
             column=0,
             sticky="nsew",
             padx=7,
@@ -2206,12 +2324,15 @@ class MockupView:
 
         items = self._items()
         active_ids = {str(item.get("id", "")) for item in items}
+        self._sanitize_page_selection(active_ids)
 
         # Retire uniquement les lignes réellement supprimées.
         for item_id in list(self._sequence_row_widgets):
             if item_id in active_ids:
                 continue
             record = self._sequence_row_widgets.pop(item_id)
+            self._sequence_row_signatures.pop(item_id, None)
+            self._rendered_selected_page_ids.discard(item_id)
             try:
                 record["row"].destroy()
             except Exception:
@@ -2253,18 +2374,36 @@ class MockupView:
                         padx=4,
                         pady=3,
                     )
+                    self._sequence_row_widgets[item_id]["grid_index"] = index
                 else:
-                    self._update_sequence_row(item, index, total)
-                    self._sequence_row_widgets[item_id]["row"].grid_configure(
-                        row=index,
-                        column=0,
-                        sticky="ew",
-                        padx=4,
-                        pady=3,
+                    signature = self._sequence_row_signature(
+                        item,
+                        index,
+                        total,
                     )
+                    if (
+                        self._sequence_row_signatures.get(item_id)
+                        != signature
+                    ):
+                        self._update_sequence_row(item, index, total)
 
+                    record = self._sequence_row_widgets[item_id]
+                    if record.get("grid_index") != index:
+                        record["row"].grid_configure(
+                            row=index,
+                            column=0,
+                            sticky="ew",
+                            padx=4,
+                            pady=3,
+                        )
+                        record["grid_index"] = index
+
+        self._rendered_selected_page_ids = set(
+            self._selected_page_ids
+        )
         self._update_summary()
         self._update_page_type_button_states()
+        self._update_selection_controls()
 
     def _create_sequence_row(
         self,
@@ -2413,6 +2552,7 @@ class MockupView:
             "done_var": done_var,
             "done_check": done_check,
             "delete_button": delete_button,
+            "grid_index": index,
         }
 
         self._bind_sequence_page_drag(
@@ -2449,25 +2589,27 @@ class MockupView:
             return
 
         current_item = self._items()[index]
-        page_type = str(current_item.get("type", ""))
         if bool(current_item.get("automatic_recto_verso", False)):
             return
+
+        self._drag_page_press_state = int(getattr(event, "state", 0) or 0)
+        self._update_page_selection_from_event(item_id, event)
+
+        page_type = str(current_item.get("type", ""))
         if self._is_locked_structural_type(page_type):
+            self._dragged_page_id = None
+            self._dragged_page_ids = ()
             return
 
+        movable_ids = self._selected_movable_page_ids()
+        if item_id not in movable_ids:
+            movable_ids = (item_id,)
+
         self._dragged_page_id = item_id
+        self._dragged_page_ids = movable_ids
         self._drag_page_start_y = int(getattr(event, "y_root", 0))
         self._drag_page_has_moved = False
-
-        record = self._sequence_row_widgets.get(item_id)
-        if record is not None:
-            try:
-                record["row"].configure(
-                    border_color=self.ACCENT,
-                    border_width=2,
-                )
-            except Exception:
-                pass
+        self._refresh_selection_visuals()
 
     def _continue_page_drag(self, event) -> None:
         item_id = self._dragged_page_id
@@ -2484,8 +2626,10 @@ class MockupView:
     def _finish_page_drag(self, event) -> None:
         item_id = self._dragged_page_id
         moved = self._drag_page_has_moved
+        press_state = self._drag_page_press_state
         self._dragged_page_id = None
         self._drag_page_has_moved = False
+        self._drag_page_press_state = 0
         self._hide_page_drop_indicator()
 
         if item_id is None:
@@ -2495,35 +2639,41 @@ class MockupView:
             pointer_y = int(getattr(event, "y_root", self._drag_page_start_y))
             self._place_page_at_pointer(item_id, pointer_y)
         else:
-            self._refresh_sequence()
+            self._dragged_page_ids = ()
+            if not (press_state & 0x0001) and not (press_state & 0x0004):
+                if item_id in self._selected_page_ids and len(self._selected_page_ids) > 1:
+                    self._selected_page_ids = {item_id}
+                    self._selection_anchor_id = item_id
+            self._refresh_selection_visuals()
+            self._update_selection_controls()
 
     def _page_drop_plan(
         self,
         item_id: str,
         pointer_y: int,
-    ) -> tuple[dict[str, Any], list[dict[str, Any]], int] | None:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int] | None:
         items = self._items()
-        dragged = next(
-            (
-                item
-                for item in items
-                if str(item.get("id", "")) == item_id
-            ),
-            None,
-        )
-        if dragged is None:
+        dragged_ids = set(self._dragged_page_ids or (item_id,))
+        dragged_items = [
+            item
+            for item in items
+            if str(item.get("id", "")) in dragged_ids
+            and not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        ]
+        if not dragged_items:
             return None
 
-        page_type = str(dragged.get("type", ""))
-        if bool(dragged.get("automatic_recto_verso", False)):
-            return None
-        if self._is_locked_structural_type(page_type):
-            return None
-
+        dragged_ids = {
+            str(item.get("id", ""))
+            for item in dragged_items
+        }
         remaining_regular = [
             item
             for item in items
-            if str(item.get("id", "")) != item_id
+            if str(item.get("id", "")) not in dragged_ids
             and not bool(item.get("automatic_recto_verso", False))
             and not self._is_locked_structural_type(
                 str(item.get("type", ""))
@@ -2545,7 +2695,7 @@ class MockupView:
                 insertion_index = position
                 break
 
-        return dragged, remaining_regular, insertion_index
+        return dragged_items, remaining_regular, insertion_index
 
     def _show_page_drop_indicator(
         self,
@@ -2559,7 +2709,7 @@ class MockupView:
             self._hide_page_drop_indicator()
             return
 
-        _, remaining_regular, insertion_index = plan
+        dragged_items, remaining_regular, insertion_index = plan
         items = self._items()
 
         previous_item = None
@@ -2570,7 +2720,9 @@ class MockupView:
             start_items = [
                 item
                 for item in items
-                if str(item.get("id", "")) != item_id
+                if str(item.get("id", "")) not in {
+                    str(dragged.get("id", "")) for dragged in dragged_items
+                }
                 and str(item.get("type", "")) in self.START_STRUCTURAL_TYPES
             ]
             if start_items:
@@ -2582,7 +2734,9 @@ class MockupView:
             end_items = [
                 item
                 for item in items
-                if str(item.get("id", "")) != item_id
+                if str(item.get("id", "")) not in {
+                    str(dragged.get("id", "")) for dragged in dragged_items
+                }
                 and str(item.get("type", "")) in self.END_STRUCTURAL_TYPES
             ]
             if end_items:
@@ -2598,10 +2752,28 @@ class MockupView:
         next_record = self._sequence_row_widgets.get(
             str(next_item.get("id", ""))
         )
-        source_record = self._sequence_row_widgets.get(item_id)
+        source_rows = []
+        for dragged_item in dragged_items:
+            source_record = self._sequence_row_widgets.get(
+                str(dragged_item.get("id", ""))
+            )
+            if source_record is not None and source_record.get("row") is not None:
+                source_rows.append(source_record["row"])
         previous_row = previous_record.get("row") if previous_record else None
         next_row = next_record.get("row") if next_record else None
-        source_row = source_record.get("row") if source_record else None
+        source_row = None
+        if source_rows:
+            try:
+                source_row = min(
+                    source_rows,
+                    key=lambda candidate: abs(
+                        candidate.winfo_rooty()
+                        + candidate.winfo_height() / 2
+                        - pointer_y
+                    ),
+                )
+            except Exception:
+                source_row = source_rows[0]
         if previous_row is None or next_row is None:
             self._hide_page_drop_indicator()
             return
@@ -2688,26 +2860,29 @@ class MockupView:
                 pass
 
     def _place_page_at_pointer(self, item_id: str, pointer_y: int) -> None:
-        """Place une page ordinaire à l'endroit vertical indiqué."""
+        """Place une ou plusieurs pages ordinaires à l'endroit indiqué."""
         items = self._items()
         plan = self._page_drop_plan(item_id, pointer_y)
         if plan is None:
+            self._dragged_page_ids = ()
             self._refresh_sequence()
             return
 
-        dragged, remaining_regular, insertion_index = plan
+        dragged_items, remaining_regular, insertion_index = plan
         old_regular_order = [
             str(item.get("id", ""))
             for item in items
-            if not self._is_locked_structural_type(
+            if not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
                 str(item.get("type", ""))
             )
         ]
-        remaining_regular.insert(insertion_index, dragged)
+        remaining_regular[insertion_index:insertion_index] = dragged_items
         new_regular_order = [
             str(item.get("id", ""))
             for item in remaining_regular
         ]
+        self._dragged_page_ids = ()
         if new_regular_order == old_regular_order:
             self._refresh_sequence()
             return
@@ -2744,9 +2919,7 @@ class MockupView:
         automatic_blank = bool(item.get("automatic_recto_verso", False))
         accent = str(definition.get("accent", self.INK))
 
-        record["row"].configure(
-            border_color=self.DONE if done else self.BORDER,
-        )
+        self._update_sequence_row_selection(item)
         record["thumbnail"].configure(
             fg_color=str(definition.get("color", self.GROUP_BG)),
             border_color=accent,
@@ -2803,6 +2976,293 @@ class MockupView:
         record["delete_button"].configure(
             state="disabled" if automatic_blank or required else "normal",
         )
+        self._sequence_row_signatures[item_id] = (
+            self._sequence_row_signature(
+                item,
+                index,
+                total_items,
+            )
+        )
+
+    def _sequence_row_signature(
+        self,
+        item: dict[str, Any],
+        index: int,
+        total_items: int,
+    ) -> tuple[Any, ...]:
+        """État utile d'une ligne, hors simple surbrillance de sélection."""
+        definition = self._definition_for(
+            item.get("type", "inconnu")
+        )
+        return (
+            str(item.get("type", "")),
+            str(item.get("title", "")),
+            max(1, int(item.get("count", 1))),
+            bool(item.get("done", False)),
+            bool(item.get("automatic_recto_verso", False)),
+            str(item.get("recto_position", "")),
+            str(definition.get("title", "")),
+            str(definition.get("symbol", "")),
+            str(definition.get("color", "")),
+            str(definition.get("accent", "")),
+            bool(definition.get("single", False)),
+            bool(definition.get("required", False)),
+            index,
+            total_items,
+        )
+
+    def _update_sequence_row_selection(
+        self,
+        item: dict[str, Any],
+    ) -> None:
+        """Met à jour uniquement le fond et le contour de sélection."""
+        item_id = str(item.get("id", ""))
+        record = self._sequence_row_widgets.get(item_id)
+        if record is None:
+            return
+
+        selected = item_id in self._selected_page_ids
+        done = bool(item.get("done", False))
+        record["row"].configure(
+            fg_color="#EEF4FA" if selected else self.CARD_BG,
+            border_color=(
+                self.ACCENT
+                if selected
+                else self.DONE if done else self.BORDER
+            ),
+            border_width=2 if selected else 1,
+        )
+
+    def _selectable_page_ids(self) -> tuple[str, ...]:
+        return tuple(
+            str(item.get("id", ""))
+            for item in self._items()
+            if str(item.get("id", ""))
+            and not bool(item.get("automatic_recto_verso", False))
+        )
+
+    def _sanitize_page_selection(self, active_ids: set[str] | None = None) -> None:
+        valid_ids = active_ids if active_ids is not None else {
+            str(item.get("id", "")) for item in self._items()
+        }
+        self._selected_page_ids.intersection_update(valid_ids)
+        if self._selection_anchor_id not in valid_ids:
+            self._selection_anchor_id = None
+
+    def _update_page_selection_from_event(self, item_id: str, event) -> None:
+        selectable_ids = self._selectable_page_ids()
+        if item_id not in selectable_ids:
+            return
+
+        state = int(getattr(event, "state", 0) or 0)
+        shift_pressed = bool(state & 0x0001)
+        control_pressed = bool(state & 0x0004)
+
+        if shift_pressed and self._selection_anchor_id in selectable_ids:
+            anchor_index = selectable_ids.index(self._selection_anchor_id)
+            current_index = selectable_ids.index(item_id)
+            start = min(anchor_index, current_index)
+            end = max(anchor_index, current_index) + 1
+            range_ids = set(selectable_ids[start:end])
+            if control_pressed:
+                self._selected_page_ids.update(range_ids)
+            else:
+                self._selected_page_ids = range_ids
+        elif control_pressed:
+            if item_id in self._selected_page_ids:
+                self._selected_page_ids.remove(item_id)
+                if self._selection_anchor_id == item_id:
+                    self._selection_anchor_id = None
+            else:
+                self._selected_page_ids.add(item_id)
+                self._selection_anchor_id = item_id
+        elif item_id not in self._selected_page_ids:
+            self._selected_page_ids = {item_id}
+            self._selection_anchor_id = item_id
+        elif len(self._selected_page_ids) == 1:
+            self._selection_anchor_id = item_id
+
+        self._refresh_selection_visuals()
+        self._update_selection_controls()
+
+    def _refresh_selection_visuals(self) -> None:
+        current_ids = set(self._selected_page_ids)
+        changed_ids = (
+            current_ids
+            ^ self._rendered_selected_page_ids
+        )
+        if not changed_ids:
+            return
+
+        items_by_id = {
+            str(item.get("id", "")): item
+            for item in self._items()
+        }
+        for item_id in changed_ids:
+            item = items_by_id.get(item_id)
+            if item is not None:
+                self._update_sequence_row_selection(item)
+
+        self._rendered_selected_page_ids = current_ids
+
+    def _selected_items(self) -> list[dict[str, Any]]:
+        return [
+            item
+            for item in self._items()
+            if str(item.get("id", "")) in self._selected_page_ids
+        ]
+
+    def _selected_movable_page_ids(self) -> tuple[str, ...]:
+        return tuple(
+            str(item.get("id", ""))
+            for item in self._selected_items()
+            if not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        )
+
+    def _selected_duplicable_items(self) -> list[dict[str, Any]]:
+        duplicable: list[dict[str, Any]] = []
+        for item in self._selected_items():
+            definition = self._definition_for(str(item.get("type", "")))
+            if bool(item.get("automatic_recto_verso", False)):
+                continue
+            if bool(definition.get("single", False)):
+                continue
+            if self._is_locked_structural_type(str(item.get("type", ""))):
+                continue
+            duplicable.append(item)
+        return duplicable
+
+    def _selected_deletable_ids(self) -> set[str]:
+        deletable: set[str] = set()
+        for item in self._selected_items():
+            definition = self._definition_for(str(item.get("type", "")))
+            if bool(item.get("automatic_recto_verso", False)):
+                continue
+            if bool(definition.get("required", False)):
+                continue
+            deletable.add(str(item.get("id", "")))
+        return deletable
+
+    def _update_selection_controls(self) -> None:
+        if self._selection_bar is None:
+            return
+
+        count = len(self._selected_page_ids)
+        if count == 0:
+            if self._selection_label is not None:
+                self._selection_label.configure(
+                    text=(
+                        "Clique : sélectionner · Ctrl : ajouter · "
+                        "Maj : plage · Ctrl+A : tout"
+                    )
+                )
+            if self._selection_duplicate_button is not None:
+                self._selection_duplicate_button.configure(state="disabled")
+            if self._selection_delete_button is not None:
+                self._selection_delete_button.configure(state="disabled")
+            return
+
+        duplicable_count = len(self._selected_duplicable_items())
+        deletable_count = len(self._selected_deletable_ids())
+
+        if self._selection_label is not None:
+            self._selection_label.configure(
+                text=(
+                    f"{count} page{'s' if count != 1 else ''} sélectionnée"
+                    f"{'s' if count != 1 else ''}"
+                )
+            )
+        if self._selection_duplicate_button is not None:
+            self._selection_duplicate_button.configure(
+                state="normal" if duplicable_count else "disabled"
+            )
+        if self._selection_delete_button is not None:
+            self._selection_delete_button.configure(
+                state="normal" if deletable_count else "disabled"
+            )
+
+    def _clear_page_selection(self) -> None:
+        if not self._selected_page_ids:
+            return
+        self._selected_page_ids.clear()
+        self._selection_anchor_id = None
+        self._refresh_selection_visuals()
+        self._update_selection_controls()
+
+    def _select_all_movable_pages(self) -> None:
+        """Sélectionne toutes les pages réellement déplaçables."""
+        movable_ids = tuple(
+            str(item.get("id", ""))
+            for item in self._items()
+            if str(item.get("id", ""))
+            and not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+        )
+
+        new_selection = set(movable_ids)
+        if new_selection == self._selected_page_ids:
+            return
+
+        self._selected_page_ids = new_selection
+        self._selection_anchor_id = movable_ids[0] if movable_ids else None
+        self._refresh_selection_visuals()
+        self._update_selection_controls()
+
+    def _duplicate_selected_pages(self) -> None:
+        duplicable_ids = {
+            str(item.get("id", ""))
+            for item in self._selected_duplicable_items()
+        }
+        if not duplicable_ids:
+            return
+
+        self._record_history()
+        rebuilt: list[dict[str, Any]] = []
+        duplicate_ids: list[str] = []
+        for item in self._items():
+            rebuilt.append(item)
+            if str(item.get("id", "")) not in duplicable_ids:
+                continue
+
+            duplicate = deepcopy(item)
+            duplicate_id = f"MAQUETTE-{uuid4().hex[:12].upper()}"
+            duplicate["id"] = duplicate_id
+            duplicate["done"] = False
+            duplicate.pop("automatic_recto_verso", None)
+            duplicate.pop("recto_target_id", None)
+            duplicate.pop("recto_position", None)
+            rebuilt.append(duplicate)
+            duplicate_ids.append(duplicate_id)
+
+        self._items()[:] = rebuilt
+        self._selected_page_ids = set(duplicate_ids)
+        self._selection_anchor_id = duplicate_ids[0] if duplicate_ids else None
+        self._enforce_structural_order()
+        self._save_data()
+        self._refresh_sequence()
+
+    def _delete_selected_pages(self) -> None:
+        deletable_ids = self._selected_deletable_ids()
+        if not deletable_ids:
+            return
+
+        self._record_history()
+        self._items()[:] = [
+            item
+            for item in self._items()
+            if str(item.get("id", "")) not in deletable_ids
+        ]
+        self._selected_page_ids.difference_update(deletable_ids)
+        if self._selection_anchor_id in deletable_ids:
+            self._selection_anchor_id = None
+        self._enforce_structural_order()
+        self._save_data()
+        self._refresh_sequence()
 
     def _small_button(
         self,
@@ -4311,6 +4771,69 @@ class MockupView:
 
 
     # ==========================================================
+    # Raccourcis clavier globaux
+    # ==========================================================
+
+    def _activate_global_shortcuts(self) -> None:
+        """Raccorde le Maquettage au gestionnaire général de PageMaître."""
+        if self._root is None:
+            return
+
+        manager = get_global_shortcut_manager(self.parent)
+        self._shortcut_manager = manager
+        if manager is None:
+            return
+
+        manager.activate(
+            owner=self._root,
+            undo=self._undo_from_global_shortcut,
+            redo=self._redo_from_global_shortcut,
+            select_all=self._select_all_from_global_shortcut,
+            name="Maquettage",
+        )
+
+    def _deactivate_global_shortcuts(self) -> None:
+        """Retire uniquement le contexte appartenant à cet écran."""
+        manager = self._shortcut_manager
+        root = self._root
+
+        if manager is not None and root is not None:
+            manager.deactivate(root)
+
+        self._shortcut_manager = None
+
+    def _on_root_destroyed(self, event) -> None:
+        if getattr(event, "widget", None) is self._root:
+            self._deactivate_global_shortcuts()
+
+    def _undo_from_global_shortcut(self) -> bool:
+        if not self._undo_stack:
+            return False
+        self._undo()
+        return True
+
+    def _redo_from_global_shortcut(self) -> bool:
+        if not self._redo_stack:
+            return False
+        self._redo()
+        return True
+
+    def _select_all_from_global_shortcut(self) -> bool:
+        movable_exists = any(
+            str(item.get("id", ""))
+            and not bool(item.get("automatic_recto_verso", False))
+            and not self._is_locked_structural_type(
+                str(item.get("type", ""))
+            )
+            for item in self._items()
+        )
+        if not movable_exists:
+            return False
+
+        self._select_all_movable_pages()
+        return True
+
+    # ==========================================================
     # Historique Annuler / Rétablir
     # ==========================================================
 
@@ -4322,6 +4845,21 @@ class MockupView:
         self._redo_stack.clear()
         self._update_history_buttons()
 
+    @staticmethod
+    def _ribbon_state_signature(
+        data: dict[str, Any],
+    ) -> str:
+        """Détecte si l'historique exige réellement de reconstruire le ruban."""
+        return json.dumps(
+            {
+                "groups": data.get("groups", []),
+                "page_types": data.get("page_types", []),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
     def _undo(self) -> None:
         if not self._undo_stack:
             return
@@ -4329,11 +4867,23 @@ class MockupView:
         self._close_manage_dialog()
         self._close_recto_verso_dialog()
         self._close_preview()
-        self._redo_stack.append(deepcopy(self.data))
-        self.data = self._undo_stack.pop()
+
+        current_data = self.data
+        restored_data = self._undo_stack.pop()
+        ribbon_changed = (
+            self._ribbon_state_signature(current_data)
+            != self._ribbon_state_signature(restored_data)
+        )
+
+        self._redo_stack.append(deepcopy(current_data))
+        self.data = restored_data
+        self._selected_page_ids.clear()
+        self._selection_anchor_id = None
         self._enforce_structural_order()
         self._save_data()
-        self._refresh_ribbon()
+
+        if ribbon_changed:
+            self._refresh_ribbon()
         self._refresh_sequence()
         self._update_history_buttons()
 
@@ -4344,11 +4894,23 @@ class MockupView:
         self._close_manage_dialog()
         self._close_recto_verso_dialog()
         self._close_preview()
-        self._undo_stack.append(deepcopy(self.data))
-        self.data = self._redo_stack.pop()
+
+        current_data = self.data
+        restored_data = self._redo_stack.pop()
+        ribbon_changed = (
+            self._ribbon_state_signature(current_data)
+            != self._ribbon_state_signature(restored_data)
+        )
+
+        self._undo_stack.append(deepcopy(current_data))
+        self.data = restored_data
+        self._selected_page_ids.clear()
+        self._selection_anchor_id = None
         self._enforce_structural_order()
         self._save_data()
-        self._refresh_ribbon()
+
+        if ribbon_changed:
+            self._refresh_ribbon()
         self._refresh_sequence()
         self._update_history_buttons()
 
@@ -4478,8 +5040,12 @@ class MockupView:
         if bool(definition.get("required", False)):
             return
 
+        removed_id = str(items[index].get("id", ""))
         self._record_history()
         del items[index]
+        self._selected_page_ids.discard(removed_id)
+        if self._selection_anchor_id == removed_id:
+            self._selection_anchor_id = None
         self._enforce_structural_order()
         self._save_data()
         self._refresh_sequence()
@@ -4488,6 +5054,7 @@ class MockupView:
         self._close_manage_dialog()
         self._close_recto_verso_dialog()
         self._close_preview()
+        self._deactivate_global_shortcuts()
         if self.on_back is not None:
             self.on_back()
 

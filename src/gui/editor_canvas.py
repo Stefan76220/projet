@@ -16,6 +16,7 @@ from src.engine.foundation import Point, Rect, Size
 from src.engine.graphics import Rectangle
 from src.engine.page_format import A5
 from src.gui.renderer.canvas_renderer import CanvasRenderer
+from src.gui.shortcut_manager import get_global_shortcut_manager
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,8 +157,6 @@ class EditorCanvas(CTkCanvas):
         self._undo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
         self._redo_history: list[tuple[list[CanvasObject], int | None, set[int], Any]] = []
         self._history_limit = 250
-        self._history_window: tk.Misc | None = None
-        self._history_window_bindings: dict[str, str] = {}
         self._interaction_history_state: (
             tuple[list[CanvasObject], int | None, set[int], Any] | None
         ) = None
@@ -271,7 +270,12 @@ class EditorCanvas(CTkCanvas):
             self._bind_escape_to_window,
         )
         self.after_idle(
-            self._bind_history_shortcuts_to_window,
+            self._activate_global_shortcuts,
+        )
+        self.bind(
+            "<Map>",
+            self._on_canvas_mapped,
+            add="+",
         )
         self.bind(
             "<Destroy>",
@@ -313,42 +317,6 @@ class EditorCanvas(CTkCanvas):
             self._delete_selection,
         )
         self.bind(
-            "<Control-z>",
-            self._undo_last_action,
-        )
-        self.bind(
-            "<Control-Z>",
-            self._undo_last_action,
-        )
-        self.bind(
-            "<Control-y>",
-            self._redo_last_action,
-        )
-        self.bind(
-            "<Control-Y>",
-            self._redo_last_action,
-        )
-        self.bind(
-            "<Control-Shift-z>",
-            self._redo_last_action,
-        )
-        self.bind(
-            "<Control-Shift-Z>",
-            self._redo_last_action,
-        )
-
-        self.bind_all(
-            "<Control-a>",
-            self._select_all_objects,
-            add="+",
-        )
-        self.bind_all(
-            "<Control-A>",
-            self._select_all_objects,
-            add="+",
-        )
-
-        self.bind(
             "<Control-l>",
             self._toggle_selection_lock,
         )
@@ -381,82 +349,38 @@ class EditorCanvas(CTkCanvas):
             add="+",
         )
 
-    def _bind_history_shortcuts_to_window(self) -> None:
-        """Rend Annuler/Rétablir disponibles dans tout l'Atelier.
+    def _activate_global_shortcuts(self) -> None:
+        """Raccorde l’éditeur de page au gestionnaire général."""
 
-        La liaison globale couvre aussi les fenêtres flottantes de réglage du
-        fond, tout en laissant le champ de texte intégré gérer son historique
-        propre lorsqu'il est en cours d'édition.
-        """
-
-        if self._history_window_bindings:
+        manager = get_global_shortcut_manager(self)
+        if manager is None:
             return
 
-        bindings = {
-            "<Control-z>": self._undo_from_window,
-            "<Control-Z>": self._undo_from_window,
-            "<Control-y>": self._redo_from_window,
-            "<Control-Y>": self._redo_from_window,
-            "<Control-Shift-z>": self._redo_from_window,
-            "<Control-Shift-Z>": self._redo_from_window,
-        }
+        manager.activate(
+            owner=self,
+            undo=self.undo,
+            redo=self.redo,
+            select_all=self._select_all_from_global_shortcut,
+            name="Éditeur de page",
+        )
 
-        for sequence, callback in bindings.items():
-            try:
-                binding_id = self.bind_all(
-                    sequence,
-                    callback,
-                    add="+",
-                )
-            except tk.TclError:
-                binding_id = None
+    def _on_canvas_mapped(self, event=None) -> None:
+        """Réactive les commandes lorsque l’éditeur redevient visible."""
 
-            if binding_id:
-                self._history_window_bindings[sequence] = binding_id
+        if event is not None and event.widget is not self:
+            return
 
-    def _unbind_history_shortcuts_from_window(self) -> None:
-        for sequence, binding_id in tuple(
-            self._history_window_bindings.items()
-        ):
-            try:
-                self._root()._unbind(
-                    ("bind", "all", sequence),
-                    binding_id,
-                )
-            except (
-                tk.TclError,
-                AttributeError,
-                TypeError,
-            ):
-                pass
-
-        self._history_window_bindings.clear()
-        self._history_window = None
+        self.after_idle(
+            self._activate_global_shortcuts,
+        )
 
     def _on_canvas_destroy(self, event=None) -> None:
         if event is not None and event.widget is not self:
             return
-        self._unbind_history_shortcuts_from_window()
 
-    def _undo_from_window(self, event=None) -> str | None:
-        # Le champ de texte intégré possède son propre historique pendant
-        # l'édition. Après validation, Ctrl+Z revient à l'historique de page.
-        if self._text_editor is not None:
-            try:
-                if event is not None and event.widget is self._text_editor:
-                    return None
-            except tk.TclError:
-                pass
-        return self._undo_last_action(event)
-
-    def _redo_from_window(self, event=None) -> str | None:
-        if self._text_editor is not None:
-            try:
-                if event is not None and event.widget is self._text_editor:
-                    return None
-            except tk.TclError:
-                pass
-        return self._redo_last_action(event)
+        manager = get_global_shortcut_manager(self)
+        if manager is not None:
+            manager.deactivate(self)
 
     def _clear_reference_state(
         self,
@@ -2441,6 +2365,15 @@ class EditorCanvas(CTkCanvas):
         )
 
         return "break"
+
+    def _select_all_from_global_shortcut(self) -> bool:
+        """Sélectionne tous les objets depuis la commande générale."""
+
+        if self._text_editor is not None or not self._objects:
+            return False
+
+        self._select_all_objects()
+        return True
 
     def _select_all_objects(
         self,

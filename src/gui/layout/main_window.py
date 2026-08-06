@@ -4,6 +4,7 @@ import customtkinter as ctk
 
 from src.gui.menu_bar import MenuBar
 from src.gui.navigation import Navigation
+from src.gui.shortcut_manager import GlobalShortcutManager
 from src.gui.workspace import Workspace
 
 
@@ -17,6 +18,9 @@ class MainWindow:
         self.application = application
 
         self.root = ctk.CTk()
+        self.shortcut_manager = GlobalShortcutManager(
+            self.root,
+        )
 
         self._configure_window()
         self._configure_grid()
@@ -30,6 +34,10 @@ class MainWindow:
 
         self.root.title("Générateur de livres")
         self.root.geometry("1400x900")
+        self.root.protocol(
+            "WM_DELETE_WINDOW",
+            self.close,
+        )
 
     def _configure_grid(self) -> None:
 
@@ -72,6 +80,11 @@ class MainWindow:
     def run(self) -> None:
 
         self.root.mainloop()
+
+    def close(self) -> None:
+
+        self.shortcut_manager.close()
+        self.root.destroy()
 
     # ==========================================================
     # Utilitaires
