@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import tkinter as tk
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -307,6 +308,10 @@ class MockupView:
         self._sequence_row_widgets: dict[str, dict[str, Any]] = {}
         self._sequence_row_signatures: dict[str, tuple[Any, ...]] = {}
         self._sequence_empty_label: ctk.CTkLabel | None = None
+        self._page_type_button_states: dict[str, str] = {}
+        self._selection_controls_cache: tuple[int, int, int] | None = None
+        self._summary_text_cache: str | None = None
+        self._progress_text_cache: str | None = None
         self._preview_body: ctk.CTkFrame | None = None
         self._preview_nav: ctk.CTkFrame | None = None
         self._preview_position_label: ctk.CTkLabel | None = None
@@ -345,6 +350,10 @@ class MockupView:
 
         # Les références aux widgets appartiennent à l'écran courant.
         self._page_type_buttons.clear()
+        self._page_type_button_states.clear()
+        self._selection_controls_cache = None
+        self._summary_text_cache = None
+        self._progress_text_cache = None
         self._sequence_row_widgets.clear()
         self._sequence_row_signatures.clear()
         self._rendered_selected_page_ids.clear()
@@ -433,6 +442,7 @@ class MockupView:
         largeur disponible est réellement insuffisante.
         """
         self._page_type_buttons.clear()
+        self._page_type_button_states.clear()
         self._ribbon_group_widgets.clear()
         self._ribbon_types_panel = None
 
@@ -2411,130 +2421,147 @@ class MockupView:
         item: dict[str, Any],
         index: int,
         total_items: int,
-    ) -> ctk.CTkFrame:
+    ) -> tk.Frame:
+        """Crée une ligne légère avec les widgets Tk natifs.
+
+        Les lignes du chemin de fer sont nombreuses. Les contrôles natifs
+        évitent les centaines de tracés arrondis générés par CustomTkinter
+        à chaque ouverture et à chaque actualisation.
+        """
         item_id = str(item.get("id", ""))
         definition = self._definition_for(item.get("type", "inconnu"))
         accent = str(definition.get("accent", self.INK))
 
-        row = ctk.CTkFrame(
+        row = tk.Frame(
             parent,
             height=54,
-            fg_color=self.CARD_BG,
-            corner_radius=7,
-            border_width=1,
-            border_color=self.BORDER,
+            background=self.CARD_BG,
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=self.BORDER,
+            highlightcolor=self.BORDER,
         )
         row.grid_columnconfigure(1, weight=1)
         row.grid_propagate(False)
 
-        thumbnail = ctk.CTkFrame(
+        thumbnail = tk.Frame(
             row,
             width=38,
             height=44,
-            fg_color=str(definition.get("color", self.GROUP_BG)),
-            corner_radius=5,
-            border_width=1,
-            border_color=accent,
+            background=str(definition.get("color", self.GROUP_BG)),
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=accent,
+            highlightcolor=accent,
         )
         thumbnail.grid(row=0, column=0, padx=(5, 7), pady=4)
         thumbnail.grid_propagate(False)
 
-        symbol_label = ctk.CTkLabel(
+        symbol_label = tk.Label(
             thumbnail,
             text=str(definition.get("symbol", "?")),
             font=(Fonts.FAMILY, 14, "bold"),
-            text_color=accent,
+            foreground=accent,
+            background=str(definition.get("color", self.GROUP_BG)),
+            borderwidth=0,
         )
         symbol_label.place(relx=0.5, rely=0.37, anchor="center")
 
-        count_badge = ctk.CTkLabel(
+        count_badge = tk.Label(
             thumbnail,
             text="1",
             font=(Fonts.FAMILY, 10),
-            text_color=self.INK,
+            foreground=self.INK,
+            background=str(definition.get("color", self.GROUP_BG)),
+            borderwidth=0,
         )
         count_badge.place(relx=0.5, rely=0.78, anchor="center")
 
-        title_label = ctk.CTkLabel(
+        title_label = tk.Label(
             row,
             text="",
             font=Fonts.NORMAL,
-            text_color=self.INK,
+            foreground=self.INK,
+            background=self.CARD_BG,
             anchor="w",
+            borderwidth=0,
         )
         title_label.grid(row=0, column=1, sticky="w", padx=(0, 8))
 
-        controls = ctk.CTkFrame(row, fg_color="transparent")
+        controls = tk.Frame(
+            row,
+            background=self.CARD_BG,
+            borderwidth=0,
+        )
         controls.grid(row=0, column=2, sticky="e", padx=(4, 5))
 
-        up_button = self._small_button(
+        up_button = self._sequence_button(
             controls,
             "↑",
             lambda current=item_id: self._move_item_by_id(current, -1),
         )
         up_button.grid(row=0, column=0, padx=1)
 
-        down_button = self._small_button(
+        down_button = self._sequence_button(
             controls,
             "↓",
             lambda current=item_id: self._move_item_by_id(current, 1),
         )
         down_button.grid(row=0, column=1, padx=1)
 
-        minus_button = self._small_button(
+        minus_button = self._sequence_button(
             controls,
             "−",
             lambda current=item_id: self._change_count_by_id(current, -1),
         )
         minus_button.grid(row=0, column=2, padx=(7, 1))
 
-        count_label = ctk.CTkLabel(
+        count_label = tk.Label(
             controls,
             text="1",
-            width=24,
+            width=3,
             font=Fonts.SMALL,
-            text_color=self.INK,
+            foreground=self.INK,
+            background=self.CARD_BG,
+            borderwidth=0,
         )
         count_label.grid(row=0, column=3)
 
-        plus_button = self._small_button(
+        plus_button = self._sequence_button(
             controls,
             "+",
             lambda current=item_id: self._change_count_by_id(current, 1),
         )
         plus_button.grid(row=0, column=4, padx=1)
 
-        done_var = ctk.BooleanVar(value=False)
-        done_check = ctk.CTkCheckBox(
+        done_var = tk.BooleanVar(master=row, value=False)
+        done_check = tk.Checkbutton(
             controls,
             text="Fait",
-            width=52,
-            checkbox_width=16,
-            checkbox_height=16,
             variable=done_var,
             font=Fonts.SMALL,
-            text_color=self.INK,
-            fg_color=self.CELADON,
-            hover_color=self.DONE,
+            foreground=self.INK,
+            background=self.CARD_BG,
+            activebackground=self.CARD_BG,
+            activeforeground=self.INK,
+            selectcolor=self.GROUP_BG,
+            highlightthickness=0,
+            borderwidth=0,
+            padx=3,
+            pady=0,
+            cursor="hand2",
             command=lambda current=item_id, variable=done_var: (
                 self._set_done_by_id(current, variable.get())
             ),
         )
         done_check.grid(row=0, column=5, padx=(7, 3))
 
-        delete_button = ctk.CTkButton(
+        delete_button = self._sequence_button(
             controls,
-            text="×",
-            width=24,
-            height=24,
-            corner_radius=6,
-            fg_color=self.GROUP_BG,
-            hover_color="#F3E4E1",
-            text_color=self.DANGER,
-            border_width=1,
-            border_color="#E0B9B0",
-            font=Fonts.NORMAL,
-            command=lambda current=item_id: self._remove_item_by_id(current),
+            "×",
+            lambda current=item_id: self._remove_item_by_id(current),
+            foreground=self.DANGER,
+            active_background="#F3E4E1",
         )
         delete_button.grid(row=0, column=6, padx=(3, 0))
 
@@ -2544,6 +2571,7 @@ class MockupView:
             "symbol_label": symbol_label,
             "count_badge": count_badge,
             "title_label": title_label,
+            "controls": controls,
             "up_button": up_button,
             "down_button": down_button,
             "minus_button": minus_button,
@@ -2553,6 +2581,8 @@ class MockupView:
             "done_check": done_check,
             "delete_button": delete_button,
             "grid_index": index,
+            "display_state": {},
+            "selection_state": None,
         }
 
         self._bind_sequence_page_drag(
@@ -2565,6 +2595,36 @@ class MockupView:
         )
         self._update_sequence_row(item, index, total_items)
         return row
+
+    def _sequence_button(
+        self,
+        parent,
+        text: str,
+        command,
+        *,
+        foreground: str | None = None,
+        active_background: str | None = None,
+    ) -> tk.Button:
+        return tk.Button(
+            parent,
+            text=text,
+            width=2,
+            height=1,
+            padx=0,
+            pady=0,
+            relief="flat",
+            borderwidth=1,
+            highlightthickness=0,
+            background=self.GROUP_BG,
+            activebackground=active_background or Colors.BUTTON_HOVER,
+            foreground=foreground or self.INK,
+            activeforeground=foreground or self.INK,
+            disabledforeground=self.TEXT_LIGHT,
+            font=Fonts.SMALL,
+            cursor="hand2",
+            takefocus=False,
+            command=command,
+        )
 
     def _bind_sequence_page_drag(
         self,
@@ -2918,70 +2978,79 @@ class MockupView:
         required = bool(definition.get("required", False))
         automatic_blank = bool(item.get("automatic_recto_verso", False))
         accent = str(definition.get("accent", self.INK))
+        thumbnail_color = str(definition.get("color", self.GROUP_BG))
+        symbol = str(definition.get("symbol", "?"))
 
-        self._update_sequence_row_selection(item)
-        record["thumbnail"].configure(
-            fg_color=str(definition.get("color", self.GROUP_BG)),
-            border_color=accent,
-        )
-        record["symbol_label"].configure(
-            text=str(definition.get("symbol", "?")),
-            text_color=accent,
-        )
-        record["count_badge"].configure(
-            text=f"×{count}" if count > 1 else "1",
-        )
         title_text = str(item.get("title") or definition.get("title", "Page"))
         if automatic_blank:
             position_text = (
                 "avant" if item.get("recto_position") == "before" else "après"
             )
             title_text = f"Page blanche automatique — {position_text}"
-        record["title_label"].configure(
-            text=title_text,
-            text_color=self.TEXT_MUTED if automatic_blank else (
-                self.DONE if done else self.INK
-            ),
+        title_color = self.TEXT_MUTED if automatic_blank else (
+            self.DONE if done else self.INK
         )
-        record["count_label"].configure(text=str(count))
-        record["done_var"].set(done)
 
-        record["up_button"].configure(
-            state=(
-                "normal"
-                if self._can_move_item(index, -1)
-                else "disabled"
-            ),
+        button_states = (
+            "normal" if self._can_move_item(index, -1) else "disabled",
+            "normal" if self._can_move_item(index, 1) else "disabled",
+            "disabled" if automatic_blank or single or count <= 1 else "normal",
+            "disabled" if automatic_blank or single else "normal",
+            "disabled" if automatic_blank else "normal",
+            "disabled" if automatic_blank or required else "normal",
         )
-        record["down_button"].configure(
-            state=(
-                "normal"
-                if self._can_move_item(index, 1)
-                else "disabled"
-            ),
-        )
-        record["minus_button"].configure(
-            state=(
-                "disabled"
-                if automatic_blank or single or count <= 1
-                else "normal"
-            ),
-        )
-        record["plus_button"].configure(
-            state="disabled" if automatic_blank or single else "normal",
-        )
-        record["done_check"].configure(
-            state="disabled" if automatic_blank else "normal",
-        )
-        record["delete_button"].configure(
-            state="disabled" if automatic_blank or required else "normal",
-        )
-        self._sequence_row_signatures[item_id] = (
-            self._sequence_row_signature(
-                item,
-                index,
-                total_items,
+
+        previous = record.get("display_state", {})
+        definition_state = (thumbnail_color, accent, symbol)
+        if previous.get("definition") != definition_state:
+            record["thumbnail"].configure(
+                background=thumbnail_color,
+                highlightbackground=accent,
+                highlightcolor=accent,
             )
+            record["symbol_label"].configure(
+                text=symbol,
+                foreground=accent,
+                background=thumbnail_color,
+            )
+            record["count_badge"].configure(background=thumbnail_color)
+
+        if previous.get("count") != count:
+            record["count_badge"].configure(
+                text=f"×{count}" if count > 1 else "1",
+            )
+            record["count_label"].configure(text=str(count))
+
+        title_state = (title_text, title_color)
+        if previous.get("title") != title_state:
+            record["title_label"].configure(
+                text=title_text,
+                foreground=title_color,
+            )
+
+        if previous.get("done") != done:
+            record["done_var"].set(done)
+
+        if previous.get("buttons") != button_states:
+            record["up_button"].configure(state=button_states[0])
+            record["down_button"].configure(state=button_states[1])
+            record["minus_button"].configure(state=button_states[2])
+            record["plus_button"].configure(state=button_states[3])
+            record["done_check"].configure(state=button_states[4])
+            record["delete_button"].configure(state=button_states[5])
+
+        record["display_state"] = {
+            "definition": definition_state,
+            "count": count,
+            "title": title_state,
+            "done": done,
+            "buttons": button_states,
+        }
+        self._update_sequence_row_selection(item)
+        self._sequence_row_signatures[item_id] = self._sequence_row_signature(
+            item,
+            index,
+            total_items,
         )
 
     def _sequence_row_signature(
@@ -2990,7 +3059,12 @@ class MockupView:
         index: int,
         total_items: int,
     ) -> tuple[Any, ...]:
-        """État utile d'une ligne, hors simple surbrillance de sélection."""
+        """État utile d'une ligne sans invalider toute la liste.
+
+        Le nombre total de lignes et l'index brut ne sont pas inclus : seuls
+        les droits réels de déplacement comptent. Ajouter une page ne force
+        donc plus la reconfiguration de toutes les lignes existantes.
+        """
         definition = self._definition_for(
             item.get("type", "inconnu")
         )
@@ -3007,15 +3081,15 @@ class MockupView:
             str(definition.get("accent", "")),
             bool(definition.get("single", False)),
             bool(definition.get("required", False)),
-            index,
-            total_items,
+            self._can_move_item(index, -1),
+            self._can_move_item(index, 1),
         )
 
     def _update_sequence_row_selection(
         self,
         item: dict[str, Any],
     ) -> None:
-        """Met à jour uniquement le fond et le contour de sélection."""
+        """Met à jour le fond et le contour seulement s'ils changent."""
         item_id = str(item.get("id", ""))
         record = self._sequence_row_widgets.get(item_id)
         if record is None:
@@ -3023,15 +3097,26 @@ class MockupView:
 
         selected = item_id in self._selected_page_ids
         done = bool(item.get("done", False))
+        state = (selected, done)
+        if record.get("selection_state") == state:
+            return
+
+        background = "#EEF4FA" if selected else self.CARD_BG
+        border = self.ACCENT if selected else self.DONE if done else self.BORDER
         record["row"].configure(
-            fg_color="#EEF4FA" if selected else self.CARD_BG,
-            border_color=(
-                self.ACCENT
-                if selected
-                else self.DONE if done else self.BORDER
-            ),
-            border_width=2 if selected else 1,
+            background=background,
+            highlightbackground=border,
+            highlightcolor=border,
+            highlightthickness=2 if selected else 1,
         )
+        record["title_label"].configure(background=background)
+        record["controls"].configure(background=background)
+        record["count_label"].configure(background=background)
+        record["done_check"].configure(
+            background=background,
+            activebackground=background,
+        )
+        record["selection_state"] = state
 
     def _selectable_page_ids(self) -> tuple[str, ...]:
         return tuple(
@@ -3151,30 +3236,30 @@ class MockupView:
             return
 
         count = len(self._selected_page_ids)
-        if count == 0:
-            if self._selection_label is not None:
-                self._selection_label.configure(
-                    text=(
-                        "Clique : sélectionner · Ctrl : ajouter · "
-                        "Maj : plage · Ctrl+A : tout"
-                    )
-                )
-            if self._selection_duplicate_button is not None:
-                self._selection_duplicate_button.configure(state="disabled")
-            if self._selection_delete_button is not None:
-                self._selection_delete_button.configure(state="disabled")
+        duplicable_count = (
+            len(self._selected_duplicable_items()) if count else 0
+        )
+        deletable_count = (
+            len(self._selected_deletable_ids()) if count else 0
+        )
+        state = (count, duplicable_count, deletable_count)
+        if self._selection_controls_cache == state:
             return
+        self._selection_controls_cache = state
 
-        duplicable_count = len(self._selected_duplicable_items())
-        deletable_count = len(self._selected_deletable_ids())
+        if count == 0:
+            label_text = (
+                "Clique : sélectionner · Ctrl : ajouter · "
+                "Maj : plage · Ctrl+A : tout"
+            )
+        else:
+            label_text = (
+                f"{count} page{'s' if count != 1 else ''} sélectionnée"
+                f"{'s' if count != 1 else ''}"
+            )
 
         if self._selection_label is not None:
-            self._selection_label.configure(
-                text=(
-                    f"{count} page{'s' if count != 1 else ''} sélectionnée"
-                    f"{'s' if count != 1 else ''}"
-                )
-            )
+            self._selection_label.configure(text=label_text)
         if self._selection_duplicate_button is not None:
             self._selection_duplicate_button.configure(
                 state="normal" if duplicable_count else "disabled"
@@ -3296,13 +3381,15 @@ class MockupView:
         for page_type, button in self._page_type_buttons.items():
             definition = self._definition_for(page_type)
             is_single = bool(definition.get("single", False))
-            button.configure(
-                state=(
-                    "disabled"
-                    if is_single and page_type in present_types
-                    else "normal"
-                )
+            state = (
+                "disabled"
+                if is_single and page_type in present_types
+                else "normal"
             )
+            if self._page_type_button_states.get(page_type) == state:
+                continue
+            button.configure(state=state)
+            self._page_type_button_states[page_type] = state
 
     def _is_locked_structural_type(self, page_type: str) -> bool:
         definition = self._definition_for(page_type)
@@ -5519,18 +5606,27 @@ class MockupView:
         )
         distinct_types = len({str(item.get("type", "autre")) for item in items})
 
-        if self._summary_label is not None:
-            self._summary_label.configure(
-                text=(
-                    f"{total_pages} p. · "
-                    f"{distinct_types} type{'s' if distinct_types != 1 else ''}"
-                )
-            )
+        summary_text = (
+            f"{total_pages} p. · "
+            f"{distinct_types} type{'s' if distinct_types != 1 else ''}"
+        )
+        progress_text = (
+            f"Fait : {done_pages}/{total_pages}" if total_pages else ""
+        )
 
-        if self._progress_label is not None:
-            self._progress_label.configure(
-                text=(f"Fait : {done_pages}/{total_pages}" if total_pages else "")
-            )
+        if (
+            self._summary_label is not None
+            and self._summary_text_cache != summary_text
+        ):
+            self._summary_label.configure(text=summary_text)
+            self._summary_text_cache = summary_text
+
+        if (
+            self._progress_label is not None
+            and self._progress_text_cache != progress_text
+        ):
+            self._progress_label.configure(text=progress_text)
+            self._progress_text_cache = progress_text
 
     def _definition_for(self, page_type: str) -> dict[str, Any]:
         for definition in self._page_types():
