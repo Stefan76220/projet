@@ -40,6 +40,33 @@ class DashboardView:
     CREATE_CARD_BG = "#F7FCFA"
     OPEN_CARD_BG = "#FBF8FD"
 
+    PROJECT_TYPES = (
+        (
+            "ouvrage_structure",
+            "▦",
+            "Ouvrage structuré",
+            "Fiches, guides, catalogues,\nouvrages organisés",
+            CELADON,
+            CELADON_SOFT,
+        ),
+        (
+            "livre_textuel",
+            "▤",
+            "Livre textuel",
+            "Roman, récit, essai,\nbiographie",
+            LILAC,
+            LILAC_SOFT,
+        ),
+        (
+            "bande_dessinee",
+            "▧",
+            "Bande dessinée",
+            "Planches, cases, bulles,\nnarration visuelle",
+            CORAL,
+            CORAL_SOFT,
+        ),
+    )
+
     STATUS_STYLES = {
         "En cours": (CELADON, CELADON_SOFT),
         "À vérifier": (CORAL, CORAL_SOFT),
@@ -115,6 +142,9 @@ class DashboardView:
         self._window_ids: dict[str, int] = {}
         self._content_widgets: dict[str, tk.Widget] = {}
 
+        self._selected_project_type = "ouvrage_structure"
+        self._project_type_widgets: dict[str, dict[str, object]] = {}
+
     # ==========================================================
     # Affichage
     # ==========================================================
@@ -141,21 +171,7 @@ class DashboardView:
         self._background_source = self._load_background_source()
 
         header = self._create_header(canvas)
-        create = self._create_entry_card(
-            canvas,
-            title="Créer un nouveau projet",
-            description=(
-                "Démarrez un projet éditorial depuis une page blanche "
-                "et construisez son espace de travail."
-            ),
-            button_label="Créer",
-            command=lambda: self._invoke_file_command("Nouveau projet"),
-            accent=self.CELADON,
-            soft=self.CELADON_SOFT,
-            background=self.CREATE_CARD_BG,
-            illustration="accueil_creation.png",
-            command_icon="＋",
-        )
+        create = self._create_project_type_card(canvas)
         open_project = self._create_entry_card(
             canvas,
             title="Ouvrir un projet",
@@ -366,6 +382,315 @@ class DashboardView:
     # Créer / ouvrir
     # ==========================================================
 
+    def _create_project_type_card(self, parent) -> ctk.CTkFrame:
+        content = ctk.CTkFrame(
+            parent,
+            fg_color=self.CREATE_CARD_BG,
+            corner_radius=0,
+        )
+        content.grid_columnconfigure(0, weight=1)
+        content.grid_rowconfigure(1, weight=1)
+
+        heading = ctk.CTkFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        heading.grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=4,
+            pady=(0, 4),
+        )
+        heading.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            heading,
+            text="Créer un nouveau projet",
+            font=(Fonts.FAMILY, 15, "bold"),
+            text_color=self.CELADON,
+            anchor="center",
+            fg_color="transparent",
+        ).grid(row=0, column=0, sticky="ew")
+
+        ctk.CTkLabel(
+            heading,
+            text="Choisissez le type d’ouvrage que vous souhaitez créer.",
+            font=(Fonts.FAMILY, 8),
+            text_color=self.MUTED,
+            anchor="center",
+            fg_color="transparent",
+        ).grid(row=1, column=0, sticky="ew", pady=(2, 0))
+
+        choices = ctk.CTkFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        choices.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=2,
+            pady=(0, 4),
+        )
+        choices.grid_columnconfigure(
+            (0, 1, 2),
+            weight=1,
+            uniform="project_types",
+        )
+        choices.grid_rowconfigure(0, weight=1)
+
+        self._project_type_widgets = {}
+        for index, project_type in enumerate(self.PROJECT_TYPES):
+            key, icon, title, subtitle, accent, soft = project_type
+            option = self._create_project_type_option(
+                choices,
+                key=key,
+                icon=icon,
+                title=title,
+                subtitle=subtitle,
+                accent=accent,
+                soft=soft,
+            )
+            option.grid(
+                row=0,
+                column=index,
+                sticky="ew",
+                padx=(0 if index == 0 else 4, 0 if index == 2 else 4),
+                pady=8,
+            )
+
+        footer = ctk.CTkFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        footer.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=2,
+            pady=(0, 0),
+        )
+        footer.grid_columnconfigure((0, 2), weight=1)
+
+        ctk.CTkButton(
+            footer,
+            text="Créer ce projet  →",
+            command=self._create_selected_project,
+            width=154,
+            height=30,
+            corner_radius=9,
+            fg_color=self.CELADON,
+            hover_color="#6FA88F",
+            text_color="white",
+            font=(Fonts.FAMILY, 8, "bold"),
+        ).grid(row=0, column=1)
+
+        self._refresh_project_type_options()
+        return content
+
+    def _create_project_type_option(
+        self,
+        parent,
+        *,
+        key: str,
+        icon: str,
+        title: str,
+        subtitle: str,
+        accent: str,
+        soft: str,
+    ) -> ctk.CTkFrame:
+        card = ctk.CTkFrame(
+            parent,
+            height=82,
+            fg_color=self.GROUP_BG,
+            corner_radius=10,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        card.grid_propagate(False)
+        card.grid_columnconfigure(0, weight=1)
+
+        radio = ctk.CTkLabel(
+            card,
+            text="○",
+            width=16,
+            height=16,
+            text_color=self.TEXT_LIGHT,
+            font=(Fonts.FAMILY, 9, "bold"),
+        )
+        radio.place(x=7, y=6)
+
+        icon_label = ctk.CTkLabel(
+            card,
+            text=icon,
+            width=27,
+            height=27,
+            corner_radius=7,
+            fg_color=soft,
+            text_color=accent,
+            font=(Fonts.FAMILY, 12, "bold"),
+        )
+        icon_label.grid(
+            row=0,
+            column=0,
+            pady=(7, 1),
+        )
+
+        title_label = ctk.CTkLabel(
+            card,
+            text=title,
+            font=(Fonts.FAMILY, 8, "bold"),
+            text_color=accent,
+            anchor="center",
+            height=14,
+        )
+        title_label.grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=5,
+            pady=0,
+        )
+
+        subtitle_label = ctk.CTkLabel(
+            card,
+            text=subtitle,
+            font=(Fonts.FAMILY, 6),
+            text_color=self.MUTED,
+            justify="center",
+            anchor="n",
+            wraplength=125,
+            height=24,
+        )
+        subtitle_label.grid(
+            row=2,
+            column=0,
+            sticky="ew",
+            padx=5,
+            pady=(0, 3),
+        )
+
+        def activate(_event=None) -> None:
+            self._select_project_type(key)
+
+        for widget in (
+            card,
+            radio,
+            icon_label,
+            title_label,
+            subtitle_label,
+        ):
+            widget.bind("<Button-1>", activate)
+            widget.configure(cursor="hand2")
+
+        self._project_type_widgets[key] = {
+            "card": card,
+            "radio": radio,
+            "accent": accent,
+            "soft": soft,
+        }
+        return card
+
+    def _select_project_type(self, key: str) -> None:
+        if key == self._selected_project_type:
+            return
+        self._selected_project_type = key
+        self._refresh_project_type_options()
+
+    def _refresh_project_type_options(self) -> None:
+        for key, widgets in self._project_type_widgets.items():
+            selected = key == self._selected_project_type
+            card = widgets["card"]
+            radio = widgets["radio"]
+            accent = str(widgets["accent"])
+            soft = str(widgets["soft"])
+
+            card.configure(
+                fg_color=soft if selected else self.GROUP_BG,
+                border_width=2 if selected else 1,
+                border_color=accent if selected else self.BORDER,
+            )
+            radio.configure(
+                text="●" if selected else "○",
+                text_color=accent if selected else self.TEXT_LIGHT,
+            )
+
+    def _create_selected_project(self) -> None:
+        try:
+            root = self.parent.winfo_toplevel()
+            setattr(
+                root,
+                "_pagemaitre_project_type",
+                self._selected_project_type,
+            )
+        except Exception:
+            pass
+
+        self._invoke_file_command("Nouveau projet")
+
+    def _project_type_spec(
+        self,
+        project: dict | None,
+    ) -> tuple[str, str, str, str, str, str]:
+        raw = "ouvrage_structure"
+        if project:
+            raw = str(
+                project.get("type_projet", "ouvrage_structure")
+                or "ouvrage_structure"
+            ).strip()
+
+        aliases = {
+            "ouvrage_structuré": "ouvrage_structure",
+            "ouvrage structure": "ouvrage_structure",
+            "structure": "ouvrage_structure",
+            "livre textuel": "livre_textuel",
+            "textuel": "livre_textuel",
+            "bande dessinée": "bande_dessinee",
+            "bande dessinee": "bande_dessinee",
+            "bd": "bande_dessinee",
+        }
+        key = aliases.get(raw.casefold(), raw)
+
+        for item in self.PROJECT_TYPES:
+            if item[0] == key:
+                return item
+
+        return self.PROJECT_TYPES[0]
+
+    def _create_project_type_badge(
+        self,
+        parent,
+        project: dict | None,
+        *,
+        compact: bool = False,
+    ) -> ctk.CTkLabel:
+        key, _icon, title, _subtitle, accent, soft = self._project_type_spec(
+            project
+        )
+        compact_labels = {
+            "ouvrage_structure": "Structuré",
+            "livre_textuel": "Textuel",
+            "bande_dessinee": "BD",
+        }
+        label = compact_labels.get(key, title) if compact else title
+
+        return ctk.CTkLabel(
+            parent,
+            text=label,
+            height=18 if compact else 22,
+            corner_radius=9 if compact else 11,
+            fg_color=soft,
+            text_color=accent,
+            border_width=1,
+            border_color=accent,
+            font=(Fonts.FAMILY, 7 if compact else 8, "bold"),
+            padx=7,
+        )
+
     def _create_entry_card(
         self,
         parent,
@@ -380,92 +705,94 @@ class DashboardView:
         illustration: str,
         command_icon: str,
     ) -> ctk.CTkFrame:
-        # Le fond arrondi est dessiné dans l'image générale. Ce cadre ne
-        # contient que le contenu et reste largement à l'intérieur des coins.
         content = ctk.CTkFrame(
             parent,
             fg_color=background,
             corner_radius=0,
         )
-        content.grid_columnconfigure(1, weight=1)
+        content.grid_columnconfigure(0, weight=1)
+        content.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            content,
+            text=title,
+            font=(Fonts.FAMILY, 16, "bold"),
+            text_color=accent,
+            anchor="center",
+            fg_color=background,
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            pady=(2, 0),
+        )
+
+        body = ctk.CTkFrame(
+            content,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        body.grid(
+            row=1,
+            column=0,
+            pady=(6, 4),
+        )
 
         image = self._asset_image(
             illustration,
-            size=(176, 132),
+            size=(132, 98),
         )
         if image is not None:
             ctk.CTkLabel(
-                content,
+                body,
                 text="",
                 image=image,
-                fg_color=background,
-                width=186,
-                height=144,
+                fg_color="transparent",
+                width=138,
+                height=104,
             ).grid(
                 row=0,
                 column=0,
-                rowspan=2,
-                padx=(2, 8),
-                pady=0,
+                padx=(0, 20),
             )
         else:
             ctk.CTkLabel(
-                content,
+                body,
                 text=command_icon,
-                width=136,
-                height=128,
-                corner_radius=15,
+                width=92,
+                height=92,
+                corner_radius=14,
                 fg_color=soft,
                 text_color=accent,
-                font=(Fonts.FAMILY, 42, "bold"),
+                font=(Fonts.FAMILY, 34, "bold"),
             ).grid(
                 row=0,
                 column=0,
-                rowspan=2,
-                padx=(2, 14),
-                pady=4,
+                padx=(0, 20),
             )
 
         text_area = ctk.CTkFrame(
-            content,
-            fg_color=background,
+            body,
+            fg_color="transparent",
             corner_radius=0,
+            width=230,
         )
         text_area.grid(
             row=0,
             column=1,
-            sticky="nsew",
-            padx=(2, 6),
-            pady=(4, 0),
+            sticky="w",
         )
 
         ctk.CTkLabel(
             text_area,
-            text=title,
-            font=(Fonts.FAMILY, 16, "bold"),
-            text_color=accent,
-            anchor="w",
-            fg_color=background,
-        ).pack(anchor="w")
-
-        ctk.CTkFrame(
-            text_area,
-            width=52,
-            height=2,
-            corner_radius=1,
-            fg_color=accent,
-        ).pack(anchor="w", pady=(7, 8))
-
-        ctk.CTkLabel(
-            text_area,
             text=description,
-            font=(Fonts.FAMILY, 10),
+            font=(Fonts.FAMILY, 9),
             text_color=self.MUTED,
             justify="left",
             anchor="w",
-            wraplength=285,
-            fg_color=background,
-        ).pack(anchor="w")
+            wraplength=225,
+            fg_color="transparent",
+        ).pack(anchor="w", pady=(0, 10))
 
         self._create_square_command(
             text_area,
@@ -475,7 +802,7 @@ class DashboardView:
             accent=accent,
             soft=soft,
             size=50,
-        ).pack(anchor="w", pady=(10, 0))
+        ).pack(anchor="w")
 
         return content
 
@@ -649,6 +976,11 @@ class DashboardView:
             sticky="sw",
             pady=(5, 10),
         )
+        self._create_project_type_badge(
+            badges,
+            project,
+        ).pack(side="left", padx=(0, 5))
+
         self._create_status_badge(
             badges,
             status,
@@ -724,11 +1056,17 @@ class DashboardView:
             anchor="w",
         ).grid(row=0, column=1, sticky="ew")
 
+        self._create_project_type_badge(
+            row,
+            project,
+            compact=True,
+        ).grid(row=0, column=2, padx=4)
+
         self._create_status_badge(
             row,
             status,
             compact=True,
-        ).grid(row=0, column=2, padx=4)
+        ).grid(row=0, column=3, padx=4)
 
         ctk.CTkLabel(
             row,
@@ -736,7 +1074,7 @@ class DashboardView:
             width=38,
             font=(Fonts.FAMILY, 7),
             text_color=self.MUTED,
-        ).grid(row=0, column=3)
+        ).grid(row=0, column=4)
 
         ctk.CTkLabel(
             row,
@@ -746,14 +1084,14 @@ class DashboardView:
             width=104,
             font=(Fonts.FAMILY, 7),
             text_color=self.MUTED,
-        ).grid(row=0, column=4)
+        ).grid(row=0, column=5)
 
         self._create_small_action(
             row,
             command=lambda data=project: self._open_recent_project(data),
             accent=accent,
             soft=soft,
-        ).grid(row=0, column=5, padx=(4, 6), pady=2)
+        ).grid(row=0, column=6, padx=(4, 6), pady=2)
 
         return row
 
@@ -999,6 +1337,12 @@ class DashboardView:
             anchor="w",
         ).grid(row=0, column=1, sticky="w")
 
+        self._create_project_type_badge(
+            line,
+            self.active_project,
+            compact=True,
+        ).grid(row=0, column=2, sticky="e", padx=(8, 4))
+
         ctk.CTkLabel(
             line,
             text=f"Dernier bureau : {bureau_title}",
@@ -1009,7 +1353,7 @@ class DashboardView:
             font=(Fonts.FAMILY, 7, "bold"),
             anchor="e",
             padx=8,
-        ).grid(row=0, column=2, sticky="e", padx=(8, 10))
+        ).grid(row=0, column=3, sticky="e", padx=(4, 10))
 
         return line
 
@@ -1450,7 +1794,7 @@ class DashboardView:
         header_height = 140
         header_bottom = header_top + header_height
 
-        top_height = 230
+        top_height = 292
         row_gap = 20
         bottom_margin = 18
         minimum_header_gap = 18
