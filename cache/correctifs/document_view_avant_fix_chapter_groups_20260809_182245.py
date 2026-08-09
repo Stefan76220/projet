@@ -3368,7 +3368,7 @@ class DocumentView:
             anchor="center",
         ).grid(
             row=3, column=0, sticky="ew",
-            padx=28, pady=(13 if middle_groups else 15, 18),
+            padx=28, pady=(13 if chapter_groups else 15, 18),
         )
 
         # ------------------------------------------------------

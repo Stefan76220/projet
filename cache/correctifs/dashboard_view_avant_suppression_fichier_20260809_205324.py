@@ -2146,13 +2146,6 @@ class DashboardView:
             menu_bar = self._stored_menu_widget
 
             if menu_bar is None:
-                menu_bar = getattr(
-                    root,
-                    "_pagemaitre_menu_widget",
-                    None,
-                )
-
-            if menu_bar is None:
                 menu_name = str(root.cget("menu") or self._stored_menu_name)
                 if not menu_name:
                     raise RuntimeError(
@@ -2218,8 +2211,15 @@ class DashboardView:
             self._menu_hidden = False
 
     def _restore_application_menu(self) -> None:
-        """Le menu natif reste globalement masqué dans PageMaître."""
-        self._menu_hidden = False
+        if not self._menu_hidden or not self._stored_menu_name:
+            return
+
+        try:
+            root = self.parent.winfo_toplevel()
+            root.configure(menu=self._stored_menu_name)
+            self._menu_hidden = False
+        except tk.TclError:
+            pass
 
     def _on_home_destroy(self, event) -> None:
         if self._home_root is None or event.widget is not self._home_root:

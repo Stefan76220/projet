@@ -3144,61 +3144,29 @@ class DocumentView:
         end_pages = group_counts.get("fin_livre", 0)
 
         annex_pages = 0
-        middle_groups: list[tuple[str, int]] = []
+        chapter_groups: list[tuple[str, int]] = []
+        other_middle_groups: list[tuple[str, int]] = []
 
-        # Le Centre ne tente plus de deviner les chapitres à partir de leur nom.
-        # Il reprend directement la structure définie dans le Maquettage :
-        # Partie 1, Partie 2... et éventuels groupes libres.
-        ordered_group_ids = [
-            str(group.get("id", ""))
-            for group in snapshot.get("groups_ordered", [])
-            if isinstance(group, dict)
-        ]
-        if not ordered_group_ids:
-            ordered_group_ids = list(group_counts.keys())
-
-        seen_middle: set[str] = set()
-        for group_id in ordered_group_ids:
-            if (
-                not group_id
-                or group_id in seen_middle
-                or group_id in {"debut_livre", "fin_livre"}
-            ):
-                continue
-            seen_middle.add(group_id)
-            count = group_counts.get(group_id, 0)
-            if not count:
-                continue
-
-            title = group_title(group_id)
-            folded = title.casefold()
-            gid_folded = group_id.casefold()
-
-            if "annex" in folded or "annex" in gid_folded:
-                annex_pages += count
-            else:
-                middle_groups.append((title, count))
-
-        # Sécurité pour les anciens snapshots qui n'exposent pas l'ordre.
         for group_id, count in group_counts.items():
-            if (
-                not count
-                or group_id in seen_middle
-                or group_id in {"debut_livre", "fin_livre"}
-            ):
+            if not count or group_id in {"debut_livre", "fin_livre"}:
                 continue
             title = group_title(group_id)
             folded = title.casefold()
             gid_folded = group_id.casefold()
+
             if "annex" in folded or "annex" in gid_folded:
                 annex_pages += count
+            elif "chapitre" in folded or "chapter" in folded:
+                chapter_groups.append((title, count))
             else:
-                middle_groups.append((title, count))
+                other_middle_groups.append((title, count))
 
+        chapter_groups.sort(key=lambda pair: pair[0].casefold())
         interior_pages = max(
             0,
             planned_count - start_pages - annex_pages - end_pages,
         )
+        chapter_count = len(chapter_groups)
 
         required_types: set[str] = set()
         realised_models: set[str] = set()
@@ -3306,45 +3274,42 @@ class DocumentView:
             anchor="center",
         ).grid(row=1, column=0, sticky="ew", padx=28)
 
-        # Niveau 3 : répartition intérieure issue du Maquettage.
-        # Jusqu'à 5 groupes par ligne ; les suivants passent à la ligne.
-        if middle_groups:
-            groups_wrap = ctk.CTkFrame(
+        # Niveau 3 : chapitres. Ils se répartissent automatiquement sur
+        # plusieurs lignes, jusqu'à 5 par ligne, sans créer de grosses cartes.
+        if chapter_groups:
+            chapters_wrap = ctk.CTkFrame(
                 composition, fg_color="transparent", corner_radius=0
             )
-            groups_wrap.grid(
+            chapters_wrap.grid(
                 row=2, column=0, sticky="ew",
                 padx=54, pady=(13, 4),
             )
             max_columns = 5
             for col in range(max_columns):
-                groups_wrap.grid_columnconfigure(
-                    col, weight=1, uniform="middle_groups"
-                )
+                chapters_wrap.grid_columnconfigure(col, weight=1, uniform="chapters")
 
-            for index, (title, count) in enumerate(middle_groups):
+            for index, (title, count) in enumerate(chapter_groups):
                 row = index // max_columns
                 col = index % max_columns
                 short_title = title
                 if len(short_title) > 20:
                     short_title = short_title[:18].rstrip() + "…"
-
-                group_cell = ctk.CTkFrame(
-                    groups_wrap, fg_color="transparent", corner_radius=0
+                chapter_cell = ctk.CTkFrame(
+                    chapters_wrap, fg_color="transparent", corner_radius=0
                 )
-                group_cell.grid(
+                chapter_cell.grid(
                     row=row, column=col, sticky="ew",
                     padx=8, pady=3,
                 )
                 ctk.CTkLabel(
-                    group_cell,
+                    chapter_cell,
                     text=short_title,
                     font=(Fonts.FAMILY, 10, "bold"),
                     text_color=self.TEXT_MUTED,
                     anchor="center",
                 ).grid(row=0, column=0, sticky="ew")
                 ctk.CTkLabel(
-                    group_cell,
+                    chapter_cell,
                     text=f"{count} page" + ("s" if count > 1 else ""),
                     font=(Fonts.FAMILY, 10),
                     text_color=self.INK,
@@ -3368,7 +3333,7 @@ class DocumentView:
             anchor="center",
         ).grid(
             row=3, column=0, sticky="ew",
-            padx=28, pady=(13 if middle_groups else 15, 18),
+            padx=28, pady=(13 if chapter_groups else 15, 18),
         )
 
         # ------------------------------------------------------

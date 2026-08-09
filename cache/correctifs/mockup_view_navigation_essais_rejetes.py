@@ -37,23 +37,6 @@ class MockupView:
     LILAC = "#A997C9"
     CORAL = "#DF806B"
     YELLOW = "#D8B85A"
-    NAVY = INK
-    MAQUETTAGE = SKY
-    MAQUETTAGE_SOFT = "#DDECF4"
-    ATELIER = CELADON
-    ATELIER_SOFT = "#DFECE5"
-    CONCEPTION = LILAC
-    CONCEPTION_SOFT = "#E8E1F1"
-    ASSEMBLAGE = YELLOW
-    ASSEMBLAGE_SOFT = "#F1E8CD"
-    VERIFICATION = "#6FA6A5"
-    VERIFICATION_SOFT = "#E1EEED"
-    FINALISATION = CORAL
-    FINALISATION_SOFT = "#F2DDD6"
-    TEXT_LIGHT = "#8B8E88"
-    PROJECT_TYPE_APPEARANCES = {
-        "ouvrage_structure": {"label": "Maquettage", "color": SKY, "soft": MAQUETTAGE_SOFT},
-    }
     ACCENT = INK
     ACCENT_SOFT = "#E7EEF6"
     DONE = Colors.SUCCESS
@@ -470,12 +453,12 @@ class MockupView:
                 self._mockup_background_source = None
                 self._mockup_background_photo = None
 
-        self._create_internal_navigation_ribbon(self._root).grid(
+        self._create_header(self._root).grid(
             row=0,
             column=0,
             sticky="ew",
-            padx=10,
-            pady=(5, 3),
+            padx=12,
+            pady=(6, 4),
         )
 
         self._ribbon_frame = self._create_ribbon(self._root)
@@ -608,7 +591,7 @@ class MockupView:
         except (tk.TclError, TypeError, ValueError):
             return
 
-    def _create_internal_navigation_ribbon(
+    def _create_header(
 
         self,
 
@@ -1596,7 +1579,7 @@ class MockupView:
 
             else:
 
-                item_color = color if enabled else self.TEXT_LIGHT
+                item_color = color if enabled else self.TEXT_MUTED
 
 
 
@@ -1774,7 +1757,7 @@ class MockupView:
 
                 10,
 
-                text="Centre du projet",
+                text="Bureau de maquettage",
 
                 fill=self.INK,
 
@@ -1880,7 +1863,7 @@ class MockupView:
 
                     "Accueil",
 
-                    self.NAVY,
+                    self.INK,
 
                     self._go_back,
 
@@ -1898,7 +1881,7 @@ class MockupView:
 
                     "Centre",
 
-                    self.NAVY,
+                    self.INK,
 
                     None,
 
@@ -1916,7 +1899,7 @@ class MockupView:
 
                     "Maquettage",
 
-                    self.MAQUETTAGE,
+                    self.SKY,
 
                     None,
 
@@ -1934,7 +1917,7 @@ class MockupView:
 
                     "Atelier",
 
-                    self.ATELIER,
+                    self.CELADON,
 
                     None,
 
@@ -1952,7 +1935,7 @@ class MockupView:
 
                     "Conception",
 
-                    self.CONCEPTION,
+                    self.LILAC,
 
                     None,
 
@@ -1970,7 +1953,7 @@ class MockupView:
 
                     "Assemblage",
 
-                    self.ASSEMBLAGE,
+                    self.YELLOW,
 
                     None,
 
@@ -1988,7 +1971,7 @@ class MockupView:
 
                     "Vérification",
 
-                    self.VERIFICATION,
+                    "#6FA6A5",
 
                     None,
 
@@ -2006,7 +1989,7 @@ class MockupView:
 
                     "Finalisation",
 
-                    self.FINALISATION,
+                    self.CORAL,
 
                     None,
 
@@ -2166,46 +2149,6 @@ class MockupView:
 
 
 
-
-    def _project_type_key(self) -> str:
-        return "ouvrage_structure"
-
-    def _create_header(self, parent) -> ctk.CTkFrame:
-        frame = ctk.CTkFrame(parent, fg_color="transparent", height=32)
-        frame.grid_columnconfigure(1, weight=1)
-        frame.grid_propagate(False)
-
-        ctk.CTkButton(
-            frame,
-            text="← Centre",
-            width=92,
-            height=28,
-            corner_radius=7,
-            fg_color=self.GROUP_BG,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=self.INK,
-            border_width=1,
-            border_color=self.BORDER,
-            font=Fonts.SMALL,
-            command=self._go_back,
-        ).grid(row=0, column=0, sticky="w", padx=(0, 12))
-
-        ctk.CTkLabel(
-            frame,
-            text="Bureau de maquettage",
-            font=Fonts.H2,
-            text_color=self.INK,
-        ).grid(row=0, column=1, sticky="w")
-
-        project_name = str(getattr(self.project, "name", "") or "Projet sans nom")
-        ctk.CTkLabel(
-            frame,
-            text=project_name,
-            font=Fonts.SMALL,
-            text_color=self.TEXT_MUTED,
-        ).grid(row=0, column=2, sticky="e")
-
-        return frame
 
     def _install_ribbon_background(self, ribbon) -> None:
         """Pose le même fond léger derrière toute la surface du ruban."""
@@ -3014,7 +2957,7 @@ class MockupView:
                 types_frame,
                 text="Aucun type",
                 font=(Fonts.FAMILY, 9),
-                text_color=self.TEXT_LIGHT,
+                text_color=self.TEXT_MUTED,
             ).grid(row=0, column=0, rowspan=2, padx=8, pady=10)
 
         title_bar = ctk.CTkFrame(
@@ -3878,7 +3821,7 @@ class MockupView:
                 body,
                 text="Aucun type personnalisé à retirer.",
                 font=Fonts.SMALL,
-                text_color=self.TEXT_LIGHT,
+                text_color=self.TEXT_MUTED,
             ).grid(row=row, column=0, sticky="w", padx=16, pady=(2, 10))
             row += 1
 
@@ -3917,7 +3860,7 @@ class MockupView:
                 body,
                 text="Aucun groupe personnalisé à retirer.",
                 font=Fonts.SMALL,
-                text_color=self.TEXT_LIGHT,
+                text_color=self.TEXT_MUTED,
             ).grid(row=row, column=0, sticky="w", padx=16, pady=(2, 10))
 
         ctk.CTkButton(
@@ -5507,7 +5450,7 @@ class MockupView:
                     self._sequence_frame,
                     text="Clique sur une page pour commencer.",
                     font=Fonts.NORMAL,
-                    text_color=self.TEXT_LIGHT,
+                    text_color=self.TEXT_MUTED,
                 )
             self._sequence_empty_label.grid(
                 row=0,
@@ -6056,7 +5999,7 @@ class MockupView:
             activebackground=active_background or Colors.BUTTON_HOVER,
             foreground=foreground or self.INK,
             activeforeground=foreground or self.INK,
-            disabledforeground=self.TEXT_LIGHT,
+            disabledforeground=self.TEXT_MUTED,
             font=Fonts.SMALL,
             cursor="hand2",
             takefocus=False,
@@ -7644,7 +7587,7 @@ class MockupView:
                     rules_scroll,
                     text="Aucune règle définie pour ce projet.",
                     font=Fonts.SMALL,
-                    text_color=self.TEXT_LIGHT,
+                    text_color=self.TEXT_MUTED,
                 ).grid(row=0, column=0, sticky="w", padx=8, pady=10)
                 return
             for row, rule in enumerate(rules):
@@ -8530,7 +8473,7 @@ class MockupView:
                     body_width // 2,
                     body_height // 2,
                     text="Aucune page.",
-                    fill=self.TEXT_LIGHT,
+                    fill=self.TEXT_MUTED,
                     font=Fonts.NORMAL,
                     anchor="center",
                 )

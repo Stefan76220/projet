@@ -3086,17 +3086,52 @@ class DocumentView:
         wall.bind("<MouseWheel>", on_mousewheel, add="+")
         wall.after_idle(draw_wall)
 
-        # TABLEAU_BORD_CENTRE_V4_MAQUETTE_VALIDEE
-        # Hiérarchie validée :
-        # projet -> composition générale -> subdivisions -> fabrication
-        # puis avancement et travail restant, sans remplissage artificiel.
+        # TABLEAU_BORD_CENTRE_V2_PLEINE_PAGE
+        # Le Tableau de bord occupe toute la surface. Sa mise en page reprend
+        # la respiration de l'accueil : grands blocs, informations lisibles,
+        # peu de bordures et une hiérarchie visuelle claire.
         dashboard = ctk.CTkFrame(
             dashboard_view,
-            fg_color="transparent",
+            fg_color=self.WINDOW_BG,
             corner_radius=0,
         )
         dashboard.grid(row=0, column=0, sticky="nsew")
-        dashboard.grid_columnconfigure((0, 1), weight=1, uniform="dashboard_pair")
+        dashboard.grid_columnconfigure((0, 1, 2), weight=1, uniform="dashboard_cols")
+        dashboard.grid_rowconfigure(2, weight=1)
+
+        header = ctk.CTkFrame(
+            dashboard,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        header.grid(
+            row=0,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=34,
+            pady=(22, 16),
+        )
+        header.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            header,
+            text="Tableau de bord",
+            font=(Fonts.FAMILY, 21, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+
+        ctk.CTkLabel(
+            header,
+            text=(
+                "Composition du livre, état d'avancement et travail restant. "
+                "Un repère chiffré pour reprendre le projet sans avoir à tout parcourir."
+            ),
+            font=(Fonts.FAMILY, 11),
+            text_color=self.TEXT_MUTED,
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(5, 0))
 
         status_counts = {
             "MAQUETTAGE": 0,
@@ -3115,6 +3150,7 @@ class DocumentView:
         planned_count = len(physical_pages)
         automatic_count = status_counts["AUTO"]
         work_count = max(0, planned_count - automatic_count)
+        mockup_count = status_counts["MAQUETTAGE"]
         ready_count = status_counts["À PRODUIRE"]
         produced_count = status_counts["PRODUITE"]
         validated_count = min(
@@ -3132,73 +3168,18 @@ class DocumentView:
             )
             group_counts[group_id] = group_counts.get(group_id, 0) + 1
 
-        def group_title(group_id: str) -> str:
-            definition = snapshot.get("groups", {}).get(group_id, {})
-            return str(
-                definition.get("title")
-                or definition.get("name")
-                or group_id.replace("_", " ").strip().title()
-            )
-
         start_pages = group_counts.get("debut_livre", 0)
         end_pages = group_counts.get("fin_livre", 0)
+        middle_pages = max(0, planned_count - start_pages - end_pages)
 
-        annex_pages = 0
-        middle_groups: list[tuple[str, int]] = []
-
-        # Le Centre ne tente plus de deviner les chapitres à partir de leur nom.
-        # Il reprend directement la structure définie dans le Maquettage :
-        # Partie 1, Partie 2... et éventuels groupes libres.
-        ordered_group_ids = [
-            str(group.get("id", ""))
-            for group in snapshot.get("groups_ordered", [])
-            if isinstance(group, dict)
-        ]
-        if not ordered_group_ids:
-            ordered_group_ids = list(group_counts.keys())
-
-        seen_middle: set[str] = set()
-        for group_id in ordered_group_ids:
-            if (
-                not group_id
-                or group_id in seen_middle
-                or group_id in {"debut_livre", "fin_livre"}
-            ):
-                continue
-            seen_middle.add(group_id)
-            count = group_counts.get(group_id, 0)
-            if not count:
-                continue
-
-            title = group_title(group_id)
-            folded = title.casefold()
-            gid_folded = group_id.casefold()
-
-            if "annex" in folded or "annex" in gid_folded:
-                annex_pages += count
-            else:
-                middle_groups.append((title, count))
-
-        # Sécurité pour les anciens snapshots qui n'exposent pas l'ordre.
+        chapter_count = 0
         for group_id, count in group_counts.items():
-            if (
-                not count
-                or group_id in seen_middle
-                or group_id in {"debut_livre", "fin_livre"}
-            ):
+            if not count or group_id in {"debut_livre", "fin_livre"}:
                 continue
-            title = group_title(group_id)
-            folded = title.casefold()
-            gid_folded = group_id.casefold()
-            if "annex" in folded or "annex" in gid_folded:
-                annex_pages += count
-            else:
-                middle_groups.append((title, count))
-
-        interior_pages = max(
-            0,
-            planned_count - start_pages - annex_pages - end_pages,
-        )
+            group_definition = snapshot.get("groups", {}).get(group_id, {})
+            title = str(group_definition.get("title", group_id))
+            if "chapitre" in title.casefold():
+                chapter_count += 1
 
         required_types: set[str] = set()
         realised_models: set[str] = set()
@@ -3219,198 +3200,115 @@ class DocumentView:
         required_gabarits = len(required_types)
         realised_gabarits = min(required_gabarits, len(realised_models))
         models_left = max(0, required_gabarits - realised_gabarits)
-        pages_to_prepare = max(0, work_count - transferred_count)
         pages_to_produce = max(0, work_count - produced_count)
-        pages_to_validate = max(0, work_count - validated_count)
-
-        project_name = str(
-            getattr(self.project, "name", "")
-            or getattr(self.project, "title", "")
-            or "Projet"
-        )
-
-        # Une feuille centrale volontairement plus étroite que la fenêtre :
-        # le vide autour fait partie de la composition.
-        sheet = ctk.CTkFrame(
-            dashboard,
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        sheet.grid(
-            row=0, column=0, columnspan=2, sticky="new",
-            padx=72, pady=(22, 28),
-        )
-        sheet.grid_columnconfigure((0, 1), weight=1, uniform="dashboard_pair")
+        pages_to_validate = max(0, produced_count - validated_count)
 
         # ------------------------------------------------------
-        # IDENTITÉ + COMPOSITION
+        # COMPOSITION — bandeau de lecture immédiate
         # ------------------------------------------------------
-        identity = ctk.CTkFrame(sheet, fg_color="transparent", corner_radius=0)
-        identity.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
-        identity.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            identity,
-            text=project_name,
-            font=(Fonts.FAMILY, 23, "bold"),
-            text_color=self.INK,
-            anchor="center",
-        ).grid(row=0, column=0, sticky="ew")
-
-        ctk.CTkLabel(
-            identity,
-            text="Composition du livre",
-            font=(Fonts.FAMILY, 11),
-            text_color=self.TEXT_MUTED,
-            anchor="center",
-        ).grid(row=1, column=0, sticky="ew", pady=(3, 0))
-
         composition = ctk.CTkFrame(
-            sheet,
-            fg_color="#FBFCFA",
-            corner_radius=20,
+            dashboard,
+            fg_color="#F8FBFA",
+            corner_radius=16,
             border_width=1,
-            border_color="#DFE7E3",
+            border_color="#DDE6E2",
         )
         composition.grid(
-            row=1, column=0, columnspan=2, sticky="ew",
-            pady=(0, 18),
+            row=1,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            padx=34,
+            pady=(0, 20),
         )
-        composition.grid_columnconfigure(0, weight=1)
+        composition.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="composition")
 
-        # Niveau 1 : le livre dans son ensemble.
-        ctk.CTkLabel(
-            composition,
-            text=f"{planned_count} pages",
-            font=(Fonts.FAMILY, 25, "bold"),
-            text_color=self.INK,
-            anchor="center",
-        ).grid(row=0, column=0, sticky="ew", padx=28, pady=(18, 12))
+        composition_values = [
+            (str(planned_count), "pages", self.MAQUETTAGE),
+            (str(chapter_count), "chapitres", self.CONCEPTION),
+            (str(required_gabarits), "gabarits nécessaires", self.ATELIER),
+            (str(automatic_count), "pages automatiques", self.TEXT_MUTED),
+        ]
 
-        # Niveau 2 : grandes parties du livre, toutes au même rang.
-        main_parts = []
+        for col, (value, label, color) in enumerate(composition_values):
+            cell = ctk.CTkFrame(composition, fg_color="transparent")
+            cell.grid(row=0, column=col, sticky="nsew", padx=14, pady=(18, 12))
+            ctk.CTkLabel(
+                cell,
+                text=value,
+                font=(Fonts.FAMILY, 26, "bold"),
+                text_color=color,
+            ).pack(anchor="center")
+            ctk.CTkLabel(
+                cell,
+                text=label,
+                font=(Fonts.FAMILY, 11),
+                text_color=self.INK,
+            ).pack(anchor="center", pady=(2, 0))
+
+        structure_bits: list[str] = []
         if start_pages:
-            main_parts.append(f"{start_pages} début")
-        if interior_pages:
-            main_parts.append(f"{interior_pages} intérieur")
-        if annex_pages:
-            main_parts.append(f"{annex_pages} annexe" + ("s" if annex_pages > 1 else ""))
+            structure_bits.append(f"{start_pages} page(s) de début")
+        if chapter_count:
+            structure_bits.append(f"{chapter_count} chapitre(s) · {middle_pages} page(s)")
+        elif middle_pages:
+            structure_bits.append(f"{middle_pages} page(s) intérieures")
         if end_pages:
-            main_parts.append(f"{end_pages} fin")
+            structure_bits.append(f"{end_pages} page(s) de fin")
 
         ctk.CTkLabel(
             composition,
-            text="     ·     ".join(main_parts) if main_parts else "Composition à définir",
-            font=(Fonts.FAMILY, 14, "bold"),
-            text_color=self.INK,
-            anchor="center",
-        ).grid(row=1, column=0, sticky="ew", padx=28)
-
-        # Niveau 3 : répartition intérieure issue du Maquettage.
-        # Jusqu'à 5 groupes par ligne ; les suivants passent à la ligne.
-        if middle_groups:
-            groups_wrap = ctk.CTkFrame(
-                composition, fg_color="transparent", corner_radius=0
-            )
-            groups_wrap.grid(
-                row=2, column=0, sticky="ew",
-                padx=54, pady=(13, 4),
-            )
-            max_columns = 5
-            for col in range(max_columns):
-                groups_wrap.grid_columnconfigure(
-                    col, weight=1, uniform="middle_groups"
-                )
-
-            for index, (title, count) in enumerate(middle_groups):
-                row = index // max_columns
-                col = index % max_columns
-                short_title = title
-                if len(short_title) > 20:
-                    short_title = short_title[:18].rstrip() + "…"
-
-                group_cell = ctk.CTkFrame(
-                    groups_wrap, fg_color="transparent", corner_radius=0
-                )
-                group_cell.grid(
-                    row=row, column=col, sticky="ew",
-                    padx=8, pady=3,
-                )
-                ctk.CTkLabel(
-                    group_cell,
-                    text=short_title,
-                    font=(Fonts.FAMILY, 10, "bold"),
-                    text_color=self.TEXT_MUTED,
-                    anchor="center",
-                ).grid(row=0, column=0, sticky="ew")
-                ctk.CTkLabel(
-                    group_cell,
-                    text=f"{count} page" + ("s" if count > 1 else ""),
-                    font=(Fonts.FAMILY, 10),
-                    text_color=self.INK,
-                    anchor="center",
-                ).grid(row=1, column=0, sticky="ew")
-
-        # Niveau 4 : données de fabrication, volontairement secondaires.
-        fabrication_bits = [f"{required_gabarits} gabarits nécessaires"]
-        if automatic_count:
-            fabrication_bits.append(
-                f"{automatic_count} page"
-                f"{'s' if automatic_count > 1 else ''} automatique"
-                f"{'s' if automatic_count > 1 else ''}"
-            )
-
-        ctk.CTkLabel(
-            composition,
-            text="   •   ".join(fabrication_bits),
-            font=(Fonts.FAMILY, 11),
+            text="   •   ".join(structure_bits) if structure_bits else "Structure à définir",
+            font=(Fonts.FAMILY, 10),
             text_color=self.TEXT_MUTED,
             anchor="center",
         ).grid(
-            row=3, column=0, sticky="ew",
-            padx=28, pady=(13 if middle_groups else 15, 18),
+            row=1,
+            column=0,
+            columnspan=4,
+            sticky="ew",
+            padx=18,
+            pady=(0, 15),
         )
 
         # ------------------------------------------------------
-        # AVANCEMENT / TRAVAIL RESTANT
-        # Deux cartes de même poids, dimensionnées par leur contenu.
+        # AVANCEMENT — grand bloc principal
         # ------------------------------------------------------
         progress_card = ctk.CTkFrame(
-            sheet,
+            dashboard,
             fg_color="#FBFCFD",
-            corner_radius=18,
+            corner_radius=16,
             border_width=1,
             border_color=self.BORDER,
         )
         progress_card.grid(
-            row=2, column=0, sticky="new",
-            padx=(0, 9),
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="nsew",
+            padx=(34, 10),
+            pady=(0, 28),
         )
         progress_card.grid_columnconfigure(0, weight=1)
-
-        remaining_card = ctk.CTkFrame(
-            sheet,
-            fg_color="#FCFAF8",
-            corner_radius=18,
-            border_width=1,
-            border_color="#E8DED7",
-        )
-        remaining_card.grid(
-            row=2, column=1, sticky="new",
-            padx=(9, 0),
-        )
-        remaining_card.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
             progress_card,
             text="Avancement",
-            font=(Fonts.FAMILY, 14, "bold"),
+            font=(Fonts.FAMILY, 15, "bold"),
             text_color=self.INK,
-            anchor="center",
-        ).grid(row=0, column=0, sticky="ew", padx=24, pady=(17, 13))
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 4))
+
+        ctk.CTkLabel(
+            progress_card,
+            text="Chaque ligne indique ce qui est terminé, sans imposer l'ordre de travail.",
+            font=(Fonts.FAMILY, 10),
+            text_color=self.TEXT_MUTED,
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 16))
 
         progress_area = ctk.CTkFrame(progress_card, fg_color="transparent")
-        progress_area.grid(row=1, column=0, sticky="ew", padx=24, pady=(0, 12))
+        progress_area.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 20))
         progress_area.grid_columnconfigure(0, weight=1)
 
         def dashboard_progress(row: int, label: str, value: int, total: int, color: str) -> None:
@@ -3421,170 +3319,181 @@ class DocumentView:
             line = ctk.CTkFrame(progress_area, fg_color="transparent")
             line.grid(row=row * 2, column=0, sticky="ew")
             line.grid_columnconfigure(0, weight=1)
-
             ctk.CTkLabel(
                 line,
                 text=label,
-                font=(Fonts.FAMILY, 10, "bold"),
+                font=(Fonts.FAMILY, 11, "bold"),
                 text_color=self.INK,
                 anchor="w",
             ).grid(row=0, column=0, sticky="w")
-
             ctk.CTkLabel(
                 line,
                 text=f"{value} / {total}",
-                font=(Fonts.FAMILY, 10, "bold"),
+                font=(Fonts.FAMILY, 12, "bold"),
                 text_color=color,
                 anchor="e",
             ).grid(row=0, column=1, sticky="e")
 
             bar = ctk.CTkProgressBar(
                 progress_area,
-                height=7,
-                corner_radius=4,
-                fg_color="#E9ECEB",
+                height=11,
+                corner_radius=6,
+                fg_color="#E8EBEA",
                 progress_color=color,
             )
-            bar.grid(row=row * 2 + 1, column=0, sticky="ew", pady=(4, 10))
+            bar.grid(row=row * 2 + 1, column=0, sticky="ew", pady=(5, 18))
             bar.set(ratio)
 
-        dashboard_progress(
-            0, "Gabarits réalisés",
-            realised_gabarits, required_gabarits, self.ATELIER
+        dashboard_progress(0, "Gabarits réalisés", realised_gabarits, required_gabarits, self.ATELIER)
+        dashboard_progress(1, "Préparées pour Conception", transferred_count, work_count, self.CONCEPTION)
+        dashboard_progress(2, "Pages produites", produced_count, work_count, self.CONCEPTION)
+        dashboard_progress(3, "Pages validées", validated_count, work_count, self.VERIFICATION)
+
+        # ------------------------------------------------------
+        # TRAVAIL RESTANT — synthèse parallèle, non directive
+        # ------------------------------------------------------
+        remaining_card = ctk.CTkFrame(
+            dashboard,
+            fg_color="#FCFAF8",
+            corner_radius=16,
+            border_width=1,
+            border_color="#E8DED7",
         )
-        dashboard_progress(
-            1, "Préparées pour Conception",
-            transferred_count, work_count, self.CONCEPTION
+        remaining_card.grid(
+            row=2,
+            column=2,
+            sticky="nsew",
+            padx=(10, 34),
+            pady=(0, 28),
         )
-        dashboard_progress(
-            2, "Pages produites",
-            produced_count, work_count, self.CONCEPTION
-        )
-        dashboard_progress(
-            3, "Pages validées",
-            validated_count, work_count, self.VERIFICATION
-        )
+        remaining_card.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
             remaining_card,
             text="Travail restant",
-            font=(Fonts.FAMILY, 14, "bold"),
+            font=(Fonts.FAMILY, 15, "bold"),
             text_color=self.INK,
-            anchor="center",
-        ).grid(row=0, column=0, sticky="ew", padx=24, pady=(17, 13))
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 4))
+
+        ctk.CTkLabel(
+            remaining_card,
+            text="Les travaux encore ouverts, disponibles quel que soit votre mode d'organisation.",
+            font=(Fonts.FAMILY, 10),
+            text_color=self.TEXT_MUTED,
+            anchor="w",
+            justify="left",
+            wraplength=300,
+        ).grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 14))
 
         remaining_rows = [
-            (models_left, "gabarits à créer", self.ATELIER),
-            (pages_to_prepare, "pages à préparer pour Conception", self.CONCEPTION),
-            (pages_to_produce, "pages à produire", self.CONCEPTION),
-            (pages_to_validate, "pages à valider", self.VERIFICATION),
+            (models_left, "gabarit(s) à créer", self.ATELIER),
+            (pages_to_produce, "page(s) à produire", self.CONCEPTION),
+            (pages_to_validate, "page(s) à valider", self.VERIFICATION),
         ]
 
-        remaining_area = ctk.CTkFrame(remaining_card, fg_color="transparent")
-        remaining_area.grid(row=1, column=0, sticky="ew", padx=30, pady=(0, 15))
-        remaining_area.grid_columnconfigure((0, 1), weight=1, uniform="remaining_pair")
-
-        for index, (value, label, color) in enumerate(remaining_rows):
-            row = index // 2
-            col = index % 2
-            cell = ctk.CTkFrame(
-                remaining_area, fg_color="transparent", corner_radius=0
+        for r, (value, label, color) in enumerate(remaining_rows, start=2):
+            row_frame = ctk.CTkFrame(
+                remaining_card,
+                fg_color="#FFFFFF",
+                corner_radius=10,
+                border_width=1,
+                border_color=self.BORDER,
             )
-            cell.grid(row=row, column=col, sticky="nsew", padx=10, pady=8)
-
+            row_frame.grid(row=r, column=0, sticky="ew", padx=18, pady=6)
+            row_frame.grid_columnconfigure(1, weight=1)
             ctk.CTkLabel(
-                cell,
+                row_frame,
                 text=str(value),
-                font=(Fonts.FAMILY, 19, "bold"),
+                width=54,
+                font=(Fonts.FAMILY, 20, "bold"),
                 text_color=color,
-                anchor="center",
-            ).grid(row=0, column=0, sticky="ew")
-
+            ).grid(row=0, column=0, padx=(12, 8), pady=12)
             ctk.CTkLabel(
-                cell,
+                row_frame,
                 text=label,
-                font=(Fonts.FAMILY, 10),
+                font=(Fonts.FAMILY, 11, "bold"),
                 text_color=self.INK,
-                anchor="center",
-                wraplength=180,
-                justify="center",
-            ).grid(row=1, column=0, sticky="ew", pady=(2, 0))
+                anchor="w",
+            ).grid(row=0, column=1, sticky="w", padx=(0, 10), pady=12)
+
+        if not physical_pages:
+            note_text = "Le plan du livre reste à définir dans le Maquettage."
+            note_color = self.MAQUETTAGE
+        elif mockup_count:
+            note_text = f"{mockup_count} page(s) n'ont encore aucun gabarit associé."
+            note_color = self.ATELIER
+        else:
+            note_text = "Aucune anomalie de préparation détectée."
+            note_color = self.VERIFICATION
+
+        ctk.CTkLabel(
+            remaining_card,
+            text=note_text,
+            font=(Fonts.FAMILY, 10),
+            text_color=note_color,
+            anchor="w",
+            justify="left",
+            wraplength=300,
+        ).grid(row=5, column=0, sticky="ew", padx=22, pady=(16, 20))
 
         # ------------------------------------------------------
-        # INTERCALAIRES
+        # ONGLETS — Tableau de bord ouvert par défaut
         # ------------------------------------------------------
         active_tab = {"name": "dashboard"}
-
-        tab_rail = ctk.CTkFrame(
-            tabs,
-            fg_color=self.BORDER,
-            corner_radius=0,
-            height=1,
-        )
-        tab_rail.place(relx=0, rely=1.0, relwidth=1.0, anchor="sw")
 
         dashboard_button = ctk.CTkButton(
             tabs,
             text="Tableau de bord",
-            width=156,
-            height=38,
-            corner_radius=9,
+            width=150,
+            height=34,
+            corner_radius=10,
             font=(Fonts.FAMILY, 10, "bold"),
         )
-        dashboard_button.grid(row=0, column=0, padx=(8, 3), sticky="s")
+        dashboard_button.grid(row=0, column=0, padx=(0, 7))
 
         book_button = ctk.CTkButton(
             tabs,
             text="Vue du livre",
-            width=142,
+            width=132,
             height=34,
-            corner_radius=9,
-            font=(Fonts.FAMILY, 10),
+            corner_radius=10,
+            font=(Fonts.FAMILY, 10, "bold"),
         )
-        book_button.grid(row=0, column=1, padx=(3, 0), sticky="s")
+        book_button.grid(row=0, column=1)
 
         def show_centre_tab(name: str) -> None:
             active_tab["name"] = name
             if name == "book":
                 book_view.tkraise()
                 dashboard_button.configure(
-                    height=34,
                     fg_color="#EEF1F3",
-                    hover_color="#E7EBED",
+                    hover_color="#E3E7EA",
                     text_color=self.TEXT_MUTED,
                     border_width=1,
                     border_color=self.BORDER,
-                    font=(Fonts.FAMILY, 10),
                 )
                 book_button.configure(
-                    height=38,
-                    fg_color=self.WINDOW_BG,
-                    hover_color=self.WINDOW_BG,
-                    text_color=self.INK,
-                    border_width=1,
-                    border_color=self.BORDER,
-                    font=(Fonts.FAMILY, 10, "bold"),
+                    fg_color=self.MAQUETTAGE,
+                    hover_color=self.MAQUETTAGE,
+                    text_color="white",
+                    border_width=0,
                 )
                 wall.after_idle(draw_wall)
             else:
                 dashboard_view.tkraise()
                 dashboard_button.configure(
-                    height=38,
-                    fg_color=self.WINDOW_BG,
-                    hover_color=self.WINDOW_BG,
-                    text_color=self.INK,
-                    border_width=1,
-                    border_color=self.BORDER,
-                    font=(Fonts.FAMILY, 10, "bold"),
+                    fg_color=self.MAQUETTAGE,
+                    hover_color=self.MAQUETTAGE,
+                    text_color="white",
+                    border_width=0,
                 )
                 book_button.configure(
-                    height=34,
                     fg_color="#EEF1F3",
-                    hover_color="#E7EBED",
+                    hover_color="#E3E7EA",
                     text_color=self.TEXT_MUTED,
                     border_width=1,
                     border_color=self.BORDER,
-                    font=(Fonts.FAMILY, 10),
                 )
 
         dashboard_button.configure(command=lambda: show_centre_tab("dashboard"))
@@ -3592,8 +3501,6 @@ class DocumentView:
         show_centre_tab("dashboard")
 
         return workspace
-
-
 
     def _create_side_navigation(self, parent) -> ctk.CTkFrame:
         """Panneau latéral à onglets, cohérent avec l'Atelier."""

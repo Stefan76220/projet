@@ -25,11 +25,7 @@ class MenuBar:
         self.menu = tk.Menu(root)
 
         self._build_file_menu()
-
-        # Le menu reste disponible en mémoire pour les commandes internes,
-        # mais la barre native « Fichier » n'est plus affichée.
-        setattr(self.root, "_pagemaitre_menu_widget", self.menu)
-        self.root.config(menu="")
+        self.root.config(menu=self.menu)
 
     # ==========================================================
     # Construction des menus

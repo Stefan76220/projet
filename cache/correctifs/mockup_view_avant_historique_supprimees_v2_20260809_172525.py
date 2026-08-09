@@ -37,23 +37,6 @@ class MockupView:
     LILAC = "#A997C9"
     CORAL = "#DF806B"
     YELLOW = "#D8B85A"
-    NAVY = INK
-    MAQUETTAGE = SKY
-    MAQUETTAGE_SOFT = "#DDECF4"
-    ATELIER = CELADON
-    ATELIER_SOFT = "#DFECE5"
-    CONCEPTION = LILAC
-    CONCEPTION_SOFT = "#E8E1F1"
-    ASSEMBLAGE = YELLOW
-    ASSEMBLAGE_SOFT = "#F1E8CD"
-    VERIFICATION = "#6FA6A5"
-    VERIFICATION_SOFT = "#E1EEED"
-    FINALISATION = CORAL
-    FINALISATION_SOFT = "#F2DDD6"
-    TEXT_LIGHT = "#8B8E88"
-    PROJECT_TYPE_APPEARANCES = {
-        "ouvrage_structure": {"label": "Maquettage", "color": SKY, "soft": MAQUETTAGE_SOFT},
-    }
     ACCENT = INK
     ACCENT_SOFT = "#E7EEF6"
     DONE = Colors.SUCCESS
@@ -470,12 +453,12 @@ class MockupView:
                 self._mockup_background_source = None
                 self._mockup_background_photo = None
 
-        self._create_internal_navigation_ribbon(self._root).grid(
+        self._create_header(self._root).grid(
             row=0,
             column=0,
             sticky="ew",
-            padx=10,
-            pady=(5, 3),
+            padx=12,
+            pady=(6, 4),
         )
 
         self._ribbon_frame = self._create_ribbon(self._root)
@@ -607,1568 +590,6 @@ class MockupView:
             canvas.update_idletasks()
         except (tk.TclError, TypeError, ValueError):
             return
-
-    def _create_internal_navigation_ribbon(
-
-        self,
-
-        parent,
-
-    ) -> ctk.CTkFrame:
-
-        """Bandeau décoratif permanent de navigation PageMaître.
-
-
-
-        V6 :
-
-        - aucun fond de widget derrière les icônes ;
-
-        - tout est dessiné directement sur un seul Canvas ;
-
-        - le décor PageMaître est donc visible sous les icônes ;
-
-        - Accueil précède Centre dans le parcours ;
-
-        - le nom de la page est intégré au ruban.
-
-        """
-
-        ribbon = ctk.CTkFrame(
-
-            parent,
-
-            height=98,
-
-            fg_color="transparent",
-
-            corner_radius=0,
-
-            border_width=0,
-
-        )
-
-        ribbon.grid_propagate(False)
-
-        ribbon.grid_columnconfigure(0, weight=1)
-
-        ribbon.grid_rowconfigure(0, weight=1)
-
-
-
-        canvas = tk.Canvas(
-
-            ribbon,
-
-            background=self.WINDOW_BG,
-
-            borderwidth=0,
-
-            highlightthickness=0,
-
-            takefocus=False,
-
-            cursor="arrow",
-
-        )
-
-        canvas.grid(
-
-            row=0,
-
-            column=0,
-
-            sticky="nsew",
-
-        )
-
-
-
-        ribbon._nav_background_photo = None
-
-        ribbon._nav_click_regions = []
-
-
-
-        background_path = (
-
-            Path(__file__).resolve().parents[3]
-
-            / "assets"
-
-            / "interface"
-
-            / "backgrounds"
-
-            / "editorial_bg_accueil.png"
-
-        )
-
-
-
-        def hex_to_rgb(value: str) -> tuple[int, int, int]:
-
-            value = value.lstrip("#")
-
-            return tuple(
-
-                int(value[index:index + 2], 16)
-
-                for index in (0, 2, 4)
-
-            )
-
-
-
-        def draw_icon(
-
-            kind: str,
-
-            cx: float,
-
-            cy: float,
-
-            color: str,
-
-        ) -> None:
-
-            """Dessine une icône directement sur le décor, sans fond."""
-
-            stroke = color
-
-            # CORRECTION_ICÔNES_CANVAS_V6
-
-            # Éclaircissement local de la couleur, sans dépendre d'une
-
-            # méthode utilitaire externe au bandeau.
-
-            rgb = hex_to_rgb(color)
-
-            soft_rgb = tuple(
-
-                int(round(channel + (255 - channel) * 0.35))
-
-                for channel in rgb
-
-            )
-
-            soft = "#{:02X}{:02X}{:02X}".format(*soft_rgb)
-
-            w = 2
-
-
-
-            if kind == "door":
-
-                # Accueil : porte + flèche de retour.
-
-                canvas.create_rectangle(
-
-                    cx - 7, cy - 10,
-
-                    cx + 6, cy + 10,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 14, cy,
-
-                    cx - 4, cy,
-
-                    fill=stroke,
-
-                    width=w,
-
-                    arrow=tk.LAST,
-
-                    arrowshape=(7, 8, 3),
-
-                )
-
-                canvas.create_oval(
-
-                    cx + 2, cy - 1,
-
-                    cx + 4, cy + 1,
-
-                    fill=stroke,
-
-                    outline=stroke,
-
-                )
-
-
-
-            elif kind == "eye":
-
-                canvas.create_arc(
-
-                    cx - 15, cy - 8,
-
-                    cx + 15, cy + 8,
-
-                    start=200,
-
-                    extent=140,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_arc(
-
-                    cx - 15, cy - 8,
-
-                    cx + 15, cy + 8,
-
-                    start=20,
-
-                    extent=140,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_oval(
-
-                    cx - 5, cy - 5,
-
-                    cx + 5, cy + 5,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_oval(
-
-                    cx - 1.5, cy - 1.5,
-
-                    cx + 1.5, cy + 1.5,
-
-                    fill=stroke,
-
-                    outline=stroke,
-
-                )
-
-
-
-            elif kind == "sprout":
-
-                canvas.create_line(
-
-                    cx, cy + 11,
-
-                    cx, cy - 3,
-
-                    fill=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_arc(
-
-                    cx - 12, cy - 10,
-
-                    cx, cy + 1,
-
-                    start=180,
-
-                    extent=170,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 9, cy - 7,
-
-                    cx, cy - 1,
-
-                    fill=soft,
-
-                    width=1,
-
-                )
-
-                canvas.create_arc(
-
-                    cx, cy - 12,
-
-                    cx + 12, cy,
-
-                    start=10,
-
-                    extent=170,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx, cy - 2,
-
-                    cx + 9, cy - 8,
-
-                    fill=soft,
-
-                    width=1,
-
-                )
-
-
-
-            elif kind == "home":
-
-                # Centre : maison, comme dans la proposition visuelle validée.
-
-                canvas.create_line(
-
-                    cx - 11, cy - 1,
-
-                    cx, cy - 11,
-
-                    cx + 11, cy - 1,
-
-                    fill=stroke,
-
-                    width=w,
-
-                    joinstyle=tk.ROUND,
-
-                )
-
-                canvas.create_rectangle(
-
-                    cx - 8, cy - 1,
-
-                    cx + 8, cy + 11,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_rectangle(
-
-                    cx - 2.5, cy + 4,
-
-                    cx + 2.5, cy + 11,
-
-                    outline=soft,
-
-                    width=1,
-
-                )
-
-
-
-            elif kind == "pencil":
-
-                canvas.create_line(
-
-                    cx - 9, cy + 9,
-
-                    cx + 7, cy - 7,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-                canvas.create_line(
-
-                    cx + 5, cy - 9,
-
-                    cx + 10, cy - 4,
-
-                    fill=stroke,
-
-                    width=2,
-
-                )
-
-                canvas.create_polygon(
-
-                    cx - 11, cy + 11,
-
-                    cx - 7, cy + 9,
-
-                    cx - 9, cy + 7,
-
-                    fill="",
-
-                    outline=stroke,
-
-                    width=1,
-
-                )
-
-
-
-            elif kind == "tools":
-
-                canvas.create_line(
-
-                    cx - 9, cy + 9,
-
-                    cx + 8, cy - 8,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 8, cy - 8,
-
-                    cx + 9, cy + 9,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-                canvas.create_rectangle(
-
-                    cx - 12, cy + 7,
-
-                    cx - 7, cy + 12,
-
-                    outline=stroke,
-
-                    width=1,
-
-                )
-
-                canvas.create_arc(
-
-                    cx + 5, cy - 12,
-
-                    cx + 12, cy - 5,
-
-                    start=20,
-
-                    extent=190,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=2,
-
-                )
-
-
-
-            elif kind == "quill":
-
-                canvas.create_arc(
-
-                    cx - 8, cy - 12,
-
-                    cx + 11, cy + 8,
-
-                    start=120,
-
-                    extent=190,
-
-                    style=tk.ARC,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 9, cy + 11,
-
-                    cx + 7, cy - 7,
-
-                    fill=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 2, cy + 4,
-
-                    cx + 6, cy + 3,
-
-                    fill=soft,
-
-                    width=1,
-
-                )
-
-                canvas.create_line(
-
-                    cx + 2, cy,
-
-                    cx + 8, cy - 2,
-
-                    fill=soft,
-
-                    width=1,
-
-                )
-
-
-
-            elif kind == "puzzle":
-
-                points = (
-
-                    cx - 10, cy - 8,
-
-                    cx - 3, cy - 8,
-
-                    cx - 3, cy - 11,
-
-                    cx, cy - 13,
-
-                    cx + 3, cy - 11,
-
-                    cx + 3, cy - 8,
-
-                    cx + 10, cy - 8,
-
-                    cx + 10, cy - 1,
-
-                    cx + 7, cy - 1,
-
-                    cx + 5, cy + 2,
-
-                    cx + 7, cy + 5,
-
-                    cx + 10, cy + 5,
-
-                    cx + 10, cy + 10,
-
-                    cx - 10, cy + 10,
-
-                    cx - 10, cy + 3,
-
-                    cx - 7, cy + 3,
-
-                    cx - 5, cy,
-
-                    cx - 7, cy - 3,
-
-                    cx - 10, cy - 3,
-
-                )
-
-                canvas.create_line(
-
-                    *points,
-
-                    cx - 10, cy - 8,
-
-                    fill=stroke,
-
-                    width=w,
-
-                    joinstyle=tk.ROUND,
-
-                )
-
-
-
-            elif kind == "verify":
-
-                canvas.create_oval(
-
-                    cx - 11, cy - 11,
-
-                    cx + 5, cy + 5,
-
-                    outline=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx + 3, cy + 3,
-
-                    cx + 12, cy + 12,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 7, cy - 2,
-
-                    cx - 3, cy + 2,
-
-                    cx + 2, cy - 5,
-
-                    fill=soft,
-
-                    width=2,
-
-                )
-
-
-
-            elif kind == "flag":
-
-                canvas.create_line(
-
-                    cx - 7, cy - 12,
-
-                    cx - 7, cy + 12,
-
-                    fill=stroke,
-
-                    width=w,
-
-                )
-
-                canvas.create_line(
-
-                    cx - 7, cy - 10,
-
-                    cx + 7, cy - 8,
-
-                    cx + 3, cy - 3,
-
-                    cx + 8, cy + 1,
-
-                    cx - 7, cy,
-
-                    fill=stroke,
-
-                    width=w,
-
-                    joinstyle=tk.ROUND,
-
-                )
-
-
-
-            elif kind == "close":
-
-                canvas.create_line(
-
-                    cx - 8, cy - 8,
-
-                    cx + 8, cy + 8,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-                canvas.create_line(
-
-                    cx + 8, cy - 8,
-
-                    cx - 8, cy + 8,
-
-                    fill=stroke,
-
-                    width=3,
-
-                )
-
-
-
-        def build_background(width: int, height: int):
-
-            try:
-
-                from PIL import Image, ImageDraw
-
-            except Exception:
-
-                return None
-
-
-
-            if background_path.is_file():
-
-                try:
-
-                    source = Image.open(background_path).convert("RGBA")
-
-
-
-                    # Important : on garde tout le dessin du fond général.
-
-                    # On le comprime en hauteur au lieu de recadrer sa zone
-
-                    # centrale vide ; les références éditoriales restent donc
-
-                    # visibles aux extrémités du ruban.
-
-                    source = source.resize(
-
-                        (width, height),
-
-                        Image.Resampling.LANCZOS,
-
-                    )
-
-
-
-                    veil = Image.new(
-
-                        "RGBA",
-
-                        (width, height),
-
-                        (255, 255, 255, 105),
-
-                    )
-
-                    image = Image.alpha_composite(source, veil)
-
-
-
-                except Exception:
-
-                    image = Image.new(
-
-                        "RGBA",
-
-                        (width, height),
-
-                        (248, 247, 244, 255),
-
-                    )
-
-            else:
-
-                image = Image.new(
-
-                    "RGBA",
-
-                    (width, height),
-
-                    (248, 247, 244, 255),
-
-                )
-
-
-
-            # Quelques repères supplémentaires, strictement rectilignes.
-
-            draw = ImageDraw.Draw(image)
-
-            pale_blue = (117, 182, 219, 78)
-
-            pale_teal = (130, 183, 161, 72)
-
-            pale_lilac = (169, 151, 201, 66)
-
-            pale_coral = (223, 128, 107, 65)
-
-
-
-            y = height - 7
-
-            draw.line(
-
-                (18, y, width - 18, y),
-
-                fill=(77, 96, 118, 48),
-
-                width=1,
-
-            )
-
-
-
-            for x in (26, width // 2, width - 26):
-
-                draw.line(
-
-                    (x - 7, y, x + 7, y),
-
-                    fill=pale_blue,
-
-                    width=1,
-
-                )
-
-                draw.line(
-
-                    (x, y - 7, x, y + 1),
-
-                    fill=pale_blue,
-
-                    width=1,
-
-                )
-
-
-
-            sx = 214
-
-            for color in (
-
-                pale_teal,
-
-                pale_blue,
-
-                pale_lilac,
-
-                pale_coral,
-
-            ):
-
-                draw.rectangle(
-
-                    (sx, y - 4, sx + 9, y),
-
-                    outline=color,
-
-                    width=1,
-
-                )
-
-                sx += 14
-
-
-
-            return image
-
-
-
-        def add_click_region(
-
-            x1: float,
-
-            x2: float,
-
-            command,
-
-            enabled: bool,
-
-        ) -> None:
-
-            if enabled and callable(command):
-
-                ribbon._nav_click_regions.append(
-
-                    (float(x1), float(x2), command)
-
-                )
-
-
-
-        def on_click(event) -> None:
-
-            x = float(event.x)
-
-            for x1, x2, command in ribbon._nav_click_regions:
-
-                if x1 <= x <= x2:
-
-                    command()
-
-                    return
-
-
-
-        canvas.bind("<Button-1>", on_click)
-
-
-
-        def draw_item(
-
-            *,
-
-            cx: float,
-
-            icon_kind: str,
-
-            label: str,
-
-            color: str,
-
-            command=None,
-
-            active: bool = False,
-
-            enabled: bool = True,
-
-            width: float = 86,
-
-        ) -> None:
-
-            # ETAPE_ACTIVE_DIFFUSE_V7
-
-            # L'étape courante est un repère, pas un bouton :
-
-            # elle est plus claire, non cliquable et reçoit un halo
-
-            # tramé qui laisse réellement voir le décor principal.
-
-            if active:
-
-                rgb = hex_to_rgb(color)
-
-                active_rgb = tuple(
-
-                    int(round(channel + (255 - channel) * 0.30))
-
-                    for channel in rgb
-
-                )
-
-                item_color = "#{:02X}{:02X}{:02X}".format(*active_rgb)
-
-
-
-                halo_rgb = tuple(
-
-                    int(round(channel + (255 - channel) * 0.72))
-
-                    for channel in rgb
-
-                )
-
-                halo_color = "#{:02X}{:02X}{:02X}".format(*halo_rgb)
-
-
-
-                canvas.create_oval(
-
-                    cx - width * 0.43,
-
-                    24,
-
-                    cx + width * 0.43,
-
-                    86,
-
-                    fill=halo_color,
-
-                    outline="",
-
-                    stipple="gray25",
-
-                )
-
-            else:
-
-                item_color = color if enabled else self.TEXT_LIGHT
-
-
-
-            draw_icon(
-
-                icon_kind,
-
-                cx,
-
-                45,
-
-                item_color,
-
-            )
-
-
-
-            canvas.create_text(
-
-                cx,
-
-                69,
-
-                text=label,
-
-                fill=item_color,
-
-                font=(
-
-                    Fonts.FAMILY,
-
-                    9,
-
-                    "bold" if active else "normal",
-
-                ),
-
-                anchor="center",
-
-            )
-
-
-
-            if active:
-
-                canvas.create_line(
-
-                    cx - 16, 82,
-
-                    cx + 16, 82,
-
-                    fill=item_color,
-
-                    width=2,
-
-                )
-
-            else:
-
-                canvas.create_oval(
-
-                    cx - 1.5, 81,
-
-                    cx + 1.5, 84,
-
-                    fill=item_color,
-
-                    outline="",
-
-                )
-
-
-
-            # Une étape active n'est jamais cliquable, même si une
-
-            # commande lui était attribuée par erreur plus tard.
-
-            add_click_region(
-
-                cx - width / 2,
-
-                cx + width / 2,
-
-                None if active else command,
-
-                enabled and not active,
-
-            )
-
-
-
-        def redraw(_event=None) -> None:
-
-            width = max(1, int(canvas.winfo_width()))
-
-            height = max(1, int(canvas.winfo_height()))
-
-
-
-            if width <= 2 or height <= 2:
-
-                return
-
-
-
-            canvas.delete("all")
-
-            ribbon._nav_click_regions = []
-
-
-
-            background = build_background(width, height)
-
-            if background is not None:
-
-                try:
-
-                    from PIL import ImageTk
-
-
-
-                    photo = ImageTk.PhotoImage(background)
-
-                    ribbon._nav_background_photo = photo
-
-                    canvas.create_image(
-
-                        0,
-
-                        0,
-
-                        image=photo,
-
-                        anchor="nw",
-
-                    )
-
-                except Exception:
-
-                    pass
-
-
-
-            # --------------------------------------------------
-
-            # Titre de la page intégré au bandeau
-
-            # --------------------------------------------------
-
-
-
-            project_name = str(
-
-                getattr(self.project, "name", "")
-
-                or "Projet sans nom"
-
-            )
-
-            project_type = self._project_type_key()
-
-            appearance = self.PROJECT_TYPE_APPEARANCES.get(
-
-                project_type,
-
-                self.PROJECT_TYPE_APPEARANCES["ouvrage_structure"],
-
-            )
-
-
-
-            canvas.create_text(
-
-                20,
-
-                10,
-
-                text="Centre du projet",
-
-                fill=self.INK,
-
-                font=(Fonts.FAMILY, 11, "bold"),
-
-                anchor="nw",
-
-            )
-
-
-
-            canvas.create_text(
-
-                width - 20,
-
-                11,
-
-                text=f"{project_name}  ·  {appearance['label']}",
-
-                fill=self.TEXT_MUTED,
-
-                font=(Fonts.FAMILY, 8),
-
-                anchor="ne",
-
-            )
-
-
-
-            # --------------------------------------------------
-
-            # Gauche : accès permanents
-
-            # --------------------------------------------------
-
-
-
-            draw_item(
-
-                cx=78,
-
-                icon_kind="eye",
-
-                label="Visualisation",
-
-                color=self.LILAC,
-
-                enabled=False,
-
-                width=104,
-
-            )
-
-
-
-            draw_item(
-
-                cx=190,
-
-                icon_kind="sprout",
-
-                label="Suivi du livre",
-
-                color=self.CELADON,
-
-                enabled=False,
-
-                width=106,
-
-            )
-
-
-
-            # Séparation discrète avant le parcours.
-
-            canvas.create_line(
-
-                252, 30,
-
-                252, 78,
-
-                fill="#D7DEE4",
-
-                width=1,
-
-            )
-
-
-
-            # --------------------------------------------------
-
-            # Centre : Accueil puis parcours
-
-            # --------------------------------------------------
-
-
-
-            steps = (
-
-                (
-
-                    "door",
-
-                    "Accueil",
-
-                    self.NAVY,
-
-                    self._go_back,
-
-                    False,
-
-                    True,
-
-                    72,
-
-                ),
-
-                (
-
-                    "home",
-
-                    "Centre",
-
-                    self.NAVY,
-
-                    None,
-
-                    True,
-
-                    True,
-
-                    72,
-
-                ),
-
-                (
-
-                    "pencil",
-
-                    "Maquettage",
-
-                    self.MAQUETTAGE,
-
-                    None,
-
-                    False,
-
-                    True,
-
-                    92,
-
-                ),
-
-                (
-
-                    "tools",
-
-                    "Atelier",
-
-                    self.ATELIER,
-
-                    None,
-
-                    False,
-
-                    True,
-
-                    76,
-
-                ),
-
-                (
-
-                    "quill",
-
-                    "Conception",
-
-                    self.CONCEPTION,
-
-                    None,
-
-                    False,
-
-                    True,
-
-                    92,
-
-                ),
-
-                (
-
-                    "puzzle",
-
-                    "Assemblage",
-
-                    self.ASSEMBLAGE,
-
-                    None,
-
-                    False,
-
-                    False,
-
-                    94,
-
-                ),
-
-                (
-
-                    "verify",
-
-                    "Vérification",
-
-                    self.VERIFICATION,
-
-                    None,
-
-                    False,
-
-                    False,
-
-                    94,
-
-                ),
-
-                (
-
-                    "flag",
-
-                    "Finalisation",
-
-                    self.FINALISATION,
-
-                    None,
-
-                    False,
-
-                    False,
-
-                    90,
-
-                ),
-
-            )
-
-
-
-            total_width = sum(step[6] for step in steps)
-
-            total_width += max(0, len(steps) - 1) * 2
-
-
-
-            available_left = 278
-
-            available_right = width - 100
-
-            available_width = max(
-
-                total_width,
-
-                available_right - available_left,
-
-            )
-
-            flow_left = (
-
-                available_left
-
-                + max(0, (available_width - total_width) / 2)
-
-            )
-
-
-
-            cursor = flow_left
-
-
-
-            for step in steps:
-
-                (
-
-                    icon_kind,
-
-                    label,
-
-                    color,
-
-                    command,
-
-                    active,
-
-                    enabled,
-
-                    item_width,
-
-                ) = step
-
-
-
-                cx = cursor + item_width / 2
-
-
-
-                draw_item(
-
-                    cx=cx,
-
-                    icon_kind=icon_kind,
-
-                    label=label,
-
-                    color=color,
-
-                    command=command,
-
-                    active=active,
-
-                    enabled=enabled,
-
-                    width=item_width,
-
-                )
-
-
-
-                cursor += item_width + 2
-
-
-
-            # --------------------------------------------------
-
-            # Droite : Fermer
-
-            # --------------------------------------------------
-
-
-
-            canvas.create_line(
-
-                width - 88, 30,
-
-                width - 88, 78,
-
-                fill="#D7DEE4",
-
-                width=1,
-
-            )
-
-
-
-            draw_item(
-
-                cx=width - 43,
-
-                icon_kind="close",
-
-                label="Fermer",
-
-                color=self.CORAL,
-
-                command=self._go_back,
-
-                enabled=True,
-
-                width=76,
-
-            )
-
-
-
-        canvas.bind(
-
-            "<Configure>",
-
-            redraw,
-
-            add="+",
-
-        )
-
-        canvas.after_idle(redraw)
-
-
-
-        return ribbon
-
-
-
-
-    def _project_type_key(self) -> str:
-        return "ouvrage_structure"
 
     def _create_header(self, parent) -> ctk.CTkFrame:
         frame = ctk.CTkFrame(parent, fg_color="transparent", height=32)
@@ -2421,15 +842,10 @@ class MockupView:
         tools_width = 218
 
         entries: list[tuple[str, Any, int]] = []
-        deleted_groups = [
+        deleted_parts = [
             group
             for group in groups
             if bool(group.get("deleted", False))
-        ]
-        deleted_page_types = [
-            definition
-            for definition in self._page_types()
-            if bool(definition.get("deleted", False))
         ]
 
         for group_definition in groups:
@@ -2440,10 +856,7 @@ class MockupView:
             type_count = sum(
                 1
                 for definition in self._page_types()
-                if (
-                    str(definition.get("group", "")) == group_id
-                    and not bool(definition.get("deleted", False))
-                )
+                if str(definition.get("group", "")) == group_id
             )
             columns = max(1, (type_count + 1) // 2)
             estimated_width = max(
@@ -2456,11 +869,10 @@ class MockupView:
             )
             entries.append(("group", group_definition, estimated_width))
 
-        # Historiques compacts : après Fin du livre, avant les outils.
-        if deleted_groups:
-            entries.append(("deleted_groups_history", deleted_groups, 132))
-        if deleted_page_types:
-            entries.append(("deleted_types_history", deleted_page_types, 132))
+        # Historique compact : uniquement présent lorsqu'une Partie a été
+        # supprimée. Il reste après Fin du livre et avant les outils.
+        if deleted_parts:
+            entries.append(("deleted_history", deleted_parts, 126))
 
         # Bloc outils : toujours en dernier.
         entries.append(("tools", None, tools_width))
@@ -2504,24 +916,11 @@ class MockupView:
                     tools.pack(side="left", padx=1)
                     continue
 
-                if kind == "deleted_groups_history":
-                    history = self._create_deleted_history_block(
+                if kind == "deleted_history":
+                    history = self._create_deleted_parts_history(
                         row_frame,
                         payload,
                         width=entry_width,
-                        title="Groupes supprimés",
-                        item_kind="group",
-                    )
-                    history.pack(side="left", padx=1)
-                    continue
-
-                if kind == "deleted_types_history":
-                    history = self._create_deleted_history_block(
-                        row_frame,
-                        payload,
-                        width=entry_width,
-                        title="Types supprimés",
-                        item_kind="type",
                     )
                     history.pack(side="left", padx=1)
                     continue
@@ -2540,15 +939,13 @@ class MockupView:
         self._update_history_buttons()
         return ribbon
 
-    def _create_deleted_history_block(
+    def _create_deleted_parts_history(
         self,
         parent,
-        deleted_items: list[dict[str, Any]],
+        deleted_parts: list[dict[str, Any]],
         width: int,
-        title: str,
-        item_kind: str,
     ) -> ctk.CTkFrame:
-        """Historique compact, préparé pour la future restauration au clic."""
+        """Petit historique fixe des Parties supprimées."""
         block = ctk.CTkFrame(
             parent,
             width=width,
@@ -2561,353 +958,46 @@ class MockupView:
         block.pack_propagate(False)
         block.grid_propagate(False)
         block.grid_columnconfigure((0, 1), weight=1)
-        block.grid_rowconfigure(0, weight=1)
 
-        history_area = ctk.CTkFrame(
+        ctk.CTkLabel(
             block,
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        history_area.grid(
+            text="Supprimées",
+            font=(Fonts.FAMILY, 8, "bold"),
+            text_color="#7E838A",
+            anchor="center",
+        ).grid(
             row=0,
             column=0,
             columnspan=2,
-            sticky="nsew",
-            padx=5,
-            pady=(4, 2),
+            sticky="ew",
+            padx=4,
+            pady=(5, 3),
         )
-        history_area.grid_columnconfigure((0, 1), weight=1)
 
-        visible_items = deleted_items[:6]
-        for index, item in enumerate(visible_items):
-            if item_kind == "group":
-                raw_label = str(
-                    item.get("deleted_label")
-                    or item.get("deleted_original_title")
-                    or ""
-                ).strip()
-                if not raw_label:
-                    current = str(item.get("title", "")).split("—", 1)[0].strip()
-                    raw_label = current or "Groupe"
-            else:
-                raw_label = str(
-                    item.get("deleted_label")
-                    or item.get("deleted_original_title")
-                    or item.get("short")
-                    or item.get("title")
-                    or "Type"
-                ).strip()
+        for index, group in enumerate(deleted_parts):
+            title = str(group.get("title", "")).strip()
+            number_text = title.removeprefix("Partie ").split("—", 1)[0].strip()
+            label = f"P{number_text}" if number_text.isdigit() else "P?"
 
-            label = raw_label if len(raw_label) <= 11 else raw_label[:10] + "…"
-
-            item_id = (
-                str(item.get("id", ""))
-                if item_kind == "group"
-                else str(item.get("type", ""))
-            )
-
-            chip = ctk.CTkLabel(
-                history_area,
+            ctk.CTkLabel(
+                block,
                 text=label,
-                width=50,
-                height=21,
+                width=42,
+                height=22,
                 corner_radius=5,
                 fg_color="#E9EAEC",
                 text_color="#8C9198",
                 font=(Fonts.FAMILY, 8),
                 anchor="center",
-                cursor="hand2",
-            )
-            chip.grid(
-                row=index // 2,
+            ).grid(
+                row=1 + (index // 2),
                 column=index % 2,
-                padx=2,
+                padx=3,
                 pady=2,
                 sticky="n",
             )
-            chip.bind(
-                "<Button-1>",
-                lambda _event, kind=item_kind, identifier=item_id: (
-                    self._confirm_restore_deleted(kind, identifier)
-                ),
-            )
-
-        if len(deleted_items) > 6:
-            ctk.CTkLabel(
-                history_area,
-                text=f"+{len(deleted_items) - 6}",
-                width=50,
-                height=18,
-                text_color="#8C9198",
-                font=(Fonts.FAMILY, 8, "bold"),
-                anchor="center",
-            ).grid(row=3, column=1, padx=2, pady=1)
-
-        title_bar = ctk.CTkFrame(
-            block,
-            height=18,
-            fg_color="#E7E8EA",
-            corner_radius=0,
-        )
-        title_bar.grid(
-            row=1,
-            column=0,
-            columnspan=2,
-            sticky="ew",
-            padx=1,
-            pady=(0, 1),
-        )
-        title_bar.grid_propagate(False)
-        title_bar.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            title_bar,
-            text=title,
-            font=(Fonts.FAMILY, 8, "bold"),
-            text_color="#7E838A",
-            anchor="center",
-        ).grid(row=0, column=0, sticky="nsew", padx=3)
 
         return block
-
-    def _confirm_restore_deleted(
-        self,
-        item_kind: str,
-        identifier: str,
-    ) -> None:
-        """Demande confirmation avant restauration d'un élément supprimé."""
-        if not identifier:
-            return
-
-        if item_kind == "group":
-            item = next(
-                (
-                    group
-                    for group in self._groups()
-                    if (
-                        str(group.get("id", "")) == identifier
-                        and bool(group.get("deleted", False))
-                    )
-                ),
-                None,
-            )
-        else:
-            item = next(
-                (
-                    definition
-                    for definition in self._page_types()
-                    if (
-                        str(definition.get("type", "")) == identifier
-                        and bool(definition.get("deleted", False))
-                    )
-                ),
-                None,
-            )
-
-        if item is None:
-            return
-
-        label = str(
-            item.get("deleted_original_title")
-            or item.get("deleted_label")
-            or item.get("title")
-            or identifier
-        ).strip()
-
-        parent_group = None
-        if item_kind == "type":
-            parent_id = str(
-                item.get("deleted_original_group")
-                or item.get("group")
-                or ""
-            )
-            parent_group = next(
-                (
-                    group
-                    for group in self._groups()
-                    if (
-                        str(group.get("id", "")) == parent_id
-                        and bool(group.get("deleted", False))
-                    )
-                ),
-                None,
-            )
-
-        message = f"Rétablir « {label} » ?"
-        if parent_group is not None:
-            parent_label = str(
-                parent_group.get("deleted_original_title")
-                or parent_group.get("deleted_label")
-                or parent_group.get("title")
-                or "son groupe"
-            ).split("—", 1)[0].strip()
-            message += (
-                f"\n\nLe groupe « {parent_label} » est également supprimé."
-                "\nIl sera rétabli automatiquement."
-            )
-
-        window = self._new_dialog("Rétablir", "430x225")
-        ctk.CTkLabel(
-            window,
-            text=message,
-            font=Fonts.NORMAL,
-            text_color=self.INK,
-            justify="center",
-            wraplength=370,
-        ).pack(padx=24, pady=(34, 24))
-
-        actions = ctk.CTkFrame(window, fg_color="transparent")
-        actions.pack(pady=(0, 24))
-
-        ctk.CTkButton(
-            actions,
-            text="Annuler",
-            width=110,
-            height=34,
-            corner_radius=7,
-            fg_color=self.GROUP_BG,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=self.INK,
-            border_width=1,
-            border_color=self.BORDER,
-            font=Fonts.SMALL,
-            command=window.destroy,
-        ).pack(side="left", padx=6)
-
-        ctk.CTkButton(
-            actions,
-            text="Rétablir",
-            width=110,
-            height=34,
-            corner_radius=7,
-            fg_color="#E1EEE9",
-            hover_color="#D8E9E1",
-            text_color=self.INK,
-            border_width=1,
-            border_color=self.CELADON,
-            font=Fonts.SMALL,
-            command=lambda: self._restore_deleted_item(
-                item_kind,
-                identifier,
-                window,
-            ),
-        ).pack(side="left", padx=6)
-
-    def _restore_deleted_group_data(self, group: dict[str, Any]) -> None:
-        """Restaure un groupe supprimé et sa position logique d'origine."""
-        groups = self._groups()
-        if group not in groups:
-            return
-
-        original_title = str(
-            group.get("deleted_original_title")
-            or group.get("title")
-            or "Groupe"
-        ).split("—", 1)[0].strip()
-
-        group["deleted"] = False
-        group["title"] = original_title
-
-        current_index = groups.index(group)
-        original_index = group.get("deleted_original_index")
-        try:
-            original_index = int(original_index)
-        except (TypeError, ValueError):
-            original_index = current_index
-
-        groups.pop(current_index)
-
-        # Fin du livre doit rester le dernier groupe structurel.
-        fin_index = next(
-            (
-                index
-                for index, candidate in enumerate(groups)
-                if str(candidate.get("id", "")) == "fin_livre"
-            ),
-            len(groups),
-        )
-        target_index = max(1, min(original_index, fin_index))
-        groups.insert(target_index, group)
-
-    def _restore_deleted_item(
-        self,
-        item_kind: str,
-        identifier: str,
-        owner,
-    ) -> None:
-        """Restaure un groupe ou un type, avec son groupe parent si nécessaire."""
-        if item_kind == "group":
-            item = next(
-                (
-                    group
-                    for group in self._groups()
-                    if (
-                        str(group.get("id", "")) == identifier
-                        and bool(group.get("deleted", False))
-                    )
-                ),
-                None,
-            )
-            if item is None:
-                return
-
-            self._record_history()
-            self._restore_deleted_group_data(item)
-
-        else:
-            item = next(
-                (
-                    definition
-                    for definition in self._page_types()
-                    if (
-                        str(definition.get("type", "")) == identifier
-                        and bool(definition.get("deleted", False))
-                    )
-                ),
-                None,
-            )
-            if item is None:
-                return
-
-            self._record_history()
-
-            parent_id = str(
-                item.get("deleted_original_group")
-                or item.get("group")
-                or ""
-            )
-            parent_group = next(
-                (
-                    group
-                    for group in self._groups()
-                    if str(group.get("id", "")) == parent_id
-                ),
-                None,
-            )
-
-            if parent_group is not None and bool(
-                parent_group.get("deleted", False)
-            ):
-                self._restore_deleted_group_data(parent_group)
-
-            item["deleted"] = False
-            item["group"] = parent_id
-
-            definitions = self._page_types()
-            current_index = definitions.index(item)
-            original_index = item.get("deleted_original_index")
-            try:
-                original_index = int(original_index)
-            except (TypeError, ValueError):
-                original_index = current_index
-
-            definitions.pop(current_index)
-            target_index = max(0, min(original_index, len(definitions)))
-            definitions.insert(target_index, item)
-
-        self._save_data()
-        self._close_dialog(owner)
-        self._refresh_ribbon()
 
     def _create_group_block(
         self,
@@ -2977,10 +1067,7 @@ class MockupView:
         definitions = [
             definition
             for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == group_id
-                and not bool(definition.get("deleted", False))
-            )
+            if str(definition.get("group", "")) == group_id
         ]
         type_columns = max(1, (len(definitions) + 1) // 2)
 
@@ -3313,7 +1400,7 @@ class MockupView:
         self._refresh_ribbon()
 
     def _refresh_ribbon(self) -> None:
-        """Remplace le ruban sans créer de frame vide entre les deux états."""
+        """Remplace le ruban en une seule bascule visuelle."""
         self._hide_group_drop_indicator()
         if self._root is None or not self._root.winfo_exists():
             return
@@ -3321,8 +1408,12 @@ class MockupView:
         old_ribbon = self._ribbon_frame
         new_ribbon = self._create_ribbon(self._root)
 
-        # Le nouveau ruban est posé AVANT de retirer l'ancien.
-        # Cela évite le flash blanc visible lors d'un déplacement.
+        if old_ribbon is not None:
+            try:
+                old_ribbon.grid_remove()
+            except Exception:
+                pass
+
         self._ribbon_frame = new_ribbon
         new_ribbon.grid(
             row=1,
@@ -3331,10 +1422,6 @@ class MockupView:
             padx=12,
             pady=(0, 8),
         )
-        try:
-            new_ribbon.lift()
-        except Exception:
-            pass
 
         if old_ribbon is not None:
             try:
@@ -3836,18 +1923,12 @@ class MockupView:
         custom_types = [
             definition
             for definition in self._page_types()
-            if (
-                bool(definition.get("custom", False))
-                and not bool(definition.get("deleted", False))
-            )
+            if bool(definition.get("custom", False))
         ]
         custom_groups = [
             group
             for group in self._groups()
-            if (
-                not bool(group.get("protected", False))
-                and not bool(group.get("deleted", False))
-            )
+            if not bool(group.get("protected", False))
         ]
 
         row = 0
@@ -4098,10 +2179,7 @@ class MockupView:
         type_count = sum(
             1
             for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == group_id
-                and not bool(definition.get("deleted", False))
-            )
+            if str(definition.get("group", "")) == group_id
         )
         status = "Vide" if type_count == 0 else f"{type_count} type(s)"
         ctk.CTkLabel(
@@ -4111,24 +2189,6 @@ class MockupView:
             font=Fonts.SMALL,
             text_color=self.TEXT_MUTED,
         ).grid(row=0, column=2, padx=6)
-
-        movable = self._can_reorder_group(group)
-
-        ctk.CTkButton(
-            row, text="↑", width=32, height=28, corner_radius=6,
-            fg_color=self.GROUP_BG, hover_color=Colors.BUTTON_HOVER,
-            text_color=self.INK, border_width=1, border_color=self.BORDER,
-            font=Fonts.SMALL, state="normal" if movable else "disabled",
-            command=lambda: self._move_group_step(group_id, -1, owner),
-        ).grid(row=0, column=3, padx=(2, 1))
-
-        ctk.CTkButton(
-            row, text="↓", width=32, height=28, corner_radius=6,
-            fg_color=self.GROUP_BG, hover_color=Colors.BUTTON_HOVER,
-            text_color=self.INK, border_width=1, border_color=self.BORDER,
-            font=Fonts.SMALL, state="normal" if movable else "disabled",
-            command=lambda: self._move_group_step(group_id, 1, owner),
-        ).grid(row=0, column=4, padx=1)
 
         ctk.CTkButton(
             row,
@@ -4144,7 +2204,7 @@ class MockupView:
             font=Fonts.SMALL,
             state="normal" if type_count == 0 else "disabled",
             command=lambda: self._delete_custom_group(group_id, owner),
-        ).grid(row=0, column=5, padx=(4, 8))
+        ).grid(row=0, column=3, padx=(4, 8))
 
         return row
 
@@ -4156,72 +2216,26 @@ class MockupView:
             return
 
         definitions = self._page_types()
-        target_index = next(
-            (
-                index
-                for index, definition in enumerate(definitions)
-                if (
-                    str(definition.get("type", "")) == page_type
-                    and bool(definition.get("custom", False))
-                    and not bool(definition.get("deleted", False))
-                )
-            ),
-            None,
-        )
-        if target_index is None:
+        filtered = [
+            definition
+            for definition in definitions
+            if not (
+                str(definition.get("type", "")) == page_type
+                and bool(definition.get("custom", False))
+            )
+        ]
+        if len(filtered) == len(definitions):
             return
 
-        target = definitions[target_index]
         self._record_history()
-
-        target["deleted"] = True
-        target["deleted_kind"] = "page_type"
-        target["deleted_original_index"] = target_index
-        target["deleted_original_group"] = str(target.get("group", ""))
-        target["deleted_original_title"] = str(target.get("title", "")).strip()
-        target["deleted_label"] = str(
-            target.get("short")
-            or target.get("title")
-            or "Type"
-        ).strip()
-
+        definitions[:] = filtered
         self._save_data()
         self._close_dialog(owner)
         self._refresh_ribbon()
 
-    def _can_reorder_group(self, group: dict[str, Any]) -> bool:
-        return not bool(group.get("deleted", False)) and not bool(group.get("protected", False))
-
-    def _move_group_step(self, group_id: str, delta: int, owner=None) -> None:
-        groups = self._groups()
-        current_index = next((i for i, g in enumerate(groups) if str(g.get("id", "")) == group_id and not bool(g.get("deleted", False))), None)
-        if current_index is None or not self._can_reorder_group(groups[current_index]):
-            return
-        direction = -1 if delta < 0 else 1
-        target_index = current_index + direction
-        while 0 <= target_index < len(groups):
-            target = groups[target_index]
-            if bool(target.get("deleted", False)):
-                target_index += direction
-                continue
-            if bool(target.get("protected", False)):
-                return
-            if self._can_reorder_group(target):
-                self._record_history()
-                groups[current_index], groups[target_index] = groups[target_index], groups[current_index]
-                self._save_data()
-                if owner is not None:
-                    self._close_dialog(owner)
-                self._refresh_ribbon()
-                return
-            target_index += direction
-
     def _delete_custom_group(self, group_id: str, owner) -> None:
         if any(
-            (
-                str(definition.get("group", "")) == group_id
-                and not bool(definition.get("deleted", False))
-            )
+            str(definition.get("group", "")) == group_id
             for definition in self._page_types()
         ):
             return
@@ -4239,74 +2253,23 @@ class MockupView:
         if target is None:
             return
 
-        title = str(target.get("title", "")).strip()
-
-        # Un ouvrage doit toujours conserver au moins une Partie active.
-        if title.startswith("Partie "):
-            active_parts = [
-                group
-                for group in groups
-                if (
-                    str(group.get("title", "")).strip().startswith("Partie ")
-                    and not bool(group.get("deleted", False))
-                )
-            ]
-            if len(active_parts) <= 1:
-                self._close_dialog(owner)
-                warning = self._new_dialog(
-                    "Suppression impossible",
-                    "430x205",
-                )
-                ctk.CTkLabel(
-                    warning,
-                    text=(
-                        "Le livre doit conserver au moins une Partie active.\n\n"
-                        "Créez une nouvelle Partie avant de supprimer celle-ci."
-                    ),
-                    font=Fonts.NORMAL,
-                    text_color=self.INK,
-                    justify="center",
-                    wraplength=365,
-                ).pack(padx=24, pady=(38, 24))
-                ctk.CTkButton(
-                    warning,
-                    text="Fermer",
-                    width=110,
-                    height=34,
-                    corner_radius=7,
-                    fg_color=self.GROUP_BG,
-                    hover_color=Colors.BUTTON_HOVER,
-                    text_color=self.INK,
-                    border_width=1,
-                    border_color=self.BORDER,
-                    font=Fonts.SMALL,
-                    command=warning.destroy,
-                ).pack()
-                return
-
         self._record_history()
 
-        original_index = groups.index(target)
-        target["deleted"] = True
-        target["deleted_original_index"] = original_index
-        target["deleted_original_title"] = title
-
+        title = str(target.get("title", "")).strip()
         if title.startswith("Partie "):
             number_text = title.removeprefix("Partie ").split("—", 1)[0].strip()
-            target["deleted_kind"] = "partie"
-            target["deleted_label"] = (
-                f"P{number_text}" if number_text.isdigit() else title
-            )
+            target["deleted"] = True
             target["title"] = (
                 f"Partie {number_text} — supprimée"
                 if number_text.isdigit()
                 else f"{title} — supprimée"
             )
         else:
-            # Le groupe libre conserve son nom pour l'historique.
-            target["deleted_kind"] = "groupe_libre"
-            target["deleted_label"] = title
-            target["title"] = f"{title} — supprimé"
+            groups[:] = [
+                group
+                for group in groups
+                if str(group.get("id", "")) != group_id
+            ]
 
         self._save_data()
         self._close_dialog(owner)
@@ -4340,23 +2303,17 @@ class MockupView:
     def _create_next_part(self, owner) -> None:
         """Crée Partie N immédiatement après Partie N-1."""
         number = self._next_part_number()
-        previous_number = number - 1
+        previous_title = f"Partie {number - 1}"
         groups = self._groups()
 
-        previous_index = None
-        for index, group in enumerate(groups):
-            title = str(group.get("title", "")).strip()
-            if not title.startswith("Partie "):
-                continue
-            number_text = (
-                title.removeprefix("Partie ")
-                .split("—", 1)[0]
-                .strip()
-            )
-            if number_text.isdigit() and int(number_text) == previous_number:
-                previous_index = index
-                break
-
+        previous_index = next(
+            (
+                index
+                for index, group in enumerate(groups)
+                if str(group.get("title", "")).strip() == previous_title
+            ),
+            None,
+        )
         if previous_index is None:
             return
 
@@ -4409,10 +2366,7 @@ class MockupView:
         movable_predecessors = [
             group
             for group in self._groups()
-            if (
-                str(group.get("id", "")) != "fin_livre"
-                and not bool(group.get("deleted", False))
-            )
+            if str(group.get("id", "")) != "fin_livre"
         ]
         group_titles = [
             str(group.get("title", "Groupe"))
@@ -4453,11 +2407,7 @@ class MockupView:
         name_entry = self._dialog_entry(body, 0, "Nom du type de page")
         short_entry = self._dialog_entry(body, 1, "Nom court dans le bouton")
 
-        groups = [
-            group
-            for group in self._groups()
-            if not bool(group.get("deleted", False))
-        ]
+        groups = self._groups()
         group_titles = [str(group.get("title", "Groupe")) for group in groups]
         group_var = ctk.StringVar(value=group_titles[0] if group_titles else "")
         self._dialog_option(body, 2, "Groupe", group_var, group_titles)
@@ -9575,12 +7525,6 @@ class MockupView:
                         "accent": str(raw.get("accent") or cls.SKY),
                         "protected": False,
                         "deleted": bool(raw.get("deleted", False)),
-                        "deleted_kind": str(raw.get("deleted_kind") or ""),
-                        "deleted_label": str(raw.get("deleted_label") or ""),
-                        "deleted_original_index": raw.get("deleted_original_index"),
-                        "deleted_original_title": str(
-                            raw.get("deleted_original_title") or ""
-                        ),
                     }
                 )
                 known_ids.add(group_id)
@@ -9634,16 +7578,6 @@ class MockupView:
                         "description": str(raw.get("description") or ""),
                         "thumbnail": str(raw.get("thumbnail") or ""),
                         "custom": True,
-                        "deleted": bool(raw.get("deleted", False)),
-                        "deleted_kind": str(raw.get("deleted_kind") or ""),
-                        "deleted_label": str(raw.get("deleted_label") or ""),
-                        "deleted_original_index": raw.get("deleted_original_index"),
-                        "deleted_original_group": str(
-                            raw.get("deleted_original_group") or group_id
-                        ),
-                        "deleted_original_title": str(
-                            raw.get("deleted_original_title") or title
-                        ),
                     }
                 )
                 known_types.add(page_type)
