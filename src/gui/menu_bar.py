@@ -95,10 +95,25 @@ class MenuBar:
             return
 
         try:
+            project_type = str(
+                getattr(
+                    self.root,
+                    "_pagemaitre_project_type",
+                    "ouvrage_structure",
+                )
+                or "ouvrage_structure"
+            )
 
             self.project_manager.new_project(
                 dossier,
                 nom,
+                project_type=project_type,
+            )
+
+            setattr(
+                self.root,
+                "_pagemaitre_project_type",
+                "ouvrage_structure",
             )
 
             self._refresh_workspace()

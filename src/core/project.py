@@ -22,8 +22,15 @@ class Project:
     sans supprimer ni déplacer leurs fichiers existants.
     """
 
-    VERSION = "1.4"
+    VERSION = "1.5"
     MOCKUP_VERSION = 6
+
+    DEFAULT_PROJECT_TYPE = "ouvrage_structure"
+    PROJECT_TYPES = {
+        "ouvrage_structure",
+        "livre_textuel",
+        "bande_dessinee",
+    }
 
     PROJECT_FOLDERS = (
         "documents",
@@ -48,6 +55,7 @@ class Project:
         self.name = ""
         self.format = "A5"
         self.book_model_id = ""
+        self.project_type = self.DEFAULT_PROJECT_TYPE
 
         self.root: Path | None = None
 
@@ -137,9 +145,17 @@ class Project:
         self,
         folder: str,
         name: str,
+        project_type: str = DEFAULT_PROJECT_TYPE,
     ) -> Path:
+        target_root = Path(folder) / name
+        if target_root.exists():
+            raise FileExistsError(
+                f"Un projet ou dossier nommé « {name} » existe déjà à cet emplacement."
+            )
+
         self.name = name
-        self.root = Path(folder) / name
+        self.project_type = self._normalize_project_type(project_type)
+        self.root = target_root
 
         now = datetime.now().isoformat()
 
@@ -182,6 +198,9 @@ class Project:
         self.name = str(data.get("nom", ""))
         self.format = str(data.get("format", "A5"))
         self.book_model_id = str(data.get("book_model", ""))
+        self.project_type = self._normalize_project_type(
+            data.get("type_projet", self.DEFAULT_PROJECT_TYPE)
+        )
 
         self.creation_date = str(
             data.get(
@@ -454,16 +473,10 @@ class Project:
         return deepcopy(normalized)
 
     def _ensure_mockup_file(self) -> None:
+        # Le dossier est préparé ici ; MockupView crée premaquette.json.
         self.mockup_folder.mkdir(
             parents=True,
             exist_ok=True,
-        )
-
-        if self.mockup_file.exists():
-            return
-
-        self._write_mockup_data(
-            self._default_mockup_data()
         )
 
     @classmethod
@@ -618,6 +631,7 @@ class Project:
         return {
             "nom": self.name,
             "version": self.VERSION,
+            "type_projet": self.project_type,
             "format": self.format,
             "book_model": self.book_model_id,
             "date_creation": self.creation_date,
@@ -632,6 +646,28 @@ class Project:
             },
             "productions": self.productions,
         }
+
+    @classmethod
+    def _normalize_project_type(cls, value: Any) -> str:
+        normalized = str(value or "").strip().casefold()
+
+        aliases = {
+            "ouvrage_structuré": "ouvrage_structure",
+            "ouvrage structure": "ouvrage_structure",
+            "structure": "ouvrage_structure",
+            "livre textuel": "livre_textuel",
+            "textuel": "livre_textuel",
+            "bande dessinée": "bande_dessinee",
+            "bande dessinee": "bande_dessinee",
+            "bd": "bande_dessinee",
+        }
+
+        normalized = aliases.get(normalized, normalized)
+
+        if normalized not in cls.PROJECT_TYPES:
+            return cls.DEFAULT_PROJECT_TYPE
+
+        return normalized
 
     # ==========================================================
     # Index internes
@@ -715,6 +751,7 @@ class Project:
         return (
             f"{self.__class__.__name__}("
             f"name={self.name!r}, "
+            f"project_type={self.project_type!r}, "
             f"documents={len(self.documents)}, "
             f"models={len(self.models)}, "
             f"sheets={len(self.content_sheets)}, "

@@ -268,6 +268,24 @@ class DocumentView:
     FINALISATION = CORAL
     FINALISATION_SOFT = "#F2DDD6"
 
+    PROJECT_TYPE_APPEARANCES = {
+        "ouvrage_structure": {
+            "label": "Ouvrage structuré",
+            "color": CELADON,
+            "soft": ATELIER_SOFT,
+        },
+        "livre_textuel": {
+            "label": "Livre textuel",
+            "color": LILAC,
+            "soft": CONCEPTION_SOFT,
+        },
+        "bande_dessinee": {
+            "label": "Bande dessinée",
+            "color": CORAL,
+            "soft": FINALISATION_SOFT,
+        },
+    }
+
     STATUS_COLORS = {
         "validée": "#34A853",
         "validee": "#34A853",
@@ -377,6 +395,132 @@ class DocumentView:
         },
     )
 
+    TEXTUAL_WORKSPACES = (
+        {
+            "key": "manuscrit",
+            "title": "Manuscrit",
+            "symbol": "¶",
+            "group": "Préparer",
+            "color": LILAC,
+            "soft": CONCEPTION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "chapitres",
+            "title": "Chapitres",
+            "symbol": "☰",
+            "group": "Préparer",
+            "color": SKY,
+            "soft": MAQUETTAGE_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "mise_en_page",
+            "title": "Mise en page",
+            "symbol": "▤",
+            "group": "Produire",
+            "color": CELADON,
+            "soft": ATELIER_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "styles",
+            "title": "Styles",
+            "symbol": "A",
+            "group": "Produire",
+            "color": ASSEMBLAGE,
+            "soft": ASSEMBLAGE_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "verification",
+            "title": "Vérification",
+            "symbol": "✓",
+            "group": "Contrôler",
+            "color": VERIFICATION,
+            "soft": VERIFICATION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "finalisation",
+            "title": "Finalisation",
+            "symbol": "⇩",
+            "group": "Contrôler",
+            "color": FINALISATION,
+            "soft": FINALISATION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+    )
+
+    COMIC_WORKSPACES = (
+        {
+            "key": "storyboard",
+            "title": "Storyboard",
+            "symbol": "▦",
+            "group": "Préparer",
+            "color": CORAL,
+            "soft": FINALISATION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "planches",
+            "title": "Planches",
+            "symbol": "▧",
+            "group": "Préparer",
+            "color": SKY,
+            "soft": MAQUETTAGE_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "cases",
+            "title": "Cases",
+            "symbol": "▥",
+            "group": "Produire",
+            "color": CELADON,
+            "soft": ATELIER_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "bulles",
+            "title": "Bulles",
+            "symbol": "◯",
+            "group": "Produire",
+            "color": LILAC,
+            "soft": CONCEPTION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "verification",
+            "title": "Vérification",
+            "symbol": "✓",
+            "group": "Contrôler",
+            "color": VERIFICATION,
+            "soft": VERIFICATION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+        {
+            "key": "finalisation",
+            "title": "Finalisation",
+            "symbol": "⇩",
+            "group": "Contrôler",
+            "color": FINALISATION,
+            "soft": FINALISATION_SOFT,
+            "enabled": False,
+            "requires_document": False,
+        },
+    )
+
     def __init__(
         self,
         parent,
@@ -413,95 +557,938 @@ class DocumentView:
     def show(self) -> None:
         self.pages = self._load_project_pages()
 
-        # Le Centre est entièrement construit hors affichage. Le conteneur
-        # principal n'est rendu visible qu'une fois tous ses éléments prêts,
-        # ce qui évite l'apparition successive du bandeau, des outils puis du
-        # contenu central.
+        # CENTRE_REGULATION_V1
+        # Le ruban permanent assure seul la navigation. Le reste de la page
+        # devient le poste de régulation du projet.
         root = ctk.CTkFrame(
             self.parent,
             fg_color=self.WINDOW_BG,
             corner_radius=0,
         )
         root.grid_columnconfigure(0, weight=1)
-        root.grid_rowconfigure(2, weight=1)
+        root.grid_rowconfigure(1, weight=1)
 
-        header = self._create_header(root)
-        header.grid(
+        navigation = self._create_internal_navigation_ribbon(root)
+        navigation.grid(
             row=0,
             column=0,
             sticky="ew",
             padx=10,
-            pady=(4, 2),
-        )
-
-        workspace_bar = self._create_workspace_bar(root)
-        workspace_bar.grid(
-            row=1,
-            column=0,
-            sticky="ew",
-            padx=10,
-            pady=(0, 5),
+            pady=(5, 3),
         )
 
         main_workspace = self._create_main_workspace(root)
         main_workspace.grid(
-            row=2,
+            row=1,
             column=0,
             sticky="nsew",
             padx=10,
             pady=(0, 8),
         )
 
-        # Calcule la disposition pendant que le Centre est encore masqué,
-        # puis l'affiche en une seule opération.
         root.update_idletasks()
         root.pack(fill="both", expand=True)
         root.lift()
 
+    def _create_internal_navigation_ribbon(
+        self,
+        parent,
+    ) -> ctk.CTkFrame:
+        """Bandeau décoratif permanent de navigation PageMaître.
+
+        V6 :
+        - aucun fond de widget derrière les icônes ;
+        - tout est dessiné directement sur un seul Canvas ;
+        - le décor PageMaître est donc visible sous les icônes ;
+        - Accueil précède Centre dans le parcours ;
+        - le nom de la page est intégré au ruban.
+        """
+        ribbon = ctk.CTkFrame(
+            parent,
+            height=98,
+            fg_color="transparent",
+            corner_radius=0,
+            border_width=0,
+        )
+        ribbon.grid_propagate(False)
+        ribbon.grid_columnconfigure(0, weight=1)
+        ribbon.grid_rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(
+            ribbon,
+            background=self.WINDOW_BG,
+            borderwidth=0,
+            highlightthickness=0,
+            takefocus=False,
+            cursor="arrow",
+        )
+        canvas.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+        )
+
+        ribbon._nav_background_photo = None
+        ribbon._nav_click_regions = []
+
+        background_path = (
+            Path(__file__).resolve().parents[3]
+            / "assets"
+            / "interface"
+            / "backgrounds"
+            / "editorial_bg_accueil.png"
+        )
+
+        def hex_to_rgb(value: str) -> tuple[int, int, int]:
+            value = value.lstrip("#")
+            return tuple(
+                int(value[index:index + 2], 16)
+                for index in (0, 2, 4)
+            )
+
+        def draw_icon(
+            kind: str,
+            cx: float,
+            cy: float,
+            color: str,
+        ) -> None:
+            """Dessine une icône directement sur le décor, sans fond."""
+            stroke = color
+            # CORRECTION_ICÔNES_CANVAS_V6
+            # Éclaircissement local de la couleur, sans dépendre d'une
+            # méthode utilitaire externe au bandeau.
+            rgb = hex_to_rgb(color)
+            soft_rgb = tuple(
+                int(round(channel + (255 - channel) * 0.35))
+                for channel in rgb
+            )
+            soft = "#{:02X}{:02X}{:02X}".format(*soft_rgb)
+            w = 2
+
+            if kind == "door":
+                # Accueil : porte + flèche de retour.
+                canvas.create_rectangle(
+                    cx - 7, cy - 10,
+                    cx + 6, cy + 10,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx - 14, cy,
+                    cx - 4, cy,
+                    fill=stroke,
+                    width=w,
+                    arrow=tk.LAST,
+                    arrowshape=(7, 8, 3),
+                )
+                canvas.create_oval(
+                    cx + 2, cy - 1,
+                    cx + 4, cy + 1,
+                    fill=stroke,
+                    outline=stroke,
+                )
+
+            elif kind == "eye":
+                canvas.create_arc(
+                    cx - 15, cy - 8,
+                    cx + 15, cy + 8,
+                    start=200,
+                    extent=140,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_arc(
+                    cx - 15, cy - 8,
+                    cx + 15, cy + 8,
+                    start=20,
+                    extent=140,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_oval(
+                    cx - 5, cy - 5,
+                    cx + 5, cy + 5,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_oval(
+                    cx - 1.5, cy - 1.5,
+                    cx + 1.5, cy + 1.5,
+                    fill=stroke,
+                    outline=stroke,
+                )
+
+            elif kind == "sprout":
+                canvas.create_line(
+                    cx, cy + 11,
+                    cx, cy - 3,
+                    fill=stroke,
+                    width=w,
+                )
+                canvas.create_arc(
+                    cx - 12, cy - 10,
+                    cx, cy + 1,
+                    start=180,
+                    extent=170,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx - 9, cy - 7,
+                    cx, cy - 1,
+                    fill=soft,
+                    width=1,
+                )
+                canvas.create_arc(
+                    cx, cy - 12,
+                    cx + 12, cy,
+                    start=10,
+                    extent=170,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx, cy - 2,
+                    cx + 9, cy - 8,
+                    fill=soft,
+                    width=1,
+                )
+
+            elif kind == "home":
+                # Centre : maison, comme dans la proposition visuelle validée.
+                canvas.create_line(
+                    cx - 11, cy - 1,
+                    cx, cy - 11,
+                    cx + 11, cy - 1,
+                    fill=stroke,
+                    width=w,
+                    joinstyle=tk.ROUND,
+                )
+                canvas.create_rectangle(
+                    cx - 8, cy - 1,
+                    cx + 8, cy + 11,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_rectangle(
+                    cx - 2.5, cy + 4,
+                    cx + 2.5, cy + 11,
+                    outline=soft,
+                    width=1,
+                )
+
+            elif kind == "pencil":
+                canvas.create_line(
+                    cx - 9, cy + 9,
+                    cx + 7, cy - 7,
+                    fill=stroke,
+                    width=3,
+                )
+                canvas.create_line(
+                    cx + 5, cy - 9,
+                    cx + 10, cy - 4,
+                    fill=stroke,
+                    width=2,
+                )
+                canvas.create_polygon(
+                    cx - 11, cy + 11,
+                    cx - 7, cy + 9,
+                    cx - 9, cy + 7,
+                    fill="",
+                    outline=stroke,
+                    width=1,
+                )
+
+            elif kind == "tools":
+                canvas.create_line(
+                    cx - 9, cy + 9,
+                    cx + 8, cy - 8,
+                    fill=stroke,
+                    width=3,
+                )
+                canvas.create_line(
+                    cx - 8, cy - 8,
+                    cx + 9, cy + 9,
+                    fill=stroke,
+                    width=3,
+                )
+                canvas.create_rectangle(
+                    cx - 12, cy + 7,
+                    cx - 7, cy + 12,
+                    outline=stroke,
+                    width=1,
+                )
+                canvas.create_arc(
+                    cx + 5, cy - 12,
+                    cx + 12, cy - 5,
+                    start=20,
+                    extent=190,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=2,
+                )
+
+            elif kind == "quill":
+                canvas.create_arc(
+                    cx - 8, cy - 12,
+                    cx + 11, cy + 8,
+                    start=120,
+                    extent=190,
+                    style=tk.ARC,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx - 9, cy + 11,
+                    cx + 7, cy - 7,
+                    fill=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx - 2, cy + 4,
+                    cx + 6, cy + 3,
+                    fill=soft,
+                    width=1,
+                )
+                canvas.create_line(
+                    cx + 2, cy,
+                    cx + 8, cy - 2,
+                    fill=soft,
+                    width=1,
+                )
+
+            elif kind == "puzzle":
+                points = (
+                    cx - 10, cy - 8,
+                    cx - 3, cy - 8,
+                    cx - 3, cy - 11,
+                    cx, cy - 13,
+                    cx + 3, cy - 11,
+                    cx + 3, cy - 8,
+                    cx + 10, cy - 8,
+                    cx + 10, cy - 1,
+                    cx + 7, cy - 1,
+                    cx + 5, cy + 2,
+                    cx + 7, cy + 5,
+                    cx + 10, cy + 5,
+                    cx + 10, cy + 10,
+                    cx - 10, cy + 10,
+                    cx - 10, cy + 3,
+                    cx - 7, cy + 3,
+                    cx - 5, cy,
+                    cx - 7, cy - 3,
+                    cx - 10, cy - 3,
+                )
+                canvas.create_line(
+                    *points,
+                    cx - 10, cy - 8,
+                    fill=stroke,
+                    width=w,
+                    joinstyle=tk.ROUND,
+                )
+
+            elif kind == "verify":
+                canvas.create_oval(
+                    cx - 11, cy - 11,
+                    cx + 5, cy + 5,
+                    outline=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx + 3, cy + 3,
+                    cx + 12, cy + 12,
+                    fill=stroke,
+                    width=3,
+                )
+                canvas.create_line(
+                    cx - 7, cy - 2,
+                    cx - 3, cy + 2,
+                    cx + 2, cy - 5,
+                    fill=soft,
+                    width=2,
+                )
+
+            elif kind == "flag":
+                canvas.create_line(
+                    cx - 7, cy - 12,
+                    cx - 7, cy + 12,
+                    fill=stroke,
+                    width=w,
+                )
+                canvas.create_line(
+                    cx - 7, cy - 10,
+                    cx + 7, cy - 8,
+                    cx + 3, cy - 3,
+                    cx + 8, cy + 1,
+                    cx - 7, cy,
+                    fill=stroke,
+                    width=w,
+                    joinstyle=tk.ROUND,
+                )
+
+            elif kind == "close":
+                canvas.create_line(
+                    cx - 8, cy - 8,
+                    cx + 8, cy + 8,
+                    fill=stroke,
+                    width=3,
+                )
+                canvas.create_line(
+                    cx + 8, cy - 8,
+                    cx - 8, cy + 8,
+                    fill=stroke,
+                    width=3,
+                )
+
+        def build_background(width: int, height: int):
+            try:
+                from PIL import Image, ImageDraw
+            except Exception:
+                return None
+
+            if background_path.is_file():
+                try:
+                    source = Image.open(background_path).convert("RGBA")
+
+                    # Important : on garde tout le dessin du fond général.
+                    # On le comprime en hauteur au lieu de recadrer sa zone
+                    # centrale vide ; les références éditoriales restent donc
+                    # visibles aux extrémités du ruban.
+                    source = source.resize(
+                        (width, height),
+                        Image.Resampling.LANCZOS,
+                    )
+
+                    veil = Image.new(
+                        "RGBA",
+                        (width, height),
+                        (255, 255, 255, 105),
+                    )
+                    image = Image.alpha_composite(source, veil)
+
+                except Exception:
+                    image = Image.new(
+                        "RGBA",
+                        (width, height),
+                        (248, 247, 244, 255),
+                    )
+            else:
+                image = Image.new(
+                    "RGBA",
+                    (width, height),
+                    (248, 247, 244, 255),
+                )
+
+            # Quelques repères supplémentaires, strictement rectilignes.
+            draw = ImageDraw.Draw(image)
+            pale_blue = (117, 182, 219, 78)
+            pale_teal = (130, 183, 161, 72)
+            pale_lilac = (169, 151, 201, 66)
+            pale_coral = (223, 128, 107, 65)
+
+            y = height - 7
+            draw.line(
+                (18, y, width - 18, y),
+                fill=(77, 96, 118, 48),
+                width=1,
+            )
+
+            for x in (26, width // 2, width - 26):
+                draw.line(
+                    (x - 7, y, x + 7, y),
+                    fill=pale_blue,
+                    width=1,
+                )
+                draw.line(
+                    (x, y - 7, x, y + 1),
+                    fill=pale_blue,
+                    width=1,
+                )
+
+            sx = 214
+            for color in (
+                pale_teal,
+                pale_blue,
+                pale_lilac,
+                pale_coral,
+            ):
+                draw.rectangle(
+                    (sx, y - 4, sx + 9, y),
+                    outline=color,
+                    width=1,
+                )
+                sx += 14
+
+            return image
+
+        def add_click_region(
+            x1: float,
+            x2: float,
+            command,
+            enabled: bool,
+        ) -> None:
+            if enabled and callable(command):
+                ribbon._nav_click_regions.append(
+                    (float(x1), float(x2), command)
+                )
+
+        def on_click(event) -> None:
+            x = float(event.x)
+            for x1, x2, command in ribbon._nav_click_regions:
+                if x1 <= x <= x2:
+                    command()
+                    return
+
+        canvas.bind("<Button-1>", on_click)
+
+        def draw_item(
+            *,
+            cx: float,
+            icon_kind: str,
+            label: str,
+            color: str,
+            command=None,
+            active: bool = False,
+            enabled: bool = True,
+            width: float = 86,
+        ) -> None:
+            # ETAPE_ACTIVE_DIFFUSE_V7
+            # L'étape courante est un repère, pas un bouton :
+            # elle est plus claire, non cliquable et reçoit un halo
+            # tramé qui laisse réellement voir le décor principal.
+            if active:
+                rgb = hex_to_rgb(color)
+                active_rgb = tuple(
+                    int(round(channel + (255 - channel) * 0.30))
+                    for channel in rgb
+                )
+                item_color = "#{:02X}{:02X}{:02X}".format(*active_rgb)
+
+                halo_rgb = tuple(
+                    int(round(channel + (255 - channel) * 0.72))
+                    for channel in rgb
+                )
+                halo_color = "#{:02X}{:02X}{:02X}".format(*halo_rgb)
+
+                canvas.create_oval(
+                    cx - width * 0.43,
+                    24,
+                    cx + width * 0.43,
+                    86,
+                    fill=halo_color,
+                    outline="",
+                    stipple="gray25",
+                )
+            else:
+                item_color = color if enabled else self.TEXT_LIGHT
+
+            draw_icon(
+                icon_kind,
+                cx,
+                45,
+                item_color,
+            )
+
+            canvas.create_text(
+                cx,
+                69,
+                text=label,
+                fill=item_color,
+                font=(
+                    Fonts.FAMILY,
+                    9,
+                    "bold" if active else "normal",
+                ),
+                anchor="center",
+            )
+
+            if active:
+                canvas.create_line(
+                    cx - 16, 82,
+                    cx + 16, 82,
+                    fill=item_color,
+                    width=2,
+                )
+            else:
+                canvas.create_oval(
+                    cx - 1.5, 81,
+                    cx + 1.5, 84,
+                    fill=item_color,
+                    outline="",
+                )
+
+            # Une étape active n'est jamais cliquable, même si une
+            # commande lui était attribuée par erreur plus tard.
+            add_click_region(
+                cx - width / 2,
+                cx + width / 2,
+                None if active else command,
+                enabled and not active,
+            )
+
+        def redraw(_event=None) -> None:
+            width = max(1, int(canvas.winfo_width()))
+            height = max(1, int(canvas.winfo_height()))
+
+            if width <= 2 or height <= 2:
+                return
+
+            canvas.delete("all")
+            ribbon._nav_click_regions = []
+
+            background = build_background(width, height)
+            if background is not None:
+                try:
+                    from PIL import ImageTk
+
+                    photo = ImageTk.PhotoImage(background)
+                    ribbon._nav_background_photo = photo
+                    canvas.create_image(
+                        0,
+                        0,
+                        image=photo,
+                        anchor="nw",
+                    )
+                except Exception:
+                    pass
+
+            # --------------------------------------------------
+            # Titre de la page intégré au bandeau
+            # --------------------------------------------------
+
+            project_name = str(
+                getattr(self.project, "name", "")
+                or "Projet sans nom"
+            )
+            project_type = self._project_type_key()
+            appearance = self.PROJECT_TYPE_APPEARANCES.get(
+                project_type,
+                self.PROJECT_TYPE_APPEARANCES["ouvrage_structure"],
+            )
+
+            canvas.create_text(
+                20,
+                10,
+                text="Centre du projet",
+                fill=self.INK,
+                font=(Fonts.FAMILY, 11, "bold"),
+                anchor="nw",
+            )
+
+            canvas.create_text(
+                width - 20,
+                11,
+                text=f"{project_name}  ·  {appearance['label']}",
+                fill=self.TEXT_MUTED,
+                font=(Fonts.FAMILY, 8),
+                anchor="ne",
+            )
+
+            # --------------------------------------------------
+            # Gauche : accès permanents
+            # --------------------------------------------------
+
+            draw_item(
+                cx=78,
+                icon_kind="eye",
+                label="Visualisation",
+                color=self.LILAC,
+                enabled=False,
+                width=104,
+            )
+
+            draw_item(
+                cx=190,
+                icon_kind="sprout",
+                label="Suivi du livre",
+                color=self.CELADON,
+                enabled=False,
+                width=106,
+            )
+
+            # Séparation discrète avant le parcours.
+            canvas.create_line(
+                252, 30,
+                252, 78,
+                fill="#D7DEE4",
+                width=1,
+            )
+
+            # --------------------------------------------------
+            # Centre : Accueil puis parcours
+            # --------------------------------------------------
+
+            steps = (
+                (
+                    "door",
+                    "Accueil",
+                    self.NAVY,
+                    self._return_home,
+                    False,
+                    True,
+                    72,
+                ),
+                (
+                    "home",
+                    "Centre",
+                    self.NAVY,
+                    None,
+                    True,
+                    True,
+                    72,
+                ),
+                (
+                    "pencil",
+                    "Maquettage",
+                    self.MAQUETTAGE,
+                    self._open_mockup,
+                    False,
+                    True,
+                    92,
+                ),
+                (
+                    "tools",
+                    "Atelier",
+                    self.ATELIER,
+                    self._open_model_workshop,
+                    False,
+                    True,
+                    76,
+                ),
+                (
+                    "quill",
+                    "Conception",
+                    self.CONCEPTION,
+                    self._open_atelier,
+                    False,
+                    True,
+                    92,
+                ),
+                (
+                    "puzzle",
+                    "Assemblage",
+                    self.ASSEMBLAGE,
+                    None,
+                    False,
+                    False,
+                    94,
+                ),
+                (
+                    "verify",
+                    "Vérification",
+                    self.VERIFICATION,
+                    None,
+                    False,
+                    False,
+                    94,
+                ),
+                (
+                    "flag",
+                    "Finalisation",
+                    self.FINALISATION,
+                    None,
+                    False,
+                    False,
+                    90,
+                ),
+            )
+
+            total_width = sum(step[6] for step in steps)
+            total_width += max(0, len(steps) - 1) * 2
+
+            available_left = 278
+            available_right = width - 100
+            available_width = max(
+                total_width,
+                available_right - available_left,
+            )
+            flow_left = (
+                available_left
+                + max(0, (available_width - total_width) / 2)
+            )
+
+            cursor = flow_left
+
+            for step in steps:
+                (
+                    icon_kind,
+                    label,
+                    color,
+                    command,
+                    active,
+                    enabled,
+                    item_width,
+                ) = step
+
+                cx = cursor + item_width / 2
+
+                draw_item(
+                    cx=cx,
+                    icon_kind=icon_kind,
+                    label=label,
+                    color=color,
+                    command=command,
+                    active=active,
+                    enabled=enabled,
+                    width=item_width,
+                )
+
+                cursor += item_width + 2
+
+            # --------------------------------------------------
+            # Droite : Fermer
+            # --------------------------------------------------
+
+            canvas.create_line(
+                width - 88, 30,
+                width - 88, 78,
+                fill="#D7DEE4",
+                width=1,
+            )
+
+            draw_item(
+                cx=width - 43,
+                icon_kind="close",
+                label="Fermer",
+                color=self.CORAL,
+                command=self._return_home,
+                enabled=True,
+                width=76,
+            )
+
+        canvas.bind(
+            "<Configure>",
+            redraw,
+            add="+",
+        )
+        canvas.after_idle(redraw)
+
+        return ribbon
+
     def _create_header(self, parent) -> ctk.CTkFrame:
+        """Contexte du Centre, sous le bandeau permanent."""
         frame = ctk.CTkFrame(
             parent,
             fg_color="transparent",
-            height=36,
-        )
-        frame.grid_columnconfigure(1, weight=1)
-        frame.grid_propagate(False)
-
-        ctk.CTkButton(
-            frame,
-            text="← Accueil",
-            width=92,
             height=30,
-            corner_radius=7,
-            fg_color=self.GROUP_BG,
-            hover_color=Colors.BUTTON_HOVER,
-            text_color=self.INK,
-            border_width=1,
-            border_color=self.BORDER,
-            font=Fonts.SMALL,
-            command=self._return_home,
-        ).grid(row=0, column=0, sticky="w", padx=(0, 14))
+        )
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_propagate(False)
 
         ctk.CTkLabel(
             frame,
             text="Centre du projet",
             font=Fonts.H2,
             text_color=self.INK,
-        ).grid(row=0, column=1, sticky="w")
+        ).grid(row=0, column=0, sticky="w")
 
         project_name = str(
             getattr(self.project, "name", "")
             or "Projet sans nom"
         )
 
+        project_type = str(
+            getattr(
+                self.project,
+                "project_type",
+                "ouvrage_structure",
+            )
+            or "ouvrage_structure"
+        )
+        appearance = self.PROJECT_TYPE_APPEARANCES.get(
+            project_type,
+            self.PROJECT_TYPE_APPEARANCES["ouvrage_structure"],
+        )
+
+        badge = ctk.CTkLabel(
+            frame,
+            text=appearance["label"],
+            height=22,
+            corner_radius=11,
+            fg_color=appearance["soft"],
+            text_color=appearance["color"],
+            border_width=1,
+            border_color=appearance["color"],
+            font=(Fonts.FAMILY, 8, "bold"),
+            padx=9,
+        )
+        badge.grid(row=0, column=1, sticky="e", padx=(12, 8))
+
         ctk.CTkLabel(
             frame,
             text=project_name,
             font=Fonts.SMALL,
             text_color=self.TEXT_MUTED,
-        ).grid(row=0, column=2, sticky="e", padx=(12, 2))
+        ).grid(row=0, column=2, sticky="e", padx=(0, 2))
 
         return frame
+
+    def _project_type_key(self) -> str:
+        return str(
+            getattr(
+                self.project,
+                "project_type",
+                "ouvrage_structure",
+            )
+            or "ouvrage_structure"
+        )
+
+    def _centre_profile(self) -> dict[str, str]:
+        project_type = self._project_type_key()
+
+        if project_type == "livre_textuel":
+            return {
+                "rail_title": "Structure du livre",
+                "rail_count": "page(s)",
+                "empty": "Aucune page",
+                "recent_tab": "Récentes",
+                "secondary_tab": "Chapitres",
+                "secondary_title": "Organisation du livre",
+                "secondary_text": "Manuscrit · Chapitres · Styles · Mise en page",
+            }
+
+        if project_type == "bande_dessinee":
+            return {
+                "rail_title": "Planches du livre",
+                "rail_count": "planche(s)",
+                "empty": "Aucune planche",
+                "recent_tab": "Récentes",
+                "secondary_tab": "Storyboard",
+                "secondary_title": "Organisation de la BD",
+                "secondary_text": "Storyboard · Planches · Cases · Bulles",
+            }
+
+        return {
+            "rail_title": "Chemin de fer",
+            "rail_count": "page(s)",
+            "empty": "Aucune page",
+            "recent_tab": "Récentes",
+            "secondary_tab": "Types",
+            "secondary_title": "Types de pages",
+            "secondary_text": "",
+        }
+
+    def _active_workspaces(self) -> tuple[dict, ...]:
+        project_type = str(
+            getattr(
+                self.project,
+                "project_type",
+                "ouvrage_structure",
+            )
+            or "ouvrage_structure"
+        )
+
+        if project_type == "livre_textuel":
+            return self.TEXTUAL_WORKSPACES
+
+        if project_type == "bande_dessinee":
+            return self.COMIC_WORKSPACES
+
+        return self.WORKSPACES
 
     def _create_workspace_bar(self, parent) -> ctk.CTkFrame:
         """Ruban du Centre construit sur le même modèle que l'Atelier."""
@@ -635,7 +1622,7 @@ class DocumentView:
             "Produire": [],
             "Contrôler": [],
         }
-        for workspace in self.WORKSPACES:
+        for workspace in self._active_workspaces():
             grouped[workspace["group"]].append(workspace)
 
         for group_title in ("Préparer", "Produire", "Contrôler"):
@@ -808,53 +1795,1711 @@ class DocumentView:
             height=1,
         )
 
+    def _load_regulation_snapshot(self) -> dict:
+        """Source commune du Centre et de la future fenêtre Visualisation."""
+        snapshot = {
+            "items": [],
+            "page_types": {},
+            "groups": {},
+            "updated_at": "",
+            "planned_pages": 0,
+            "automatic_pages": 0,
+            "produced_pages": len(self.pages),
+            "validated_pages": sum(
+                1
+                for page in self.pages
+                if "valid" in self._page_state(page).casefold()
+            ),
+        }
+
+        if self._project_type_key() != "ouvrage_structure":
+            return snapshot
+
+        configured = getattr(self.project, "mockup_file", None)
+        if configured is not None:
+            path = Path(configured)
+        else:
+            root = getattr(self.project, "root", None)
+            if root is None:
+                return snapshot
+            path = Path(root) / "maquettage" / "premaquette.json"
+
+        if not path.exists():
+            return snapshot
+
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return snapshot
+
+        if not isinstance(data, dict):
+            return snapshot
+
+        items = data.get("items", [])
+        page_types = data.get("page_types", [])
+        groups = data.get("groups", [])
+
+        if not isinstance(items, list):
+            items = []
+        if not isinstance(page_types, list):
+            page_types = []
+        if not isinstance(groups, list):
+            groups = []
+
+        snapshot["items"] = [
+            item for item in items if isinstance(item, dict)
+        ]
+        snapshot["page_types"] = {
+            str(definition.get("type", "")): definition
+            for definition in page_types
+            if isinstance(definition, dict)
+            and str(definition.get("type", ""))
+        }
+        snapshot["groups"] = {
+            str(group.get("id", "")): group
+            for group in groups
+            if isinstance(group, dict)
+            and str(group.get("id", ""))
+        }
+        snapshot["updated_at"] = str(data.get("updated_at", ""))
+
+        def count_of(item: dict) -> int:
+            try:
+                return max(1, int(item.get("count", 1) or 1))
+            except (TypeError, ValueError):
+                return 1
+
+        snapshot["planned_pages"] = sum(
+            count_of(item) for item in snapshot["items"]
+        )
+        snapshot["automatic_pages"] = sum(
+            count_of(item)
+            for item in snapshot["items"]
+            if bool(item.get("automatic_recto_verso", False))
+        )
+
+        return snapshot
+
     def _create_main_workspace(self, parent) -> ctk.CTkFrame:
+        # CENTRE_VISUALISATION_DOUBLE_PAGE_V2
         workspace = ctk.CTkFrame(
             parent,
             fg_color="transparent",
             corner_radius=0,
         )
         workspace.grid_columnconfigure(0, weight=1)
-        workspace.grid_columnconfigure(1, weight=0, minsize=292)
+        workspace.grid_columnconfigure(1, weight=0, minsize=314)
         workspace.grid_rowconfigure(0, weight=1)
 
-        central = ctk.CTkFrame(
+        snapshot = self._load_regulation_snapshot()
+
+        wall_shell = ctk.CTkFrame(
             workspace,
             fg_color="transparent",
             corner_radius=0,
         )
-        central.grid(
+        wall_shell.grid(
             row=0,
             column=0,
             sticky="nsew",
-            padx=(0, 6),
+            padx=(0, 7),
         )
-        central.grid_columnconfigure(0, weight=1)
-        central.grid_rowconfigure(1, weight=1)
+        wall_shell.grid_columnconfigure(0, weight=1)
+        wall_shell.grid_rowconfigure(0, weight=1)
 
-        self._create_rail_section(central).grid(
+        wall = tk.Canvas(
+            wall_shell,
+            background=self.WINDOW_BG,
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=self.BORDER,
+            cursor="arrow",
+        )
+        wall.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar = ctk.CTkScrollbar(
+            wall_shell,
+            orientation="vertical",
+            command=wall.yview,
+            width=11,
+        )
+        scrollbar.grid(
+            row=0,
+            column=1,
+            sticky="ns",
+            padx=(3, 0),
+        )
+        wall.configure(yscrollcommand=scrollbar.set)
+
+        self._regulation_wall = wall
+        wall._regulation_bg_photo = None
+        # BULLE_TYPE_PAGE_V10
+        wall._type_tooltip_after = None
+        # MINIATURES_MAQUETTAGE_CENTRE_V5
+        # Les PhotoImage des pages doivent rester référencées tant que
+        # le Canvas les affiche.
+        wall._page_thumb_photos = []
+
+        background_path = (
+            Path(__file__).resolve().parents[3]
+            / "assets"
+            / "interface"
+            / "backgrounds"
+            / "editorial_bg_accueil.png"
+        )
+
+        def blend(color: str, amount: float = 0.72) -> str:
+            color = str(color or "").lstrip("#")
+            try:
+                rgb = [
+                    int(color[index:index + 2], 16)
+                    for index in (0, 2, 4)
+                ]
+            except (TypeError, ValueError):
+                rgb = [117, 182, 219]
+
+            mixed = [
+                int(round(channel + (255 - channel) * amount))
+                for channel in rgb
+            ]
+            return "#{:02X}{:02X}{:02X}".format(*mixed)
+
+        def item_title(item: dict) -> str:
+            page_type = str(item.get("type", ""))
+            definition = snapshot["page_types"].get(page_type, {})
+            return str(
+                item.get("title")
+                or definition.get("title")
+                or page_type.replace("_", " ").title()
+                or "Page"
+            )
+
+        def item_accent(item: dict) -> str:
+            # PAGE_RESPIRATION_AUTO_V3
+            # Une page automatique conserve la couleur de son groupe :
+            # "automatique" décrit son origine, pas son identité graphique.
+            group_id = str(
+                item.get("plan_group")
+                or item.get("group_id")
+                or ""
+            )
+            group = snapshot["groups"].get(group_id, {})
+            accent = str(
+                group.get("accent")
+                or group.get("color")
+                or ""
+            )
+            if accent.startswith("#") and len(accent) == 7:
+                return accent
+
+            page_type = str(item.get("type", ""))
+            definition = snapshot["page_types"].get(page_type, {})
+            accent = str(
+                definition.get("accent")
+                or definition.get("color")
+                or ""
+            )
+            if accent.startswith("#") and len(accent) == 7:
+                return accent
+
+            if page_type in {"couverture", "deuxieme_couverture"}:
+                return "#E88972"
+            if page_type in {"quatrieme", "troisieme_couverture"}:
+                return "#7DB99D"
+
+            return self.MAQUETTAGE
+
+        def thumbnail_filename_for_type(page_type: str) -> str:
+            mapping = {
+                "couverture": "type_page_couverture.png",
+                "deuxieme_couverture": "type_page_deuxieme_couverture.png",
+                "page_titre": "type_page_titre.png",
+                "sommaire": "type_page_sommaire.png",
+                "avant_propos": "type_page_avant_propos.png",
+                "chapitre": "type_page_chapitre.png",
+                "fiche": "type_page_fiche.png",
+                "texte": "type_page_texte.png",
+                "illustration": "type_page_illustration.png",
+                "transition": "type_page_transition.png",
+                "page_blanche": "type_page_blanche.png",
+                "conclusion": "type_page_conclusion.png",
+                "troisieme_couverture": "type_page_troisieme_couverture.png",
+                "quatrieme": "type_page_quatrieme_couverture.png",
+            }
+            return mapping.get(
+                page_type,
+                "type_page_personnalisee.png",
+            )
+
+        def thumbnail_path_for_item(item: dict) -> Path | None:
+            # APERCU_REEL_GABARIT_CENTRE_V2
+            model_id = self._associated_model_id_for_synoptic_item(item)
+            if model_id:
+                models_folder = Path(self.project.models_folder)
+
+                for summary in list(getattr(self.project, "models", [])):
+                    if not isinstance(summary, dict):
+                        continue
+                    if str(summary.get("identifiant", "")) != model_id:
+                        continue
+
+                    folder_name = str(summary.get("dossier", "")).strip()
+                    if folder_name:
+                        preview = (
+                            models_folder
+                            / folder_name
+                            / "apercu_centre.png"
+                        )
+                        if preview.is_file():
+                            return preview
+
+                try:
+                    for model_file in models_folder.glob("*/modele.json"):
+                        if model_file.parent.name.startswith("_"):
+                            continue
+                        try:
+                            with model_file.open("r", encoding="utf-8") as file:
+                                raw = json.load(file)
+                        except (OSError, json.JSONDecodeError):
+                            continue
+
+                        possible_ids = {
+                            str(raw.get("identifiant", "")),
+                            str(raw.get("identifier", "")),
+                            str(raw.get("id", "")),
+                        }
+                        if model_id not in possible_ids:
+                            continue
+
+                        preview = model_file.parent / "apercu_centre.png"
+                        if preview.is_file():
+                            return preview
+                except OSError:
+                    pass
+
+            page_type = str(item.get("type", ""))
+            definition = snapshot["page_types"].get(page_type, {})
+
+            # Les types personnalisés utilisent d'abord leur miniature
+            # propre enregistrée par le Maquettage.
+            if bool(definition.get("custom", False)):
+                stored = str(
+                    definition.get("thumbnail", "")
+                ).strip()
+                if stored:
+                    path = Path(stored)
+                    if not path.is_absolute():
+                        project_root = getattr(
+                            self.project,
+                            "root",
+                            None,
+                        )
+                        if project_root is not None:
+                            path = Path(project_root) / path
+                    if path.is_file():
+                        return path
+
+            library = (
+                Path(__file__).resolve().parents[3]
+                / "assets"
+                / "page_thumbnails"
+            )
+
+            standard = (
+                library
+                / thumbnail_filename_for_type(page_type)
+            )
+            if standard.is_file():
+                return standard
+
+            generic = library / "type_page_personnalisee.png"
+            return generic if generic.is_file() else None
+
+        def type_code_for_item(item: dict) -> str:
+            # CODE_TYPE_PAGE_V8
+            # Code très court intégré au bandeau de couleur pour identifier
+            # le type sans ajouter de cartouche ni de hauteur.
+            page_type = str(item.get("type", ""))
+
+            mapping = {
+                "couverture": "COUV",
+                "deuxieme_couverture": "2C",
+                "page_titre": "TITRE",
+                "sommaire": "SOM",
+                "avant_propos": "AVP",
+                "chapitre": "CHAP",
+                "fiche": "FICHE",
+                "texte": "TXT",
+                "illustration": "ILL",
+                "transition": "TRANS",
+                "page_blanche": "BL",
+                "conclusion": "CONCL",
+                "troisieme_couverture": "3C",
+                "quatrieme": "4C",
+            }
+
+            if page_type in mapping:
+                return mapping[page_type]
+
+            definition = snapshot["page_types"].get(page_type, {})
+            short = str(
+                definition.get("short")
+                or definition.get("title")
+                or page_type
+                or "PAGE"
+            ).strip()
+
+            compact = "".join(
+                character
+                for character in short.upper()
+                if character.isalnum()
+            )
+
+            return compact[:5] or "PAGE"
+
+        def type_label_for_item(item: dict) -> str:
+            page_type = str(item.get("type", ""))
+
+            labels = {
+                "couverture": "Couverture",
+                "deuxieme_couverture": "Deuxième de couverture",
+                "page_titre": "Page de titre",
+                "sommaire": "Sommaire",
+                "avant_propos": "Avant-propos",
+                "chapitre": "Chapitre",
+                "fiche": "Fiche",
+                "texte": "Page de texte",
+                "illustration": "Illustration",
+                "transition": "Page de transition",
+                "page_blanche": "Page blanche",
+                "conclusion": "Conclusion",
+                "troisieme_couverture": "Troisième de couverture",
+                "quatrieme": "Quatrième de couverture",
+            }
+
+            if page_type in labels:
+                return labels[page_type]
+
+            definition = snapshot["page_types"].get(page_type, {})
+            return str(
+                definition.get("title")
+                or definition.get("short")
+                or page_type.replace("_", " ").title()
+                or "Page"
+            )
+
+        def hide_type_tooltip() -> None:
+            pending = getattr(
+                wall,
+                "_type_tooltip_after",
+                None,
+            )
+            if pending is not None:
+                try:
+                    wall.after_cancel(pending)
+                except tk.TclError:
+                    pass
+                wall._type_tooltip_after = None
+
+            wall.delete("type_page_tooltip")
+
+        def show_type_tooltip(
+            event,
+            item: dict,
+        ) -> None:
+            hide_type_tooltip()
+
+            code = type_code_for_item(item)
+            label = type_label_for_item(item)
+            accent = item_accent(item)
+
+            canvas_x = wall.canvasx(event.x)
+            canvas_y = wall.canvasy(event.y)
+
+            def display() -> None:
+                wall._type_tooltip_after = None
+                wall.delete("type_page_tooltip")
+
+                text = f"{code}  ·  {label}"
+
+                text_id = wall.create_text(
+                    canvas_x + 14,
+                    canvas_y - 15,
+                    text=text,
+                    fill=self.INK,
+                    font=(Fonts.FAMILY, 8, "bold"),
+                    anchor="sw",
+                    tags=("type_page_tooltip",),
+                )
+
+                bbox = wall.bbox(text_id)
+                if bbox is None:
+                    return
+
+                x1, y1, x2, y2 = bbox
+                pad_x = 8
+                pad_y = 5
+
+                # Reste dans la zone visible lorsque le pointeur est près
+                # du bord droit ou du haut.
+                view_left = wall.canvasx(0)
+                view_top = wall.canvasy(0)
+                view_right = wall.canvasx(wall.winfo_width())
+                view_bottom = wall.canvasy(wall.winfo_height())
+
+                shift_x = 0
+                shift_y = 0
+
+                if x2 + pad_x > view_right - 5:
+                    shift_x = (view_right - 5) - (x2 + pad_x)
+                if x1 - pad_x < view_left + 5:
+                    shift_x = (view_left + 5) - (x1 - pad_x)
+
+                if y1 - pad_y < view_top + 5:
+                    shift_y = (view_top + 5) - (y1 - pad_y)
+                if y2 + pad_y > view_bottom - 5:
+                    shift_y = (view_bottom - 5) - (y2 + pad_y)
+
+                if shift_x or shift_y:
+                    wall.move(
+                        text_id,
+                        shift_x,
+                        shift_y,
+                    )
+                    bbox = wall.bbox(text_id)
+                    if bbox is None:
+                        return
+                    x1, y1, x2, y2 = bbox
+
+                shadow = wall.create_rectangle(
+                    x1 - pad_x + 2,
+                    y1 - pad_y + 2,
+                    x2 + pad_x + 2,
+                    y2 + pad_y + 2,
+                    fill="#D7DBD8",
+                    outline="",
+                    tags=("type_page_tooltip",),
+                )
+
+                bubble = wall.create_rectangle(
+                    x1 - pad_x,
+                    y1 - pad_y,
+                    x2 + pad_x,
+                    y2 + pad_y,
+                    fill="#FFFDFC",
+                    outline=accent,
+                    width=1,
+                    tags=("type_page_tooltip",),
+                )
+
+                wall.tag_lower(shadow, bubble)
+                wall.tag_raise(text_id, bubble)
+
+            wall._type_tooltip_after = wall.after(
+                320,
+                display,
+            )
+
+        def expand_items() -> list[dict]:
+            expanded: list[dict] = []
+
+            for source_index, item in enumerate(snapshot["items"]):
+                try:
+                    count = max(1, int(item.get("count", 1) or 1))
+                except (TypeError, ValueError):
+                    count = 1
+
+                for occurrence in range(count):
+                    clone = dict(item)
+                    clone["_source_index"] = source_index
+                    clone["_occurrence"] = occurrence + 1
+                    clone["_occurrence_count"] = count
+                    expanded.append(clone)
+
+            return expanded
+
+        physical_pages = expand_items()
+
+        def page_status(item: dict) -> tuple[str, str]:
+            # STATUT_GABARIT_CENTRE_V2
+            # STATUTS_AVANCEMENT_CENTRE_V1
+            if bool(item.get("automatic_recto_verso", False)):
+                return "AUTO  ✦", item_accent(item)
+
+            if self._conception_page_for_synoptic_item(item) is not None:
+                return "PRODUITE", self.CONCEPTION
+
+            if self._transferred_model_id_for_synoptic_item(item):
+                return "À PRODUIRE", self.CONCEPTION
+
+            model_id = self._associated_model_id_for_synoptic_item(item)
+            if model_id:
+                return "GABARIT", self.ATELIER
+
+            return "MAQUETTAGE", item_accent(item)
+
+        def make_background(width: int, height: int):
+            try:
+                from PIL import Image, ImageDraw
+            except Exception:
+                return None
+
+            width = max(1, int(width))
+            height = max(1, int(height))
+
+            if background_path.is_file():
+                try:
+                    source = Image.open(background_path).convert("RGBA")
+                    source_ratio = source.width / source.height
+                    target_ratio = width / max(1, height)
+
+                    if target_ratio > source_ratio:
+                        rw = width
+                        rh = max(height, int(round(width / source_ratio)))
+                    else:
+                        rh = height
+                        rw = max(width, int(round(height * source_ratio)))
+
+                    source = source.resize(
+                        (rw, rh),
+                        Image.Resampling.LANCZOS,
+                    )
+
+                    left = max(0, (rw - width) // 2)
+                    top = max(0, (rh - height) // 2)
+                    image = source.crop(
+                        (left, top, left + width, top + height)
+                    )
+
+                    veil = Image.new(
+                        "RGBA",
+                        (width, height),
+                        (255, 255, 255, 112),
+                    )
+                    image = Image.alpha_composite(image, veil)
+                except Exception:
+                    image = Image.new(
+                        "RGBA",
+                        (width, height),
+                        (247, 247, 244, 255),
+                    )
+            else:
+                image = Image.new(
+                    "RGBA",
+                    (width, height),
+                    (247, 247, 244, 255),
+                )
+
+            draw = ImageDraw.Draw(image)
+            line = (72, 92, 112, 34)
+            blue = (117, 182, 219, 68)
+            teal = (130, 183, 161, 58)
+
+            draw.line(
+                (22, height - 22, width - 22, height - 22),
+                fill=line,
+                width=1,
+            )
+
+            for x in (34, width // 2, max(34, width - 34)):
+                draw.line(
+                    (x - 8, height - 22, x + 8, height - 22),
+                    fill=blue,
+                    width=1,
+                )
+                draw.line(
+                    (x, height - 30, x, height - 14),
+                    fill=teal,
+                    width=1,
+                )
+
+            return image
+
+        def draw_page(
+            x: float,
+            y: float,
+            item: dict,
+            *,
+            page_side: str,
+            page_number: int | None,
+            scale: float = 1.0,
+        ) -> tuple[float, float]:
+            automatic = bool(
+                item.get("automatic_recto_verso", False)
+            )
+
+            nominal_w = 101 * scale
+            nominal_h = 143 * scale
+
+            visual_ratio = 0.90 if automatic else 1.0
+            page_w = nominal_w * visual_ratio
+            page_h = nominal_h * visual_ratio
+
+            if automatic:
+                x += (nominal_w - page_w) / 2
+                y += (nominal_h - page_h) / 2
+
+            accent = item_accent(item)
+            phase_text, phase_color = page_status(item)
+
+            tag = (
+                f"visual_page_"
+                f"{item.get('_source_index', 0)}_"
+                f"{item.get('_occurrence', 1)}"
+            )
+
+            wall.create_rectangle(
+                x,
+                y,
+                x + page_w,
+                y + page_h,
+                fill="#FFFDFC",
+                outline=accent,
+                width=1,
+                tags=(tag,),
+            )
+
+            image_x1 = x + 1
+            image_y1 = y + 1
+            image_x2 = x + page_w - 1
+            image_y2 = y + page_h - 1
+
+            thumbnail_path = thumbnail_path_for_item(item)
+            thumbnail_drawn = False
+
+            if thumbnail_path is not None:
+                try:
+                    from PIL import Image, ImageTk
+
+                    source = Image.open(thumbnail_path).convert("RGBA")
+                    available_w = max(
+                        1,
+                        int(round(image_x2 - image_x1)),
+                    )
+                    available_h = max(
+                        1,
+                        int(round(image_y2 - image_y1)),
+                    )
+
+                    source = source.resize(
+                        (available_w, available_h),
+                        Image.Resampling.LANCZOS,
+                    )
+
+                    photo = ImageTk.PhotoImage(source)
+                    wall._page_thumb_photos.append(photo)
+
+                    wall.create_image(
+                        image_x1,
+                        image_y1,
+                        image=photo,
+                        anchor="nw",
+                        tags=(tag,),
+                    )
+                    thumbnail_drawn = True
+                except Exception:
+                    thumbnail_drawn = False
+
+            if not thumbnail_drawn:
+                wall.create_rectangle(
+                    image_x1,
+                    image_y1,
+                    image_x2,
+                    image_y2,
+                    fill=blend(accent, 0.90),
+                    outline="",
+                    tags=(tag,),
+                )
+                for index in range(5):
+                    yy = image_y1 + 18 * scale + index * 12 * scale
+                    wall.create_line(
+                        image_x1 + 12 * scale,
+                        yy,
+                        image_x2 - 12 * scale,
+                        yy,
+                        fill=blend(accent, 0.48),
+                        width=1,
+                        tags=(tag,),
+                    )
+
+            # CODE_TYPE_PAGE_LISIBLE_V9
+            # Bandeau légèrement plus haut pour une lecture immédiate
+            # sans alourdir la miniature.
+            band_h = 9 * scale
+            wall.create_rectangle(
+                x,
+                y,
+                x + page_w,
+                y + band_h,
+                fill=accent,
+                outline="",
+                tags=(tag,),
+            )
+
+            wall.create_text(
+                x + 5 * scale,
+                y + band_h / 2,
+                text=type_code_for_item(item),
+                fill="#FFFFFF",
+                font=(
+                    Fonts.FAMILY,
+                    max(7, int(7.5 * scale)),
+                    "bold",
+                ),
+                anchor="w",
+                tags=(tag,),
+            )
+
+            if automatic:
+                wall.create_text(
+                    x + page_w - 5 * scale,
+                    y + band_h / 2,
+                    text="✦",
+                    fill="#FFFFFF",
+                    font=(
+                        Fonts.FAMILY,
+                        max(7, int(8 * scale)),
+                        "bold",
+                    ),
+                    anchor="e",
+                    tags=(tag,),
+                )
+
+            phase_y = y + page_h + 10 * scale
+            dot_r = 2.7 * scale
+            phase_center_x = x + page_w / 2
+            estimated_text_w = 46 * scale
+            dot_x = phase_center_x - estimated_text_w / 2
+
+            wall.create_oval(
+                dot_x - dot_r,
+                phase_y - dot_r,
+                dot_x + dot_r,
+                phase_y + dot_r,
+                fill=phase_color,
+                outline="",
+                tags=(tag,),
+            )
+            wall.create_text(
+                dot_x + 7 * scale,
+                phase_y,
+                text=phase_text,
+                fill=phase_color,
+                font=(
+                    Fonts.FAMILY,
+                    max(6, int(7 * scale)),
+                    "bold",
+                ),
+                anchor="w",
+                tags=(tag,),
+            )
+
+            if page_number is not None:
+                number_x = (
+                    x
+                    if page_side == "left"
+                    else x + page_w
+                )
+                number_anchor = (
+                    "nw"
+                    if page_side == "left"
+                    else "ne"
+                )
+                wall.create_text(
+                    number_x,
+                    phase_y + 9 * scale,
+                    text=str(page_number),
+                    fill=self.TEXT_MUTED,
+                    font=(Fonts.FAMILY, max(6, int(7 * scale))),
+                    anchor=number_anchor,
+                    tags=(tag,),
+                )
+
+            # VOYANT_PAGE_OUVERTE_ATELIER_V1
+            # Le voyant décrit un état de session, pas l'avancement :
+            # il apparaît uniquement si le gabarit associé est réellement
+            # chargé dans l'Atelier persistant.
+            workshop = self._model_workshop_view
+            active_model_id = (
+                str(getattr(workshop, "active_model_id", "") or "")
+                if workshop is not None
+                else ""
+            )
+            associated_model_id = (
+                self._associated_model_id_for_synoptic_item(item)
+            )
+
+            if (
+                active_model_id
+                and associated_model_id
+                and active_model_id == associated_model_id
+            ):
+                activity_tag = f"{tag}_atelier_active"
+                # VOYANT_ATELIER_COTE_EXTERIEUR_V2
+                # Le voyant reste toujours à l'extérieur du livre ouvert :
+                # gauche pour une page gauche, droite pour une page droite.
+                if page_side == "left":
+                    tab_x1 = x - 13 * scale
+                    tab_x2 = x + 1 * scale
+                else:
+                    tab_x1 = x + page_w - 1 * scale
+                    tab_x2 = x + page_w + 13 * scale
+
+                tab_y1 = y + 31 * scale
+                tab_y2 = y + 56 * scale
+
+                wall.create_rectangle(
+                    tab_x1,
+                    tab_y1,
+                    tab_x2,
+                    tab_y2,
+                    fill=self.ATELIER,
+                    outline="#FFFFFF",
+                    width=1,
+                    tags=(activity_tag,),
+                )
+                wall.create_text(
+                    (tab_x1 + tab_x2) / 2,
+                    (tab_y1 + tab_y2) / 2,
+                    text="A",
+                    fill="#FFFFFF",
+                    font=(
+                        Fonts.FAMILY,
+                        max(7, int(8 * scale)),
+                        "bold",
+                    ),
+                    anchor="center",
+                    tags=(activity_tag,),
+                )
+
+                def show_atelier_activity_tip(event) -> None:
+                    wall.delete("atelier_activity_tooltip")
+                    cx = wall.canvasx(event.x) + 14
+                    cy = wall.canvasy(event.y) - 12
+
+                    text_id = wall.create_text(
+                        cx,
+                        cy,
+                        text="Atelier · gabarit actuellement ouvert",
+                        fill=self.INK,
+                        font=(Fonts.FAMILY, 8, "bold"),
+                        anchor="sw",
+                        tags=("atelier_activity_tooltip",),
+                    )
+                    bbox = wall.bbox(text_id)
+                    if bbox is None:
+                        return
+
+                    x1, y1, x2, y2 = bbox
+                    bubble = wall.create_rectangle(
+                        x1 - 8,
+                        y1 - 5,
+                        x2 + 8,
+                        y2 + 5,
+                        fill="#FFFDFC",
+                        outline=self.ATELIER,
+                        width=1,
+                        tags=("atelier_activity_tooltip",),
+                    )
+                    wall.tag_lower(bubble, text_id)
+
+                def hide_atelier_activity_tip(_event=None) -> None:
+                    wall.delete("atelier_activity_tooltip")
+
+                wall.tag_bind(
+                    activity_tag,
+                    "<Enter>",
+                    show_atelier_activity_tip,
+                )
+                wall.tag_bind(
+                    activity_tag,
+                    "<Leave>",
+                    hide_atelier_activity_tip,
+                )
+                wall.tag_bind(
+                    activity_tag,
+                    "<Button-1>",
+                    lambda _evt, current_item=item: self._route_synoptic_page(
+                        current_item
+                    ),
+                )
+
+            # CIBLAGE_CENTRE_MAQUETTAGE_V1
+            wall.tag_bind(
+                tag,
+                "<Button-1>",
+                lambda _evt, current_item=item: self._route_synoptic_page(
+                    current_item
+                ),
+            )
+            def enter_page(
+                event,
+                current_item=item,
+            ) -> None:
+                wall.configure(cursor="hand2")
+                show_type_tooltip(
+                    event,
+                    current_item,
+                )
+
+            def leave_page(_event) -> None:
+                wall.configure(cursor="arrow")
+                hide_type_tooltip()
+
+            wall.tag_bind(
+                tag,
+                "<Enter>",
+                enter_page,
+            )
+            wall.tag_bind(
+                tag,
+                "<Leave>",
+                leave_page,
+            )
+
+            return page_w, page_h
+
+        def make_display_units() -> list[dict]:
+            units: list[dict] = []
+
+            if not physical_pages:
+                return units
+
+            work = list(physical_pages)
+
+            if work and str(work[0].get("type", "")) == "couverture":
+                units.append(
+                    {
+                        "kind": "single_cover",
+                        "pages": [work.pop(0)],
+                    }
+                )
+
+            back_cover = None
+            if work and str(work[-1].get("type", "")) == "quatrieme":
+                back_cover = work.pop()
+
+            page_number = 1
+            cursor = 0
+
+            while cursor < len(work):
+                left = work[cursor]
+                right = (
+                    work[cursor + 1]
+                    if cursor + 1 < len(work)
+                    else None
+                )
+
+                units.append(
+                    {
+                        "kind": "spread",
+                        "pages": [left, right],
+                        "left_number": page_number,
+                        "right_number": (
+                            page_number + 1
+                            if right is not None
+                            else None
+                        ),
+                    }
+                )
+
+                cursor += 2
+                page_number += 2
+
+            if back_cover is not None:
+                units.append(
+                    {
+                        "kind": "single_back",
+                        "pages": [back_cover],
+                    }
+                )
+
+            return units
+
+        display_units = make_display_units()
+
+        def draw_wall(_event=None) -> None:
+            width = max(1, int(wall.winfo_width()))
+            viewport_h = max(1, int(wall.winfo_height()))
+
+            if width <= 4 or viewport_h <= 4:
+                return
+
+            wall.delete("all")
+            wall._page_thumb_photos = []
+
+            left_margin = 22
+            top_margin = 78
+            bottom_margin = 34
+
+            unit_w = 246
+            unit_h = 187
+            gap_x = 15
+            gap_y = 18
+
+            usable_w = max(
+                unit_w,
+                width - left_margin * 2,
+            )
+            columns = max(
+                1,
+                int(
+                    (usable_w + gap_x)
+                    // (unit_w + gap_x)
+                ),
+            )
+
+            rows = max(
+                1,
+                (len(display_units) + columns - 1)
+                // columns,
+            )
+
+            content_h = max(
+                viewport_h,
+                top_margin
+                + rows * unit_h
+                + max(0, rows - 1) * gap_y
+                + bottom_margin,
+            )
+
+            background = make_background(width, content_h)
+
+            if background is not None:
+                try:
+                    from PIL import ImageTk
+
+                    photo = ImageTk.PhotoImage(background)
+                    wall._regulation_bg_photo = photo
+                    wall.create_image(
+                        0,
+                        0,
+                        image=photo,
+                        anchor="nw",
+                    )
+                except Exception:
+                    pass
+
+            wall.create_text(
+                22,
+                18,
+                text="Synoptique du livre",
+                fill=self.INK,
+                font=(Fonts.FAMILY, 13, "bold"),
+                anchor="nw",
+            )
+
+            wall.create_text(
+                width - 22,
+                20,
+                text=(
+                    f"{snapshot['planned_pages']} pages prévues"
+                    if snapshot["planned_pages"]
+                    else "Structure non définie"
+                ),
+                fill=self.TEXT_MUTED,
+                font=(Fonts.FAMILY, 9),
+                anchor="ne",
+            )
+
+            wall.create_text(
+                22,
+                45,
+                text=(
+                    "Vue livre ouvert · base de la future "
+                    "fenêtre Visualisation"
+                ),
+                fill=self.TEXT_MUTED,
+                font=(Fonts.FAMILY, 8),
+                anchor="nw",
+            )
+
+            if not display_units:
+                wall.create_text(
+                    width / 2,
+                    max(130, viewport_h / 2 - 10),
+                    text="Le plan du livre n'est pas encore disponible.",
+                    fill=self.INK,
+                    font=(Fonts.FAMILY, 12, "bold"),
+                    anchor="center",
+                )
+                wall.create_text(
+                    width / 2,
+                    max(155, viewport_h / 2 + 18),
+                    text=(
+                        "Le Maquettage alimentera automatiquement "
+                        "ce synoptique."
+                    ),
+                    fill=self.TEXT_MUTED,
+                    font=(Fonts.FAMILY, 9),
+                    anchor="center",
+                )
+            else:
+                for index, unit in enumerate(display_units):
+                    row = index // columns
+                    column = index % columns
+
+                    ux = (
+                        left_margin
+                        + column * (unit_w + gap_x)
+                    )
+                    uy = (
+                        top_margin
+                        + row * (unit_h + gap_y)
+                    )
+
+                    kind = unit["kind"]
+
+                    if kind in {"single_cover", "single_back"}:
+                        item = unit["pages"][0]
+
+                        draw_page(
+                            ux + (unit_w - 111) / 2,
+                            uy + 10,
+                            item,
+                            page_side="right",
+                            page_number=None,
+                            scale=1.10,
+                        )
+
+                    else:
+                        left_page, right_page = unit["pages"]
+
+                        # Un seul cadre léger matérialise la double page.
+                        # Aucun fond : le décor PageMaître reste visible.
+                        wall.create_rectangle(
+                            ux + 5,
+                            uy + 4,
+                            ux + unit_w - 5,
+                            uy + unit_h - 4,
+                            fill="",
+                            outline=blend("#718096", 0.64),
+                            width=1,
+                        )
+
+                        page_y = uy + 10
+                        page_scale = 1.05
+                        page_w = 101 * page_scale
+
+                        left_x = ux + 15
+                        right_x = ux + unit_w - 15 - page_w
+
+                        draw_page(
+                            left_x,
+                            page_y,
+                            left_page,
+                            page_side="left",
+                            page_number=unit["left_number"],
+                            scale=page_scale,
+                        )
+
+                        if right_page is not None:
+                            draw_page(
+                                right_x,
+                                page_y,
+                                right_page,
+                                page_side="right",
+                                page_number=unit["right_number"],
+                                scale=page_scale,
+                            )
+                        else:
+                            wall.create_rectangle(
+                                right_x,
+                                page_y,
+                                right_x + page_w,
+                                page_y + 143 * page_scale,
+                                fill="",
+                                outline=blend("#AEB5BC", 0.35),
+                                dash=(3, 3),
+                                width=1,
+                            )
+
+                        center_x = ux + unit_w / 2
+                        wall.create_line(
+                            center_x,
+                            page_y + 4,
+                            center_x,
+                            page_y + 143 * page_scale - 4,
+                            fill=blend("#6B7280", 0.55),
+                            width=1,
+                        )
+
+            wall.configure(
+                scrollregion=(0, 0, width, content_h)
+            )
+
+        def on_mousewheel(event) -> None:
+            try:
+                delta = int(event.delta)
+            except Exception:
+                return
+
+            if delta == 0:
+                return
+
+            wall.yview_scroll(
+                -1 if delta > 0 else 1,
+                "units",
+            )
+
+        wall._redraw_regulation = draw_wall
+        wall.bind("<Configure>", draw_wall, add="+")
+        wall.bind("<MouseWheel>", on_mousewheel, add="+")
+        wall.after_idle(draw_wall)
+
+        # REGULATION_ECRAN_CONTROLE_V1
+        side = ctk.CTkFrame(
+            workspace,
+            width=314,
+            fg_color="#FAFBF9",
+            corner_radius=9,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        side.grid(row=0, column=1, sticky="nsew")
+        side.grid_propagate(False)
+        side.grid_columnconfigure((0, 1), weight=1, uniform="regulation_cols")
+
+        ctk.CTkLabel(
+            side,
+            text="Régulation",
+            font=(Fonts.FAMILY, 13, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(
             row=0,
             column=0,
+            columnspan=2,
             sticky="ew",
+            padx=14,
+            pady=(13, 1),
         )
 
-        # Espace volontairement libre : il recevra les futurs outils de
-        # pilotage sans alourdir le Centre du projet dès maintenant.
-        ctk.CTkFrame(
-            central,
-            fg_color="transparent",
-            corner_radius=0,
+        ctk.CTkLabel(
+            side,
+            text="État chiffré, progression et alertes du projet.",
+            font=(Fonts.FAMILY, 8),
+            text_color=self.TEXT_MUTED,
+            anchor="w",
+            justify="left",
+            wraplength=280,
         ).grid(
             row=1,
             column=0,
-            sticky="nsew",
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(0, 9),
         )
 
-        self._create_side_navigation(workspace).grid(
-            row=0,
-            column=1,
-            sticky="nsew",
+        status_counts = {
+            "MAQUETTAGE": 0,
+            "GABARIT": 0,
+            "À PRODUIRE": 0,
+            "PRODUITE": 0,
+            "AUTO": 0,
+        }
+
+        for regulation_item in physical_pages:
+            status_label = page_status(regulation_item)[0]
+            if status_label.startswith("AUTO"):
+                status_counts["AUTO"] += 1
+            elif status_label in status_counts:
+                status_counts[status_label] += 1
+
+        planned_count = len(physical_pages)
+        automatic_count = status_counts["AUTO"]
+        work_count = max(0, planned_count - automatic_count)
+        mockup_count = status_counts["MAQUETTAGE"]
+        gabarit_count = status_counts["GABARIT"]
+        ready_count = status_counts["À PRODUIRE"]
+        produced_count = status_counts["PRODUITE"]
+        validated_count = min(
+            work_count,
+            max(0, int(snapshot.get("validated_pages", 0) or 0)),
         )
+
+        prepared_count = min(
+            work_count,
+            gabarit_count + ready_count + produced_count,
+        )
+        transferred_count = min(
+            work_count,
+            ready_count + produced_count,
+        )
+
+        # REGULATION_ETAT_COMPACT_V1
+        ctk.CTkLabel(
+            side,
+            text="État du livre",
+            font=(Fonts.FAMILY, 9, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(
+            row=2,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(1, 5),
+        )
+
+        alert_page_count = (
+            mockup_count
+            + ready_count
+            + max(0, produced_count - validated_count)
+        )
+
+        metrics_strip = ctk.CTkFrame(
+            side,
+            height=58,
+            fg_color="#F5F7F5",
+            corner_radius=8,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        metrics_strip.grid(
+            row=3,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=12,
+            pady=(0, 3),
+        )
+        metrics_strip.grid_propagate(False)
+
+        for metric_column in range(4):
+            metrics_strip.grid_columnconfigure(
+                metric_column,
+                weight=1,
+                uniform="regulation_metrics",
+            )
+
+        def compact_metric(
+            column: int,
+            label: str,
+            value: int,
+            color: str,
+        ) -> None:
+            cell = ctk.CTkFrame(
+                metrics_strip,
+                fg_color="transparent",
+                corner_radius=0,
+            )
+            cell.grid(
+                row=0,
+                column=column,
+                sticky="nsew",
+                padx=2,
+                pady=4,
+            )
+            cell.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(
+                cell,
+                text=str(value),
+                font=(Fonts.FAMILY, 14, "bold"),
+                text_color=color,
+            ).grid(
+                row=0,
+                column=0,
+                sticky="s",
+                pady=(1, 0),
+            )
+
+            ctk.CTkLabel(
+                cell,
+                text=label,
+                font=(Fonts.FAMILY, 6),
+                text_color=self.TEXT_MUTED,
+            ).grid(
+                row=1,
+                column=0,
+                sticky="n",
+                pady=(0, 1),
+            )
+
+        compact_metric(0, "Pages", planned_count, self.MAQUETTAGE)
+        compact_metric(1, "Gabarits", gabarit_count, self.ATELIER)
+        compact_metric(2, "À produire", ready_count, self.CONCEPTION)
+        compact_metric(3, "Validées", validated_count, self.VERIFICATION)
+
+        ctk.CTkLabel(
+            side,
+            text=(
+                f"Auto {automatic_count}"
+                f"   ·   Sans gabarit {mockup_count}"
+                f"   ·   Produites {produced_count}"
+                f"   ·   À surveiller {alert_page_count}"
+            ),
+            font=(Fonts.FAMILY, 6),
+            text_color=self.TEXT_MUTED,
+            anchor="center",
+            justify="center",
+        ).grid(
+            row=4,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=12,
+            pady=(0, 5),
+        )
+
+        ctk.CTkLabel(
+            side,
+            text="Progression",
+            font=(Fonts.FAMILY, 9, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(
+            row=5,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(6, 5),
+        )
+
+        progress_frame = ctk.CTkFrame(
+            side,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        progress_frame.grid(
+            row=6,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=12,
+        )
+        progress_frame.grid_columnconfigure(0, weight=1)
+
+        def progress_line(
+            row: int,
+            label: str,
+            value: int,
+            total: int,
+            color: str,
+        ) -> None:
+            total = max(0, int(total))
+            value = max(0, min(int(value), total)) if total else 0
+            ratio = (value / total) if total else 0.0
+
+            label_row = ctk.CTkFrame(
+                progress_frame,
+                fg_color="transparent",
+                corner_radius=0,
+            )
+            label_row.grid(row=row * 2, column=0, sticky="ew")
+            label_row.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(
+                label_row,
+                text=label,
+                font=(Fonts.FAMILY, 7),
+                text_color=self.TEXT_MUTED,
+                anchor="w",
+            ).grid(row=0, column=0, sticky="w")
+
+            ctk.CTkLabel(
+                label_row,
+                text=f"{value} / {total}",
+                font=(Fonts.FAMILY, 7, "bold"),
+                text_color=color,
+                anchor="e",
+            ).grid(row=0, column=1, sticky="e")
+
+            bar = ctk.CTkProgressBar(
+                progress_frame,
+                height=7,
+                corner_radius=4,
+                fg_color="#E7EAE6",
+                progress_color=color,
+            )
+            bar.grid(
+                row=row * 2 + 1,
+                column=0,
+                sticky="ew",
+                pady=(1, 5),
+            )
+            bar.set(ratio)
+
+        progress_line(
+            0,
+            "Gabarits préparés",
+            prepared_count,
+            work_count,
+            self.ATELIER,
+        )
+        progress_line(
+            1,
+            "Transférés vers Conception",
+            transferred_count,
+            work_count,
+            self.CONCEPTION,
+        )
+        progress_line(
+            2,
+            "Pages produites",
+            produced_count,
+            work_count,
+            self.CONCEPTION,
+        )
+        progress_line(
+            3,
+            "Pages validées",
+            validated_count,
+            work_count,
+            self.VERIFICATION,
+        )
+
+        ctk.CTkLabel(
+            side,
+            text="Alertes / À surveiller",
+            font=(Fonts.FAMILY, 9, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(
+            row=7,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=14,
+            pady=(6, 5),
+        )
+
+        alerts: list[tuple[str, str, str]] = []
+
+        if not physical_pages:
+            alerts.append(
+                (
+                    "attention",
+                    "Plan du livre",
+                    "Le Maquettage doit encore définir la structure du livre.",
+                )
+            )
+        else:
+            if mockup_count:
+                alerts.append(
+                    (
+                        "attention",
+                        "Gabarits",
+                        f"{mockup_count} page(s) n'ont pas encore de gabarit.",
+                    )
+                )
+
+            if ready_count:
+                alerts.append(
+                    (
+                        "information",
+                        "Conception",
+                        f"{ready_count} page(s) sont prêtes à produire.",
+                    )
+                )
+
+            waiting_validation = max(0, produced_count - validated_count)
+            if waiting_validation:
+                alerts.append(
+                    (
+                        "attention",
+                        "Validation",
+                        f"{waiting_validation} page(s) produite(s) restent à valider.",
+                    )
+                )
+
+        if not alerts:
+            alerts.append(
+                (
+                    "ok",
+                    "Projet cohérent",
+                    "Aucun point ne demande d'attention immédiate.",
+                )
+            )
+
+        alert_colors = {
+            "information": ("#EAF3F7", "#6B9DB5"),
+            "attention": ("#FBF2E7", "#C27B4A"),
+            "erreur": ("#F9E9E7", "#BE5B52"),
+            "ok": ("#EAF3EC", "#5F8A6A"),
+        }
+
+        alerts_frame = ctk.CTkFrame(
+            side,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        alerts_frame.grid(
+            row=8,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            padx=12,
+            pady=(0, 9),
+        )
+        alerts_frame.grid_columnconfigure(0, weight=1)
+
+        for alert_row, (severity, title, text) in enumerate(alerts[:4]):
+            soft_color, accent_color = alert_colors[severity]
+            alert = ctk.CTkFrame(
+                alerts_frame,
+                fg_color=soft_color,
+                corner_radius=7,
+                border_width=1,
+                border_color=blend(accent_color, 0.48),
+            )
+            alert.grid(
+                row=alert_row,
+                column=0,
+                sticky="ew",
+                pady=(0, 4),
+            )
+            alert.grid_columnconfigure(1, weight=1)
+
+            ctk.CTkLabel(
+                alert,
+                text="●",
+                font=(Fonts.FAMILY, 8, "bold"),
+                text_color=accent_color,
+            ).grid(
+                row=0,
+                column=0,
+                rowspan=2,
+                sticky="n",
+                padx=(8, 5),
+                pady=(7, 0),
+            )
+
+            ctk.CTkLabel(
+                alert,
+                text=title,
+                font=(Fonts.FAMILY, 8, "bold"),
+                text_color=self.INK,
+                anchor="w",
+            ).grid(
+                row=0,
+                column=1,
+                sticky="ew",
+                padx=(0, 8),
+                pady=(5, 0),
+            )
+
+            ctk.CTkLabel(
+                alert,
+                text=text,
+                font=(Fonts.FAMILY, 7),
+                text_color=self.TEXT_MUTED,
+                anchor="w",
+                justify="left",
+                wraplength=238,
+            ).grid(
+                row=1,
+                column=1,
+                sticky="ew",
+                padx=(0, 8),
+                pady=(0, 6),
+            )
+
         return workspace
 
     def _create_side_navigation(self, parent) -> ctk.CTkFrame:
@@ -887,9 +3532,14 @@ class DocumentView:
         tabs.grid_columnconfigure((0, 1), weight=1, uniform="centre_tabs")
         tabs.grid_propagate(False)
 
+        profile = self._centre_profile()
+
         self._side_tab_buttons = {}
         for column, (key, label) in enumerate(
-            (("recent", "Récentes"), ("types", "Types"))
+            (
+                ("recent", profile["recent_tab"]),
+                ("types", profile["secondary_tab"]),
+            )
         ):
             button = ctk.CTkButton(
                 tabs,
@@ -949,11 +3599,14 @@ class DocumentView:
         for child in self._side_content.winfo_children():
             child.destroy()
 
-        content = (
-            self._create_recent_pages(self._side_content)
-            if tab_key == "recent"
-            else self._create_categories(self._side_content)
-        )
+        if tab_key == "recent":
+            content = self._create_recent_pages(self._side_content)
+        elif self._project_type_key() == "ouvrage_structure":
+            content = self._create_categories(self._side_content)
+        else:
+            content = self._create_specialized_side_overview(
+                self._side_content
+            )
         content.grid(
             row=0,
             column=0,
@@ -961,6 +3614,50 @@ class DocumentView:
             padx=4,
             pady=4,
         )
+
+    def _create_specialized_side_overview(
+        self,
+        parent,
+    ) -> ctk.CTkFrame:
+        profile = self._centre_profile()
+        frame = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            frame,
+            text=profile["secondary_title"],
+            font=(Fonts.FAMILY, 11, "bold"),
+            text_color=self.INK,
+            anchor="w",
+        ).grid(
+            row=0,
+            column=0,
+            sticky="ew",
+            padx=8,
+            pady=(10, 4),
+        )
+
+        ctk.CTkLabel(
+            frame,
+            text=profile["secondary_text"],
+            font=(Fonts.FAMILY, 8),
+            text_color=self.TEXT_MUTED,
+            justify="left",
+            anchor="w",
+            wraplength=245,
+        ).grid(
+            row=1,
+            column=0,
+            sticky="ew",
+            padx=8,
+            pady=(0, 10),
+        )
+
+        return frame
 
     def _create_rail_section(self, parent) -> ctk.CTkFrame:
         section = ctk.CTkFrame(
@@ -988,14 +3685,17 @@ class DocumentView:
 
         ctk.CTkLabel(
             header,
-            text="Chemin de fer",
+            text=self._centre_profile()["rail_title"],
             font=(Fonts.FAMILY, 11, "bold"),
             text_color=self.INK,
         ).grid(row=0, column=0, sticky="w")
 
         ctk.CTkLabel(
             header,
-            text=f"{len(self.pages)} page(s)",
+            text=(
+                f"{len(self.pages)} "
+                f"{self._centre_profile()['rail_count']}"
+            ),
             font=(Fonts.FAMILY, 8),
             text_color=self.TEXT_MUTED,
         ).grid(row=0, column=1, sticky="e")
@@ -1087,7 +3787,7 @@ class DocumentView:
 
             ctk.CTkLabel(
                 empty,
-                text="Aucune page",
+                text=self._centre_profile()["empty"],
                 font=Fonts.SMALL,
                 text_color=self.INK,
             ).pack(expand=True)
@@ -1222,7 +3922,11 @@ class DocumentView:
         if not recent_pages:
             ctk.CTkLabel(
                 frame,
-                text="Aucune page",
+                text=(
+                    "Aucune planche"
+                    if self._project_type_key() == "bande_dessinee"
+                    else "Aucune page"
+                ),
                 font=(Fonts.FAMILY, 9),
                 text_color=self.TEXT_MUTED,
             ).grid(
@@ -2257,6 +4961,345 @@ class DocumentView:
             on_back=self._return_to_project_centre,
         ).show()
 
+    def _associated_model_id_for_synoptic_item(
+        self,
+        item: dict,
+    ) -> str:
+        # ROUTEUR_CENTRE_MAQUETTAGE_ATELIER_V1
+        page_type = str(item.get("type", "")).strip()
+        if not page_type:
+            return ""
+
+        path = (
+            Path(self.project.models_folder)
+            / "maquettage_associations.json"
+        )
+        if not path.is_file():
+            return ""
+
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return ""
+
+        associations = (
+            data.get("associations", {})
+            if isinstance(data, dict)
+            else {}
+        )
+        if not isinstance(associations, dict):
+            return ""
+
+        return str(associations.get(page_type, "")).strip()
+
+    def _conception_page_for_synoptic_item(
+        self,
+        item: dict,
+    ) -> dict | None:
+        item_id = str(item.get("id", "")).strip()
+        if not item_id:
+            return None
+
+        try:
+            occurrence = max(
+                1,
+                int(item.get("_occurrence", 1) or 1),
+            )
+        except (TypeError, ValueError):
+            occurrence = 1
+
+        for page in self._load_project_pages():
+            if str(page.get("source_maquettage_id", "")).strip() != item_id:
+                continue
+
+            try:
+                page_occurrence = max(
+                    1,
+                    int(page.get("source_maquettage_occurrence", 1) or 1),
+                )
+            except (TypeError, ValueError):
+                page_occurrence = 1
+
+            if page_occurrence == occurrence:
+                return page
+
+        return None
+
+    def _transferred_model_id_for_synoptic_item(
+        self,
+        item: dict,
+    ) -> str:
+        model_id = self._associated_model_id_for_synoptic_item(item)
+        if not model_id:
+            return ""
+
+        manifest_file = (
+            Path(self.project.models_folder)
+            / "prets_conception"
+            / "manifest.json"
+        )
+        if not manifest_file.is_file():
+            return ""
+
+        try:
+            with manifest_file.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return ""
+
+        entries = (
+            data.get("gabarits", [])
+            if isinstance(data, dict)
+            else []
+        )
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("identifiant", "")).strip() == model_id:
+                return model_id
+
+        return ""
+
+    def _transferred_model_for_synoptic_item(self, item: dict):
+        model_id = self._transferred_model_id_for_synoptic_item(item)
+        if not model_id:
+            return None
+
+        try:
+            from src.core.model import Model
+        except Exception:
+            return None
+
+        ready_folder = (
+            Path(self.project.models_folder)
+            / "prets_conception"
+        )
+        manifest_file = ready_folder / "manifest.json"
+        if not manifest_file.is_file():
+            return None
+
+        try:
+            with manifest_file.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return None
+
+        entries = data.get("gabarits", []) if isinstance(data, dict) else []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("identifiant", "")).strip() != model_id:
+                continue
+
+            folder_name = str(entry.get("dossier", "")).strip()
+            if not folder_name:
+                return None
+
+            folder = ready_folder / folder_name
+            if not (folder / "modele.json").is_file():
+                return None
+
+            try:
+                return Model().load(folder)
+            except (OSError, ValueError, RuntimeError):
+                return None
+
+        return None
+
+    def _create_conception_page_from_synoptic(self, item: dict) -> bool:
+        # CREATION_CONCEPTION_DEPUIS_GABARIT_V1
+        model = self._transferred_model_for_synoptic_item(item)
+        if model is None:
+            return False
+
+        documents = list(getattr(self.project, "documents", []))
+        if not documents:
+            return False
+
+        document_name = str(documents[0].get("nom", "")).strip()
+        if not document_name:
+            return False
+
+        item_id = str(item.get("id", "")).strip()
+        if not item_id:
+            return False
+
+        try:
+            occurrence = max(1, int(item.get("_occurrence", 1) or 1))
+        except (TypeError, ValueError):
+            occurrence = 1
+
+        try:
+            occurrence_count = max(
+                1,
+                int(item.get("_occurrence_count", 1) or 1),
+            )
+        except (TypeError, ValueError):
+            occurrence_count = 1
+
+        try:
+            from copy import deepcopy
+
+            document = self.application.document_manager.load_document(
+                document_name
+            )
+
+            # Sécurité anti-doublon si un double clic survient.
+            for summary in list(getattr(document, "pages", [])):
+                if str(summary.get("source_maquettage_id", "")).strip() != item_id:
+                    continue
+                try:
+                    summary_occurrence = max(
+                        1,
+                        int(summary.get("source_maquettage_occurrence", 1) or 1),
+                    )
+                except (TypeError, ValueError):
+                    summary_occurrence = 1
+                if summary_occurrence == occurrence:
+                    existing = document.get_page(summary.get("numero"))
+                    if existing is not None:
+                        self._hide_project_tools_for_subspace()
+                        PageEditorView(
+                            self.parent,
+                            existing,
+                            on_back=self._back_to_centre,
+                        ).show()
+                        return True
+
+            definition = deepcopy(model.page_definition)
+            editorial = definition.get("editorial", {})
+
+            page_type = str(
+                editorial.get("type", item.get("type", "Page produite"))
+            ).strip() or "Page produite"
+
+            new_page = document.add_page(page_type=page_type)
+
+            title = str(item.get("title", "Page")).strip() or "Page"
+            if occurrence_count > 1:
+                title = f"{title} {occurrence}"
+
+            new_page.title = title
+            new_page.color = str(editorial.get("couleur", new_page.color))
+            new_page.icon = str(editorial.get("icone", new_page.icon))
+            new_page.page_kind = "page_produite"
+            new_page.structure_workspace = ""
+            new_page.content_workspace = "production"
+            new_page.locked = False
+            new_page.source_model_id = model.identifier
+            new_page.source_model_version = model.version_label
+            new_page._load_layout(
+                deepcopy(definition.get("mise_en_page", {}))
+            )
+            new_page.content = deepcopy(
+                definition.get("contenu_fixe", {})
+            )
+            new_page.elements = deepcopy(
+                definition.get("elements", [])
+            )
+            new_page.set_mockup_source(
+                item_id,
+                occurrence=occurrence,
+            )
+
+            try:
+                new_page._add_history(
+                    action="creation_conception",
+                    description=(
+                        f"Page créée dans Conception depuis le gabarit "
+                        f"« {model.name} » {model.version_label}."
+                    ),
+                )
+            except Exception:
+                pass
+
+            new_page.save(update_history=False)
+            document.update_page_summary(new_page)
+
+            self._hide_project_tools_for_subspace()
+            PageEditorView(
+                self.parent,
+                new_page,
+                on_back=self._back_to_centre,
+            ).show()
+            return True
+
+        except Exception:
+            return False
+
+    def _route_synoptic_page(self, item: dict) -> None:
+        """Ouvre la page dans l'espace correspondant à son état réel."""
+        # ROUTEUR_CENTRE_VERS_CONCEPTION_V1
+        conception_page = self._conception_page_for_synoptic_item(item)
+        if conception_page is not None:
+            self._hide_project_tools_for_subspace()
+            self._open_page(conception_page)
+            return
+
+        # ROUTE_A_PRODUIRE_VERS_CONCEPTION_V1
+        if self._transferred_model_id_for_synoptic_item(item):
+            if self._create_conception_page_from_synoptic(item):
+                return
+            self._open_atelier()
+            return
+
+        model_id = self._associated_model_id_for_synoptic_item(item)
+
+        if model_id:
+            self._hide_project_tools_for_subspace()
+
+            if self._model_workshop_view is None:
+                self._model_workshop_view = ModelWorkshopView(
+                    parent=self.parent,
+                    project=self.project,
+                    on_back=self._close_model_workshop,
+                )
+
+            if self._model_workshop_view.focus_model(model_id):
+                return
+
+            # Association devenue invalide : on revient sans bloquer
+            # au comportement de base du Maquettage.
+            try:
+                self._model_workshop_view.hide()
+            except Exception:
+                pass
+
+        self._open_mockup_page(item)
+
+    def _open_mockup_page(self, item: dict) -> None:
+        """Ouvre le Maquettage directement sur la page issue du synoptique."""
+        item_id = str(item.get("id", "")).strip()
+
+        try:
+            occurrence = max(
+                1,
+                int(item.get("_occurrence", 1) or 1),
+            )
+        except (TypeError, ValueError):
+            occurrence = 1
+
+        self._hide_project_tools_for_subspace()
+
+        view = MockupView(
+            parent=self.parent,
+            project=self.project,
+            on_back=self._return_to_project_centre,
+        )
+        view.show()
+
+        if not item_id:
+            return
+
+        # Le ciblage est confié au Maquettage lui-même. Cela conserve une
+        # seule logique de sélection et prépare le futur routeur Centre :
+        # Maquettage -> Atelier -> Conception selon l'état réel de la page.
+        view.focus_page(
+            item_id,
+            occurrence=occurrence,
+        )
+
     def _open_model_workshop(self) -> None:
         """Ouvre l’Atelier en réutilisant l’éditeur déjà construit."""
 
@@ -2278,6 +5321,23 @@ class DocumentView:
         if view is not None:
             view.hide()
         self._restore_project_tools_after_subspace()
+
+        # Le Centre existe déjà derrière l'Atelier : on ne le reconstruit pas.
+        # On redessine seulement son Canvas afin que l'état "gabarit ouvert"
+        # soit immédiatement visible au retour.
+        wall = getattr(self, "_regulation_wall", None)
+        if wall is not None:
+            try:
+                if wall.winfo_exists():
+                    redraw = getattr(
+                        wall,
+                        "_redraw_regulation",
+                        None,
+                    )
+                    if callable(redraw):
+                        wall.after_idle(redraw)
+            except tk.TclError:
+                pass
 
     def _hide_project_tools_for_subspace(self) -> None:
         """Masque les outils du Centre tout en mémorisant leur disposition."""

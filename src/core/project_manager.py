@@ -34,6 +34,7 @@ class ProjectManager:
         self,
         folder: str,
         name: str,
+        project_type: str = Project.DEFAULT_PROJECT_TYPE,
     ) -> Project:
 
         project = Project()
@@ -41,6 +42,7 @@ class ProjectManager:
         project.create(
             folder,
             name,
+            project_type=project_type,
         )
 
         self.current_project = project

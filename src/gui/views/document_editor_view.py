@@ -368,6 +368,9 @@ class DocumentEditorView:
         self.rename_dialog: RenamePageDialog | None = None
         self.change_type_dialog: ChangePageTypeDialog | None = None
 
+        # CIBLAGE_PAGE_CONCEPTION_V1
+        self._active_page_number: int | None = None
+
         self.page_type_library = PageTypeLibrary()
         self.page_type_library.load()
 
@@ -375,6 +378,7 @@ class DocumentEditorView:
         self.document = (
             self.application.document_manager.get_document()
         )
+        self._active_page_number = None
 
         self._clear_parent()
 
@@ -486,26 +490,53 @@ class DocumentEditorView:
         except Exception:
             traceback.print_exc()
 
-    def open_page(self, page_info) -> None:
+    @property
+    def active_page_number(self) -> int | None:
+        """Numéro de la page actuellement ouverte dans Conception."""
+        return self._active_page_number
+
+    def focus_page(self, page_number: int) -> bool:
+        """Ouvre directement une page précise dans le Bureau Conception."""
+        self.document = (
+            self.application.document_manager.get_document()
+        )
         if self.document is None:
-            return
+            return False
 
         try:
-            page = self.document.get_page(
-                page_info["numero"],
-            )
+            number = int(page_number)
+        except (TypeError, ValueError):
+            return False
 
-            if page is None:
-                return
+        try:
+            page = self.document.get_page(number)
+        except Exception:
+            traceback.print_exc()
+            return False
 
+        if page is None:
+            return False
+
+        self._active_page_number = number
+
+        try:
             PageEditorView(
                 self.parent,
                 page,
                 on_back=self.show,
             ).show()
-
         except Exception:
+            self._active_page_number = None
             traceback.print_exc()
+            return False
+
+        return True
+
+    def open_page(self, page_info) -> None:
+        try:
+            self.focus_page(page_info["numero"])
+        except (KeyError, TypeError):
+            return
 
     def rename_page(self, page_info: dict) -> None:
         page = self._get_editable_page(page_info)

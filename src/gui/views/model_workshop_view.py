@@ -1074,6 +1074,8 @@ class NewModelDialog(FormatFieldsMixin, ctk.CTkToplevel):
 
 
 
+    # CORRECTION_SIGNATURE_DIALOGUE_GABARIT_V2
+    # LIBELLE_FAMILLE_GABARIT_V1
 class SaveProjectModelDialog(ctk.CTkToplevel):
     """Enregistre explicitement la création courante comme gabarit du projet."""
 
@@ -1084,6 +1086,8 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
         default_name: str,
         default_category: str,
         categories: list[dict[str, Any]],
+        page_types: list[dict[str, Any]],
+        default_page_type: str,
         on_create_category: Callable[
             [Callable[[dict[str, Any]], None], Callable[[], None]],
             None,
@@ -1094,9 +1098,30 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
         self._on_validate = on_validate
         self._on_create_category = on_create_category
         self._categories: dict[str, dict[str, Any]] = {}
+        self._page_types = [
+            dict(item)
+            for item in page_types
+            if isinstance(item, dict)
+            and str(item.get("type", "")).strip()
+        ]
+        self._page_type_labels: dict[str, str] = {
+            str(item.get("type", "")).strip(): str(
+                item.get("title")
+                or item.get("short")
+                or item.get("type")
+                or ""
+            ).strip()
+            for item in self._page_types
+        }
+        self._page_type_var = tk.StringVar(value="Aucune association")
+        normalized_default = str(default_page_type or "").strip()
+        if normalized_default in self._page_type_labels:
+            self._page_type_var.set(
+                self._page_type_labels[normalized_default]
+            )
 
         self.title("Enregistrer comme gabarit du projet")
-        self.geometry("560x430")
+        self.geometry("560x485")
         self.resizable(False, False)
         self.configure(fg_color=Colors.WINDOW)
         self.transient(parent.winfo_toplevel())
@@ -1159,7 +1184,7 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
             pady=(2, 7),
         )
 
-        self._label(form, "Catégorie facultative", row=2)
+        self._label(form, "Famille de gabarit (facultatif)", row=2)
         self._category_menu = ctk.CTkOptionMenu(
             form,
             values=[NO_CATEGORY_LABEL],
@@ -1183,7 +1208,7 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             form,
-            text="＋ Catégorie",
+            text="＋ Famille",
             height=31,
             corner_radius=6,
             fg_color="#FFFFFF",
@@ -1201,13 +1226,29 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
             pady=(2, 7),
         )
 
-        self._label(form, "Description facultative", row=4)
-        ctk.CTkEntry(
+        self._label(form, "Type de page Maquettage associé", row=4)
+
+        page_type_values = [
+            "Aucune association",
+            *[
+                self._page_type_labels[
+                    str(item.get("type", "")).strip()
+                ]
+                for item in self._page_types
+            ],
+        ]
+
+        ctk.CTkOptionMenu(
             form,
-            textvariable=self._description_var,
+            values=page_type_values,
+            variable=self._page_type_var,
             height=31,
-            border_color=Colors.BORDER,
-            font=Fonts.NORMAL,
+            fg_color=Colors.BUTTON,
+            button_color="#75B6DB",
+            button_hover_color="#619FC3",
+            text_color=Colors.TEXT,
+            font=Fonts.SMALL,
+            dropdown_font=Fonts.SMALL,
         ).grid(
             row=5,
             column=0,
@@ -1217,7 +1258,23 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
             pady=(2, 7),
         )
 
-        self._label(form, "Note de version en cas de mise à jour", row=6)
+        self._label(form, "Description facultative", row=6)
+        ctk.CTkEntry(
+            form,
+            textvariable=self._description_var,
+            height=31,
+            border_color=Colors.BORDER,
+            font=Fonts.NORMAL,
+        ).grid(
+            row=7,
+            column=0,
+            columnspan=4,
+            sticky="ew",
+            padx=12,
+            pady=(2, 7),
+        )
+
+        self._label(form, "Note de version en cas de mise à jour", row=8)
         ctk.CTkEntry(
             form,
             textvariable=self._version_note_var,
@@ -1225,7 +1282,7 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
             border_color=Colors.BORDER,
             font=Fonts.NORMAL,
         ).grid(
-            row=7,
+            row=9,
             column=0,
             columnspan=4,
             sticky="ew",
@@ -1346,11 +1403,20 @@ class SaveProjectModelDialog(ctk.CTkToplevel):
             return
 
         category = self._category_var.get().strip()
+        selected_label = self._page_type_var.get().strip()
+        mockup_type = ""
+        if selected_label != "Aucune association":
+            for type_id, label in self._page_type_labels.items():
+                if label == selected_label:
+                    mockup_type = type_id
+                    break
+
         payload = {
             "name": name,
             "category": "" if category == NO_CATEGORY_LABEL else category,
             "description": self._description_var.get().strip(),
             "version_note": self._version_note_var.get().strip(),
+            "mockup_type": mockup_type,
         }
         try:
             self._on_validate(payload)
@@ -2486,12 +2552,73 @@ class AtelierPageEditorView(PageEditorView):
         *,
         on_back=None,
         on_new=None,
+        on_transfer=None,
         on_ready: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent, page, on_back=on_back)
         self._on_new_creation = on_new
+        self._on_transfer_to_conception = on_transfer
         self._on_ready = on_ready
         self._ready_notified = False
+
+    def _create_header(self, parent) -> None:
+        # TRANSFERT_VISIBLE_HEADER_ATELIER_V2
+        super()._create_header(parent)
+
+        children = parent.winfo_children()
+        if not children:
+            return
+
+        header = children[-1]
+
+        # Décale les commandes existantes de droite d'une colonne.
+        for widget in header.grid_slaves():
+            info = widget.grid_info()
+            try:
+                column = int(info.get("column", 0))
+            except (TypeError, ValueError):
+                continue
+            if column >= 3:
+                widget.grid_configure(column=column + 1)
+
+        transfer_button = ctk.CTkButton(
+            header,
+            text="⇢  Transférer",
+            width=108,
+            height=30,
+            corner_radius=8,
+            fg_color="#F2DDD6",
+            hover_color="#EBC9BF",
+            text_color="#B65F4B",
+            border_width=1,
+            border_color="#DF806B",
+            font=(Fonts.FAMILY, 11, "bold"),
+            command=self._transfer_current_to_conception,
+            state=(
+                "normal"
+                if self._on_transfer_to_conception is not None
+                else "disabled"
+            ),
+        )
+        transfer_button.grid(
+            row=0,
+            column=3,
+            padx=(0, 8),
+            pady=9,
+            sticky="e",
+        )
+        transfer_button.bind(
+            "<Enter>",
+            lambda _event: self._show_editor_tool_name(
+                "Transférer ce gabarit vers Conception"
+            ),
+            add="+",
+        )
+        transfer_button.bind(
+            "<Leave>",
+            self._restore_editor_tool_status,
+            add="+",
+        )
 
     def _create_alignment_toolbar(self, parent) -> None:
         """Ruban de création coloré réservé à l’Atelier."""
@@ -2820,6 +2947,11 @@ class AtelierPageEditorView(PageEditorView):
         self._sync_editor_tool_state()
         self._refresh_panel_toggle_state()
 
+    def _transfer_current_to_conception(self) -> None:
+        callback = self._on_transfer_to_conception
+        if callback is not None:
+            callback()
+
     def _set_active_editor_tool(self, tool_key: str) -> None:
         """Conserve la couleur de famille des outils de forme."""
 
@@ -2995,6 +3127,105 @@ class ModelWorkshopView:
     def _reusable_library_folder(self) -> Path:
         return Path(__file__).resolve().parents[3] / "bibliotheque_modeles"
 
+    @property
+    def _mockup_associations_file(self) -> Path:
+        # ASSOCIATION_MAQUETTAGE_GABARIT_V1
+        return Path(self.project.models_folder) / "maquettage_associations.json"
+
+    def _load_mockup_page_types(self) -> list[dict[str, Any]]:
+        configured = getattr(self.project, "mockup_file", None)
+        if configured is not None:
+            path = Path(configured)
+        else:
+            root = getattr(self.project, "root", None)
+            if root is None:
+                return []
+            path = Path(root) / "maquettage" / "premaquette.json"
+
+        if not path.is_file():
+            return []
+
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return []
+
+        raw = data.get("page_types", []) if isinstance(data, dict) else []
+        return [
+            dict(item)
+            for item in raw
+            if isinstance(item, dict)
+            and str(item.get("type", "")).strip()
+        ]
+
+    def _load_mockup_associations(self) -> dict[str, str]:
+        path = self._mockup_associations_file
+        if not path.is_file():
+            return {}
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+        mapping = data.get("associations", {}) if isinstance(data, dict) else {}
+        if not isinstance(mapping, dict):
+            return {}
+
+        return {
+            str(page_type): str(model_id)
+            for page_type, model_id in mapping.items()
+            if str(page_type).strip() and str(model_id).strip()
+        }
+
+    def _associated_mockup_type_for_model(
+        self,
+        model_identifier: str,
+    ) -> str:
+        identifier = str(model_identifier or "").strip()
+        if not identifier:
+            return ""
+
+        for page_type, model_id in self._load_mockup_associations().items():
+            if model_id == identifier:
+                return page_type
+        return ""
+
+    def _save_mockup_association(
+        self,
+        page_type: str,
+        model_identifier: str,
+    ) -> None:
+        selected_type = str(page_type or "").strip()
+        identifier = str(model_identifier or "").strip()
+
+        associations = self._load_mockup_associations()
+
+        associations = {
+            existing_type: existing_model
+            for existing_type, existing_model in associations.items()
+            if existing_model != identifier
+        }
+
+        if selected_type and identifier:
+            associations[selected_type] = identifier
+
+        path = self._mockup_associations_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": "1.0",
+            "mis_a_jour_le": datetime.now().isoformat(),
+            "associations": associations,
+        }
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(
+                payload,
+                file,
+                indent=4,
+                ensure_ascii=False,
+            )
+
     def show(self) -> None:
         """Affiche l’Atelier sans le reconstruire lorsqu’il existe déjà."""
 
@@ -3078,6 +3309,96 @@ class ModelWorkshopView:
                 previous_widgets,
             )
         )
+
+
+    @property
+    def active_model_id(self) -> str:
+        """Identifiant du gabarit actuellement affiché dans l'Atelier."""
+        return str(self._working_model_id or "")
+
+    @property
+    def is_visible(self) -> bool:
+        """Indique si l'Atelier est actuellement au premier plan."""
+        return bool(self._is_visible)
+
+    def focus_model(self, model_identifier: str) -> bool:
+        """Affiche directement un gabarit du projet dans l'Atelier.
+
+        Cette entrée publique est destinée au Centre de régulation et à la
+        future fenêtre Visualisation. Si le gabarit demandé est déjà affiché,
+        l'Atelier est simplement ramené au premier plan sans reconstruction.
+        """
+        identifier = str(model_identifier or "").strip()
+        if not identifier:
+            return False
+
+        self.show()
+
+        if self._working_model_id == identifier:
+            self._focus_current_editor()
+            # APERCU_REEL_GABARIT_ATELIER_V2
+            self.parent.after(
+                120,
+                self._save_active_model_centre_preview,
+            )
+            return True
+
+        # AFFICHAGE_IMMEDIAT_ATELIER_V1
+        # Force l'affichage de l'Atelier avant le travail plus lourd
+        # de reconstruction du gabarit demandé.
+        root = self._root_frame
+        if root is not None:
+            try:
+                if root.winfo_exists():
+                    root.lift()
+                    self._is_visible = True
+                    self._status_var.set("Ouverture du gabarit…")
+                    self.parent.update_idletasks()
+            except tk.TclError:
+                self._root_frame = None
+
+        self._project_models = self._load_project_models()
+        target = next(
+            (
+                model
+                for model in self._project_models
+                if str(model.identifier) == identifier
+            ),
+            None,
+        )
+        if target is None:
+            return False
+
+        # Un gabarit enregistré est rappelé par le même mécanisme que depuis
+        # la Bibliothèque de l'Atelier. On ne crée donc aucun second chemin
+        # d'ouverture ni aucun éditeur parallèle.
+        def ready_with_preview() -> None:
+            # OUVERTURE_GABARIT_UN_CLIC_V1
+            # Le premier focus_model() construit parfois l'Atelier
+            # derrière le Centre. Le chargement du gabarit remplaçait
+            # alors le callback chargé de révéler l'Atelier.
+            root = self._root_frame
+            if root is not None:
+                try:
+                    if root.winfo_exists():
+                        self._reveal_workshop(root, ())
+                except tk.TclError:
+                    self._root_frame = None
+
+            self._focus_current_editor()
+            self.parent.after(
+                120,
+                lambda current_model=target: self._save_model_centre_preview(
+                    current_model
+                ),
+            )
+
+        self._use_model(
+            target,
+            "gabarits",
+            on_ready=ready_with_preview,
+        )
+        return True
 
     def hide(self) -> None:
         """Replace l’Atelier derrière le Centre sans le démapper.
@@ -3441,6 +3762,7 @@ class ModelWorkshopView:
             self._working_page,
             on_back=self._back,
             on_new=self._new_creation,
+            on_transfer=self._transfer_current_model_from_editor,
             on_ready=lambda: self._reveal_initial_editor(
                 generation,
                 on_ready,
@@ -3514,6 +3836,7 @@ class ModelWorkshopView:
             self._working_page,
             on_back=self._back,
             on_new=self._new_creation,
+            on_transfer=self._transfer_current_model_from_editor,
             on_ready=lambda: self._stage_ready(
                 generation,
                 current_host,
@@ -3707,6 +4030,10 @@ class ModelWorkshopView:
             default_name=default_name,
             default_category=self._working_category,
             categories=self._category_store.load(),
+            page_types=self._load_mockup_page_types(),
+            default_page_type=self._associated_mockup_type_for_model(
+                self._working_model_id
+            ),
             on_create_category=lambda created, closed: self._new_category(created, closed),
             on_validate=self._save_model_payload,
         )
@@ -3753,9 +4080,171 @@ class ModelWorkshopView:
         self._working_page.save(update_history=False)
         self._working_category = model.category
         self._working_model_id = model.identifier
+        self._save_mockup_association(
+            str(payload.get("mockup_type", "")),
+            model.identifier,
+        )
         self._project_models = self._load_project_models()
         self._model_count_var.set(self._count_label(len(self._project_models)))
         self._status_var.set(f"Gabarit enregistré : {model.name} ({model.version_label})")
+        self.parent.after(
+            160,
+            lambda current_model=model: self._save_model_centre_preview(
+                current_model
+            ),
+        )
+
+    def _save_active_model_centre_preview(self) -> None:
+        identifier = str(self._working_model_id or "").strip()
+        if not identifier:
+            return
+
+        target = next(
+            (
+                model
+                for model in self._load_project_models()
+                if str(model.identifier) == identifier
+            ),
+            None,
+        )
+        if target is not None:
+            self._save_model_centre_preview(target)
+
+    def _save_model_centre_preview(self, model: Model) -> None:
+        # Capture uniquement la zone de travail de l'Atelier afin de fournir
+        # au Centre une miniature fidèle du gabarit réellement affiché.
+        if model.root is None or self._page_editor is None:
+            return
+
+        workspace = getattr(self._page_editor, "workspace", None)
+        if workspace is None:
+            return
+
+        try:
+            from PIL import Image, ImageGrab
+        except Exception:
+            return
+
+        try:
+            if not workspace.winfo_exists():
+                return
+
+            workspace.update_idletasks()
+            try:
+                workspace.redraw()
+                workspace.update_idletasks()
+            except Exception:
+                pass
+
+            x1 = int(workspace.winfo_rootx())
+            y1 = int(workspace.winfo_rooty())
+            width = int(workspace.winfo_width())
+            height = int(workspace.winfo_height())
+
+            if width < 40 or height < 40:
+                return
+
+            image = ImageGrab.grab(
+                bbox=(x1, y1, x1 + width, y1 + height),
+                all_screens=True,
+            ).convert("RGB")
+
+            w, h = image.size
+            pixels = image.load()
+
+            corner_points = (
+                (2, 2),
+                (max(2, w - 3), 2),
+                (2, max(2, h - 3)),
+                (max(2, w - 3), max(2, h - 3)),
+            )
+            samples = [
+                pixels[min(w - 1, px), min(h - 1, py)]
+                for px, py in corner_points
+            ]
+            background = tuple(
+                sorted(sample[channel] for sample in samples)[2]
+                for channel in range(3)
+            )
+
+            def different(pixel) -> bool:
+                return (
+                    abs(pixel[0] - background[0])
+                    + abs(pixel[1] - background[1])
+                    + abs(pixel[2] - background[2])
+                ) >= 34
+
+            step_x = max(1, w // 180)
+            step_y = max(1, h // 180)
+            cols = list(range(0, w, step_x))
+            rows = list(range(0, h, step_y))
+
+            useful_x = []
+            for px in cols:
+                changed = sum(
+                    1 for py in rows if different(pixels[px, py])
+                )
+                if changed >= max(4, int(len(rows) * 0.22)):
+                    useful_x.append(px)
+
+            useful_y = []
+            for py in rows:
+                changed = sum(
+                    1 for px in cols if different(pixels[px, py])
+                )
+                if changed >= max(4, int(len(cols) * 0.22)):
+                    useful_y.append(py)
+
+            if useful_x and useful_y:
+                left = max(0, min(useful_x) - 4)
+                right = min(w, max(useful_x) + step_x + 4)
+                top = max(0, min(useful_y) - 4)
+                bottom = min(h, max(useful_y) + step_y + 4)
+
+                if (
+                    right - left >= max(40, int(w * 0.20))
+                    and bottom - top >= max(40, int(h * 0.30))
+                ):
+                    image = image.crop((left, top, right, bottom))
+
+            image.thumbnail((600, 850), Image.Resampling.LANCZOS)
+            target_path = Path(model.root) / "apercu_centre.png"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            image.save(target_path, format="PNG", optimize=True)
+
+        except Exception:
+            return
+
+    def _transfer_current_model_from_editor(self) -> None:
+        identifier = str(self._working_model_id or "").strip()
+        if not identifier:
+            messagebox.showinfo(
+                "Gabarit non enregistré",
+                (
+                    "Enregistre d’abord cette création comme gabarit du projet, "
+                    "puis transfère-la vers Conception."
+                ),
+                parent=self.parent.winfo_toplevel(),
+            )
+            return
+
+        model = next(
+            (
+                candidate
+                for candidate in self._load_project_models()
+                if str(candidate.identifier) == identifier
+            ),
+            None,
+        )
+        if model is None:
+            messagebox.showinfo(
+                "Gabarit introuvable",
+                "Le gabarit actuellement ouvert n’existe plus dans le projet.",
+                parent=self.parent.winfo_toplevel(),
+            )
+            return
+
+        self._transfer_models([model])
 
     def _open_transfer(self) -> None:
         self._project_models = self._load_project_models()

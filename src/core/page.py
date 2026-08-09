@@ -99,6 +99,11 @@ class Page:
         self.source_model_version = ""
         self.source_content_id = ""
 
+        # LIEN_STABLE_MAQUETTAGE_CONCEPTION_V1
+        # Référence de la page logique prévue au Maquettage.
+        self.source_mockup_item_id = ""
+        self.source_mockup_occurrence = 1
+
         # Informations
         self.author = ""
         self.description = ""
@@ -183,6 +188,19 @@ class Page:
             self.background.get("active")
             and self.background.get("ressource")
         )
+
+    def set_mockup_source(
+        self,
+        item_id: str,
+        occurrence: int = 1,
+    ) -> None:
+        # Associe cette page à une occurrence précise du Maquettage.
+        self.source_mockup_item_id = str(item_id or "").strip()
+
+        try:
+            self.source_mockup_occurrence = max(1, int(occurrence))
+        except (TypeError, ValueError):
+            self.source_mockup_occurrence = 1
 
     # ==========================================================
     # Création
@@ -379,6 +397,21 @@ class Page:
                 "",
             )
         )
+
+        self.source_mockup_item_id = str(
+            sources.get(
+                "maquettage_item",
+                "",
+            )
+        ).strip()
+
+        try:
+            self.source_mockup_occurrence = max(
+                1,
+                int(sources.get("maquettage_occurrence", 1)),
+            )
+        except (TypeError, ValueError):
+            self.source_mockup_occurrence = 1
 
         # Métadonnées
         self.author = str(
@@ -1428,6 +1461,9 @@ class Page:
             "icone": self.icon,
             "verrouillee": self.locked,
             "dossier": self.folder_name,
+            "source_modele": self.source_model_id,
+            "source_maquettage_id": self.source_mockup_item_id,
+            "source_maquettage_occurrence": self.source_mockup_occurrence,
             "date_creation": self.created,
             "date_modification": self.modified,
         }
@@ -1455,6 +1491,8 @@ class Page:
                     "modele": self.source_model_id,
                     "version_modele": self.source_model_version,
                     "contenu": self.source_content_id,
+                    "maquettage_item": self.source_mockup_item_id,
+                    "maquettage_occurrence": self.source_mockup_occurrence,
                 },
             },
             "metadonnees": {

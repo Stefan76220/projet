@@ -117,6 +117,8 @@ class DashboardView:
         active_project: dict | None = None,
         on_open_recent=None,
         on_open_workspace=None,
+        on_new_project=None,
+        on_open_project=None,
     ) -> None:
         self.parent = parent
         self.recent_projects = list(
@@ -128,6 +130,8 @@ class DashboardView:
 
         self.on_open_recent = on_open_recent
         self.on_open_workspace = on_open_workspace
+        self.on_new_project = on_new_project
+        self.on_open_project = on_open_project
         self._images: dict[str, ctk.CTkImage] = {}
         self._home_root: ctk.CTkFrame | None = None
         self._stored_menu_name = ""
@@ -180,7 +184,7 @@ class DashboardView:
                 "encore parmi les projets récents."
             ),
             button_label="Ouvrir",
-            command=lambda: self._invoke_file_command("Ouvrir un projet"),
+            command=self._open_project_command,
             accent=self.LILAC,
             soft=self.LILAC_SOFT,
             background=self.OPEN_CARD_BG,
@@ -256,7 +260,7 @@ class DashboardView:
 
         ctk.CTkLabel(
             welcome,
-            text="Bienvenue dans votre atelier éditorial",
+            text="Bienvenue dans PageMaître",
             font=(Fonts.FAMILY, 22, "bold"),
             text_color=self.INK,
             anchor="w",
@@ -629,6 +633,10 @@ class DashboardView:
             )
         except Exception:
             pass
+
+        if callable(self.on_new_project):
+            self.on_new_project()
+            return
 
         self._invoke_file_command("Nouveau projet")
 
@@ -2124,6 +2132,13 @@ class DashboardView:
             self.active_project,
             workspace_key,
         )
+
+    def _open_project_command(self) -> None:
+        if callable(self.on_open_project):
+            self.on_open_project()
+            return
+
+        self._invoke_file_command("Ouvrir un projet")
 
     def _invoke_file_command(self, command_label: str) -> None:
         try:

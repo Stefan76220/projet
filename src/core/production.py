@@ -73,6 +73,8 @@ class ProductionEngine:
         *,
         title: str | None = None,
         mapping_mode: str = "automatique",
+        source_mockup_item_id: str = "",
+        source_mockup_occurrence: int = 1,
     ) -> ProductionResult:
         self._validate_inputs(
             document=document,
@@ -155,6 +157,13 @@ class ProductionEngine:
                 title=title,
                 assignments=assignments,
             )
+
+            # PRODUCTION_LIEE_MAQUETTAGE_V1
+            if str(source_mockup_item_id or "").strip():
+                page.set_mockup_source(
+                    source_mockup_item_id,
+                    occurrence=source_mockup_occurrence,
+                )
 
             page.save(
                 update_history=False,

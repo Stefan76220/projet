@@ -83,6 +83,8 @@ class Workspace:
             active_project=active_project,
             on_open_recent=self._open_recent_project,
             on_open_workspace=self._open_recent_workspace,
+            on_new_project=self._dashboard_new_project,
+            on_open_project=self._dashboard_open_project,
         ).show()
 
     def show_documents(
@@ -263,6 +265,32 @@ class Workspace:
     # ==========================================================
     # Accueil : ouverture et accès directs
     # ==========================================================
+
+    def _dashboard_new_project(self) -> None:
+        window = getattr(self.application, "window", None)
+        menu_bar = getattr(window, "menu", None)
+        command = getattr(menu_bar, "new_project", None)
+
+        if not callable(command):
+            self._show_project_error(
+                "La commande de création de projet est indisponible."
+            )
+            return
+
+        command()
+
+    def _dashboard_open_project(self) -> None:
+        window = getattr(self.application, "window", None)
+        menu_bar = getattr(window, "menu", None)
+        command = getattr(menu_bar, "open_project", None)
+
+        if not callable(command):
+            self._show_project_error(
+                "La commande d’ouverture de projet est indisponible."
+            )
+            return
+
+        command()
 
     def _open_recent_project(self, project_data: dict) -> None:
         self._open_project_from_summary(project_data, target_workspace="centre")
@@ -459,9 +487,15 @@ class Workspace:
             )
         )
 
+        project_type = str(
+            project_data.get("type_projet", "ouvrage_structure")
+            or "ouvrage_structure"
+        ).strip()
+
         return {
             "nom": name or path.name,
             "chemin": str(path),
+            "type_projet": project_type,
             "date_modification": modification_date,
             "derniere_ouverture": str(
                 existing.get("derniere_ouverture", modification_date)
