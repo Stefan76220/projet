@@ -2540,7 +2540,7 @@ class MockupView:
             orientation="horizontal",
             fg_color="transparent",
             corner_radius=0,
-            height=154,
+            height=112,
         )
         middle_scroll.grid(
             row=0,
@@ -3020,7 +3020,7 @@ class MockupView:
         group_definition: dict[str, Any],
         width: int,
     ) -> ctk.CTkFrame:
-        """Carte compacte V3 : contenu vertical interne + identité du groupe."""
+        """Crée un groupe dont toute la palette dérive de sa couleur."""
         group_id = str(group_definition.get("id", ""))
         title = str(group_definition.get("title", "Groupe"))
         symbol = str(group_definition.get("symbol", "▦"))
@@ -3031,42 +3031,114 @@ class MockupView:
         if deleted:
             block = ctk.CTkFrame(
                 parent,
-                width=52,
-                height=154,
+                width=width,
+                height=104,
                 fg_color="transparent",
                 corner_radius=0,
             )
             block.pack_propagate(False)
+
+            number_text = title.removeprefix("Partie ").split("—", 1)[0].strip()
+            trace = ctk.CTkFrame(
+                block,
+                width=44,
+                height=26,
+                fg_color="#F0F1F2",
+                corner_radius=6,
+                border_width=1,
+                border_color="#D5D8DC",
+            )
+            trace.place(relx=0.5, rely=0.80, anchor="center")
+            trace.pack_propagate(False)
+
+            ctk.CTkLabel(
+                trace,
+                text=f"P{number_text}\nsuppr.",
+                font=(Fonts.FAMILY, 7),
+                text_color="#8C9198",
+                justify="center",
+                anchor="center",
+            ).pack(expand=True, fill="both", padx=2, pady=1)
+
             return block
 
-        group_soft = self._mix_color_with_white(accent, 0.92)
+        group_soft = self._mix_color_with_white(accent, 0.90)
         group_title_soft = self._mix_color_with_white(accent, 0.84)
-
-        # Largeur volontairement compacte : on privilégie le nombre
-        # de groupes visibles, le contenu abondant défile verticalement.
-        compact_width = max(96, min(148, width))
 
         block = ctk.CTkFrame(
             parent,
-            width=compact_width,
-            height=154,
+            width=width,
+            height=104,
             fg_color=group_soft,
-            corner_radius=7,
-            border_width=2 if group_id == self._selected_ribbon_group_id else 1,
-            border_color=accent if group_id == self._selected_ribbon_group_id else group_title_soft,
+            corner_radius=5,
+            border_width=1,
+            border_color=group_title_soft,
         )
         block.pack_propagate(False)
         block.grid_propagate(False)
         block.grid_columnconfigure(0, weight=1)
-        block.grid_rowconfigure(1, weight=1)
+        block.grid_rowconfigure(0, weight=1)
+
+        definitions = [
+            definition
+            for definition in self._page_types()
+            if (
+                str(definition.get("group", "")) == group_id
+                and not bool(definition.get("deleted", False))
+            )
+        ]
+        type_columns = max(1, (len(definitions) + 1) // 2)
+
+        types_frame = ctk.CTkFrame(block, fg_color="transparent")
+        types_frame.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=3,
+            pady=(2, 1),
+        )
+        # Dimensions fixes des emplacements : un type isolé conserve
+        # exactement la même taille que lorsqu'il partage le groupe.
+        for column in range(type_columns):
+            types_frame.grid_columnconfigure(
+                column,
+                weight=0,
+                minsize=68,
+            )
+        for row in range(2):
+            types_frame.grid_rowconfigure(
+                row,
+                weight=0,
+                minsize=41,
+            )
+
+        if definitions:
+            for index, definition in enumerate(definitions):
+                column = index // 2
+                row = index % 2
+                button = self._create_page_type_button(types_frame, definition)
+                button.grid(
+                    row=row,
+                    column=column,
+                    sticky="",
+                    padx=1,
+                    pady=1,
+                )
+        else:
+            ctk.CTkLabel(
+                types_frame,
+                text="Aucun type",
+                font=(Fonts.FAMILY, 9),
+                text_color=self.TEXT_LIGHT,
+            ).grid(row=0, column=0, rowspan=2, padx=8, pady=10)
 
         title_bar = ctk.CTkFrame(
             block,
-            height=22,
+            height=18,
             fg_color=group_title_soft,
-            corner_radius=6,
+            corner_radius=0,
         )
-        title_bar.grid(row=0, column=0, sticky="ew", padx=1, pady=1)
+        title_bar.grid(row=1, column=0, sticky="ew", padx=1, pady=(0, 1))
         title_bar.grid_propagate(False)
         title_bar.grid_columnconfigure(0, weight=1)
 
@@ -3077,81 +3149,12 @@ class MockupView:
             text_color=accent,
             anchor="center",
         )
-        title_label.grid(row=0, column=0, sticky="nsew", padx=4)
-
-        definitions = [
-            definition
-            for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == group_id
-                and not bool(definition.get("deleted", False))
-            )
-        ]
-
-        if definitions:
-            types_frame = ctk.CTkScrollableFrame(
-                block,
-                width=compact_width - 8,
-                height=118,
-                fg_color="transparent",
-                corner_radius=0,
-            )
-            types_frame.grid(
-                row=1,
-                column=0,
-                sticky="nsew",
-                padx=2,
-                pady=(0, 2),
-            )
-            types_frame.grid_columnconfigure((0, 1), weight=1)
-
-            for index, definition in enumerate(definitions):
-                row = index // 2
-                column = index % 2
-                button = self._create_page_type_button(types_frame, definition)
-                try:
-                    button.configure(width=54, height=27)
-                except Exception:
-                    pass
-                button.grid(
-                    row=row,
-                    column=column,
-                    sticky="nsew",
-                    padx=1,
-                    pady=1,
-                )
-        else:
-            empty = ctk.CTkFrame(
-                block,
-                fg_color="transparent",
-                corner_radius=0,
-            )
-            empty.grid(row=1, column=0, sticky="nsew", padx=3, pady=2)
-            ctk.CTkLabel(
-                empty,
-                text="Aucun type",
-                font=(Fonts.FAMILY, 8),
-                text_color=self.TEXT_LIGHT,
-            ).place(relx=0.5, rely=0.5, anchor="center")
-
-        # Un clic sur l'en-tête sélectionne le groupe ; le déplacement
-        # existant reste disponible pour les groupes non protégés.
-        title_bar.bind(
-            "<Button-1>",
-            lambda _event, gid=group_id: self._select_ribbon_group(gid),
-            add="+",
-        )
-        title_label.bind(
-            "<Button-1>",
-            lambda _event, gid=group_id: self._select_ribbon_group(gid),
-            add="+",
-        )
+        title_label.grid(row=0, column=0, sticky="nsew", padx=3)
 
         if not protected:
             self._bind_custom_group_drag(title_bar, title_label, group_id)
 
         return block
-
 
     def _create_page_type_button(
         self,
@@ -3422,10 +3425,6 @@ class MockupView:
         if group_id == self._selected_ribbon_group_id:
             return
         self._selected_ribbon_group_id = group_id
-        self._selected_page_ids.clear()
-        self._sequence_row_widgets.clear()
-        self._sequence_row_signatures.clear()
-        self._rendered_selected_page_ids.clear()
         self.show()
 
     def _refresh_ribbon(self) -> None:
@@ -5108,7 +5107,7 @@ class MockupView:
 
         ctk.CTkLabel(
             title_row,
-            text="Détail du groupe sélectionné",
+            text="Plan du livre",
             font=Fonts.H2,
             text_color=self.INK,
         ).grid(row=0, column=0, sticky="w")
@@ -5141,172 +5140,9 @@ class MockupView:
             padx=10,
             pady=(0, 8),
         )
-        workspace.grid_columnconfigure(0, weight=0)
-        workspace.grid_columnconfigure(1, weight=1)
-        workspace.grid_columnconfigure(2, weight=0)
+        workspace.grid_columnconfigure(0, weight=1)
+        workspace.grid_columnconfigure(1, weight=0)
         workspace.grid_rowconfigure(0, weight=1)
-
-        selected_group = next(
-            (
-                group
-                for group in self._groups()
-                if str(group.get("id", "")) == self._selected_ribbon_group_id
-            ),
-            None,
-        )
-
-        selected_group_id = str(
-            selected_group.get("id", "")
-            if selected_group is not None
-            else ""
-        )
-        selected_group_title = str(
-            selected_group.get("title", "Aucun groupe")
-            if selected_group is not None
-            else "Aucun groupe"
-        )
-        selected_group_accent = str(
-            selected_group.get("accent", self.SKY)
-            if selected_group is not None
-            else self.SKY
-        )
-
-        type_count = sum(
-            1
-            for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == selected_group_id
-                and not bool(definition.get("deleted", False))
-            )
-        )
-        page_count = sum(
-            int(item.get("count", 1) or 1)
-            for item in self._items()
-            if str(
-                self._definition_for(
-                    str(item.get("type", ""))
-                ).get("group", "")
-            ) == selected_group_id
-        )
-
-        if selected_group_id in {"debut_livre", "fin_livre"}:
-            group_kind = "Zone structurelle"
-        elif selected_group_title.startswith("Partie "):
-            group_kind = "Partie numérotée"
-        else:
-            group_kind = "Groupe libre"
-
-        info = ctk.CTkFrame(
-            workspace,
-            width=218,
-            fg_color="#FBFCFD",
-            corner_radius=8,
-            border_width=1,
-            border_color=self.BORDER,
-        )
-        info.grid(
-            row=0,
-            column=0,
-            sticky="ns",
-            padx=(0, 8),
-        )
-        info.grid_propagate(False)
-        info.grid_columnconfigure(0, weight=1)
-
-        info_header = ctk.CTkFrame(
-            info,
-            height=38,
-            fg_color=self._mix_color_with_white(
-                selected_group_accent,
-                0.88,
-            ),
-            corner_radius=7,
-        )
-        info_header.grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=6,
-            pady=6,
-        )
-        info_header.grid_propagate(False)
-
-        ctk.CTkLabel(
-            info_header,
-            text="Informations",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-        ).pack(side="left", padx=10)
-
-        ctk.CTkLabel(
-            info,
-            text=selected_group_title,
-            font=(Fonts.FAMILY, 12, "bold"),
-            text_color=selected_group_accent,
-            anchor="w",
-            justify="left",
-            wraplength=188,
-        ).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(8, 2),
-        )
-
-        ctk.CTkLabel(
-            info,
-            text=group_kind,
-            font=Fonts.SMALL,
-            text_color=self.TEXT_MUTED,
-            anchor="w",
-        ).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 14),
-        )
-
-        stats = (
-            f"{type_count} type" + ("s" if type_count != 1 else "")
-            + "\n"
-            + f"{page_count} page" + ("s" if page_count != 1 else "")
-        )
-        ctk.CTkLabel(
-            info,
-            text=stats,
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-            justify="left",
-        ).grid(
-            row=3,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 14),
-        )
-
-        ctk.CTkLabel(
-            info,
-            text=(
-                "Sélectionnez un groupe dans la vue globale "
-                "ou dans le bandeau supérieur."
-            ),
-            font=Fonts.SMALL,
-            text_color=self.TEXT_MUTED,
-            anchor="w",
-            justify="left",
-            wraplength=188,
-        ).grid(
-            row=4,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 12),
-        )
 
         rail_shell = ctk.CTkFrame(
             workspace,
@@ -5317,7 +5153,7 @@ class MockupView:
         )
         rail_shell.grid(
             row=0,
-            column=1,
+            column=0,
             sticky="nsew",
             padx=(0, 8),
         )
@@ -5341,19 +5177,11 @@ class MockupView:
 
         ctk.CTkLabel(
             rail_hint,
-            text="Pages du groupe sélectionné",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
+            text="Glisser-déposer pour déplacer · Ctrl pour ajouter · Maj pour une plage",
+            font=Fonts.SMALL,
+            text_color=self.TEXT_MUTED,
             anchor="w",
         ).pack(side="left", padx=9)
-
-        ctk.CTkLabel(
-            rail_hint,
-            text="Glisser-déposer · Ctrl : ajouter · Maj : plage",
-            font=(Fonts.FAMILY, 8),
-            text_color=self.TEXT_MUTED,
-            anchor="e",
-        ).pack(side="right", padx=9)
 
         self._sequence_frame = ctk.CTkScrollableFrame(
             rail_shell,
@@ -5375,7 +5203,7 @@ class MockupView:
         # Panneau contextuel : les commandes ne flottent plus au bout de l'écran.
         context = ctk.CTkFrame(
             workspace,
-            width=310,
+            width=350,
             fg_color="#FBFCFD",
             corner_radius=8,
             border_width=1,
@@ -5383,7 +5211,7 @@ class MockupView:
         )
         context.grid(
             row=0,
-            column=2,
+            column=1,
             sticky="ns",
         )
         context.grid_propagate(False)
@@ -5405,32 +5233,18 @@ class MockupView:
         context_header.grid_columnconfigure(0, weight=1)
         context_header.grid_propagate(False)
 
-        ctk.CTkLabel(
-            context_header,
-            text="Propriétés / actions",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-        ).grid(
-            row=0,
-            column=0,
-            sticky="w",
-            padx=(10, 5),
-        )
-
         self._selection_label = ctk.CTkLabel(
-            context,
+            context_header,
             text="Aucune page sélectionnée",
             font=(Fonts.FAMILY, 10, "bold"),
             text_color=self.INK,
             anchor="w",
         )
         self._selection_label.grid(
-            row=1,
+            row=0,
             column=0,
-            sticky="ew",
-            padx=14,
-            pady=(8, 0),
+            sticky="w",
+            padx=(10, 5),
         )
 
         self._context_clear_button = ctk.CTkButton(
@@ -5479,11 +5293,11 @@ class MockupView:
             wraplength=310,
         )
         self._context_detail_label.grid(
-            row=3,
+            row=2,
             column=0,
             sticky="ew",
             padx=14,
-            pady=(0, 10),
+            pady=(0, 12),
         )
 
         self._context_quantity_frame = ctk.CTkFrame(
@@ -5494,7 +5308,7 @@ class MockupView:
             border_color=self.BORDER,
         )
         self._context_quantity_frame.grid(
-            row=4,
+            row=3,
             column=0,
             sticky="ew",
             padx=12,
@@ -5786,16 +5600,7 @@ class MockupView:
         if self._sequence_frame is None:
             return
 
-        all_items = self._items()
-        selected_group_id = str(self._selected_ribbon_group_id or "")
-
-        items = []
-        for item in all_items:
-            page_type = str(item.get("type", ""))
-            definition = self._definition_for(page_type)
-            if str(definition.get("group", "")) == selected_group_id:
-                items.append(item)
-
+        items = self._items()
         active_ids = {str(item.get("id", "")) for item in items}
         self._sanitize_page_selection(active_ids)
 
@@ -5815,7 +5620,7 @@ class MockupView:
             if self._sequence_empty_label is None:
                 self._sequence_empty_label = ctk.CTkLabel(
                     self._sequence_frame,
-                    text="Aucune page dans ce groupe.",
+                    text="Clique sur une page pour commencer.",
                     font=Fonts.NORMAL,
                     text_color=self.TEXT_LIGHT,
                 )
@@ -5831,29 +5636,8 @@ class MockupView:
                 self._sequence_empty_label.grid_remove()
 
             total = len(items)
-            try:
-                available_width = max(
-                    520,
-                    int(self._sequence_frame.winfo_width()),
-                )
-            except Exception:
-                available_width = 760
-
-            card_width = 185
-            columns = max(2, min(6, available_width // card_width))
-
-            for column in range(columns):
-                self._sequence_frame.grid_columnconfigure(
-                    column,
-                    weight=1,
-                    uniform="page_cards",
-                )
-
             for index, item in enumerate(items):
                 item_id = str(item.get("id", ""))
-                grid_row = index // columns
-                grid_column = index % columns
-
                 if item_id not in self._sequence_row_widgets:
                     row = self._create_sequence_row(
                         self._sequence_frame,
@@ -5862,16 +5646,13 @@ class MockupView:
                         total,
                     )
                     row.grid(
-                        row=grid_row,
-                        column=grid_column,
-                        sticky="nsew",
+                        row=index,
+                        column=0,
+                        sticky="w",
                         padx=4,
-                        pady=4,
+                        pady=3,
                     )
-                    self._sequence_row_widgets[item_id]["grid_index"] = (
-                        grid_row,
-                        grid_column,
-                    )
+                    self._sequence_row_widgets[item_id]["grid_index"] = index
                 else:
                     signature = self._sequence_row_signature(
                         item,
@@ -5885,16 +5666,15 @@ class MockupView:
                         self._update_sequence_row(item, index, total)
 
                     record = self._sequence_row_widgets[item_id]
-                    new_position = (grid_row, grid_column)
-                    if record.get("grid_index") != new_position:
+                    if record.get("grid_index") != index:
                         record["row"].grid_configure(
-                            row=grid_row,
-                            column=grid_column,
-                            sticky="nsew",
+                            row=index,
+                            column=0,
+                            sticky="w",
                             padx=4,
-                            pady=4,
+                            pady=3,
                         )
-                        record["grid_index"] = new_position
+                        record["grid_index"] = index
 
         self._rendered_selected_page_ids = set(
             self._selected_page_ids

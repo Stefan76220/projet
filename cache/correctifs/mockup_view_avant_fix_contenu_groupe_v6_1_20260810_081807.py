@@ -5182,11 +5182,7 @@ class MockupView:
         page_count = sum(
             int(item.get("count", 1) or 1)
             for item in self._items()
-            if str(
-                self._definition_for(
-                    str(item.get("type", ""))
-                ).get("group", "")
-            ) == selected_group_id
+            if str(item.get("group", "")) == selected_group_id
         )
 
         if selected_group_id in {"debut_livre", "fin_livre"}:
@@ -5788,14 +5784,11 @@ class MockupView:
 
         all_items = self._items()
         selected_group_id = str(self._selected_ribbon_group_id or "")
-
-        items = []
-        for item in all_items:
-            page_type = str(item.get("type", ""))
-            definition = self._definition_for(page_type)
-            if str(definition.get("group", "")) == selected_group_id:
-                items.append(item)
-
+        items = [
+            item
+            for item in all_items
+            if str(item.get("group", "")) == selected_group_id
+        ]
         active_ids = {str(item.get("id", "")) for item in items}
         self._sanitize_page_selection(active_ids)
 

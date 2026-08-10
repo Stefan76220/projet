@@ -24,12 +24,12 @@ class MockupView:
     # Palette PageMaître : bleu-encre, céladon, bleu ciel, lilas,
     # corail et jaune doux. Les teintes restent claires et non agressives.
     WINDOW_BG = Colors.WINDOW
-    RIBBON_BG = "#F8FAFB"
+    RIBBON_BG = "#F3F5F7"
     GROUP_BG = "#FFFFFF"
-    CARD_BG = "#FDFEFE"
-    CANVAS_BG = "#F2F5F7"
+    CARD_BG = "#FCFCFB"
+    CANVAS_BG = "#ECEFF2"
     INK = "#263E63"
-    BORDER = "#DCE3E8"
+    BORDER = "#D5D9DE"
     TEXT_MUTED = Colors.TEXT_LIGHT
     TEXT_LIGHT = "#8B8E88"
     SKY = "#75B6DB"
@@ -484,34 +484,22 @@ class MockupView:
             pady=(5, 3),
         )
 
-        # REFONTE_MAQUETTAGE_STRUCTURE_V1
         self._ribbon_frame = self._create_ribbon(self._root)
         self._ribbon_frame.grid(
             row=1,
             column=0,
             sticky="ew",
             padx=12,
-            pady=(0, 6),
-        )
-
-        self._create_book_overview_panel(self._root).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=12,
-            pady=(0, 6),
+            pady=(0, 8),
         )
 
         self._create_sequence_panel(self._root).grid(
-            row=3,
+            row=2,
             column=0,
             sticky="nsew",
             padx=12,
             pady=(0, 10),
         )
-
-        self._root.grid_rowconfigure(2, weight=0)
-        self._root.grid_rowconfigure(3, weight=1)
 
         self._refresh_sequence()
 
@@ -2307,153 +2295,66 @@ class MockupView:
         return container
 
 
-    def _create_book_overview_panel(self, parent) -> ctk.CTkFrame:
-        """Vue globale compacte du livre, inspirée d'un plan de métro."""
-        shell = ctk.CTkFrame(
-            parent,
-            height=88,
-            fg_color=self.CARD_BG,
-            corner_radius=8,
-            border_width=1,
-            border_color=self.BORDER,
-        )
-        shell.grid_propagate(False)
-        shell.grid_columnconfigure(0, weight=1)
-
-        header = ctk.CTkFrame(
-            shell,
-            height=24,
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(5, 0))
-        header.grid_columnconfigure(0, weight=1)
-        header.grid_propagate(False)
-
-        ctk.CTkLabel(
-            header,
-            text="Vue globale du livre",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-
-        ctk.CTkLabel(
-            header,
-            text="Cliquez sur un groupe pour vous y rendre",
-            font=(Fonts.FAMILY, 8),
-            text_color=self.TEXT_MUTED,
-            anchor="e",
-        ).grid(row=0, column=1, sticky="e")
-
-        viewport = ctk.CTkScrollableFrame(
-            shell,
-            height=46,
-            orientation="horizontal",
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        viewport.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 5))
-
-        rail = ctk.CTkFrame(viewport, fg_color="transparent", corner_radius=0)
-        rail.pack(side="left", padx=8, pady=2)
-
-        active_groups = [
-            group for group in self._groups()
-            if not bool(group.get("deleted", False))
-        ]
-
-        for index, group in enumerate(active_groups):
-            group_id = str(group.get("id", ""))
-            title = str(group.get("title", "Groupe"))
-            accent = str(group.get("accent", self.SKY))
-            symbol = str(group.get("symbol", "•"))
-            selected = group_id == self._selected_ribbon_group_id
-
-            if index:
-                ctk.CTkFrame(
-                    rail,
-                    width=30,
-                    height=2,
-                    fg_color="#B8C5D2",
-                    corner_radius=0,
-                ).pack(side="left", pady=(12, 0))
-
-            station = ctk.CTkFrame(
-                rail,
-                width=76,
-                height=42,
-                fg_color="transparent",
-                corner_radius=0,
-            )
-            station.pack(side="left")
-            station.pack_propagate(False)
-
-            ctk.CTkButton(
-                station,
-                text=symbol if symbol.strip() else "•",
-                width=25 if selected else 22,
-                height=25 if selected else 22,
-                corner_radius=13,
-                fg_color=accent,
-                hover_color=self._mix_color_with_white(accent, 0.18),
-                text_color="#FFFFFF",
-                border_width=2 if selected else 0,
-                border_color=self.INK,
-                font=(Fonts.FAMILY, 8, "bold"),
-                command=lambda gid=group_id: self._select_ribbon_group(gid),
-            ).pack(pady=(0, 1))
-
-            ctk.CTkButton(
-                station,
-                text=title,
-                width=74,
-                height=14,
-                corner_radius=0,
-                fg_color="transparent",
-                hover_color=self.ACCENT_SOFT,
-                text_color=self.INK if selected else self.TEXT_MUTED,
-                font=(Fonts.FAMILY, 7, "bold" if selected else "normal"),
-                command=lambda gid=group_id: self._select_ribbon_group(gid),
-            ).pack()
-
-        return shell
-
-
     def _create_ribbon(self, parent) -> ctk.CTkFrame:
-        """Ruban V2 : Début fixe | groupes défilants | Fin + historiques + outils fixes."""
+        """Construit le ruban : groupes de pages puis outils de gestion.
+
+        Les outils de gestion appartiennent au même flux horizontal que les
+        groupes de pages. Ils suivent donc automatiquement le dernier groupe,
+        y compris lorsqu'un groupe personnalisé est ajouté ou déplacé.
+        """
+        # MAQUETTAGE_RAIL_CARTES_V1
+        # PLAN_DU_LIVRE_CONTEXTUEL_V1
+        # PLAN_GROUPES_DYNAMIQUES_V1
+        # RUBAN_COULEURS_GROUPES_V1
+        # DEPLACEMENT_FRONTIERE_GROUPES_V1
+        # MINIATURES_REALISTES_V1
+        # RUBAN_PAINT_SANS_MINIATURES_V1
+        # FOND_DISCRET_SURFACE_MAX_V1
+        # FOND_VISIBLE_RUBAN_PLAN_V1
         self._page_type_buttons.clear()
         self._page_type_button_states.clear()
         self._ribbon_group_widgets.clear()
         self._ribbon_types_panel = None
 
         groups = self._groups()
-        active_groups = [
-            group for group in groups
-            if not bool(group.get("deleted", False))
-        ]
 
-        start_group = next(
-            (
-                group for group in active_groups
-                if str(group.get("id", "")) == "debut_livre"
-            ),
-            None,
+        ribbon = ctk.CTkFrame(
+            parent,
+            fg_color=self.RIBBON_BG,
+            corner_radius=6,
+            border_width=1,
+            border_color=self.BORDER,
         )
-        end_group = next(
-            (
-                group for group in active_groups
-                if str(group.get("id", "")) == "fin_livre"
-            ),
-            None,
-        )
-        middle_groups = [
-            group for group in active_groups
-            if str(group.get("id", "")) not in {"debut_livre", "fin_livre"}
-        ]
+        ribbon.grid_columnconfigure(0, weight=1)
+        ribbon.grid_rowconfigure(0, weight=1)
 
+
+        self._ribbon_groups_panel = self._create_soft_background_container(
+            ribbon
+        )
+        self._ribbon_groups_panel.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=5,
+            pady=4,
+        )
+        self._ribbon_groups_panel.grid_columnconfigure(0, weight=1)
+
+        try:
+            window_width = int(parent.winfo_toplevel().winfo_width())
+        except Exception:
+            window_width = 1280
+        if window_width <= 100:
+            window_width = 1280
+
+        available_width = max(620, window_width - 54)
+        tools_width = 218
+
+        entries: list[tuple[str, Any, int]] = []
         deleted_groups = [
-            group for group in groups
+            group
+            for group in groups
             if bool(group.get("deleted", False))
         ]
         deleted_page_types = [
@@ -2462,7 +2363,10 @@ class MockupView:
             if bool(definition.get("deleted", False))
         ]
 
-        def group_width(group_definition: dict[str, Any]) -> int:
+        for group_definition in groups:
+            if bool(group_definition.get("deleted", False)):
+                continue
+
             group_id = str(group_definition.get("id", ""))
             type_count = sum(
                 1
@@ -2473,7 +2377,7 @@ class MockupView:
                 )
             )
             columns = max(1, (type_count + 1) // 2)
-            return max(
+            estimated_width = max(
                 82,
                 columns * 66 + max(0, columns - 1) * 3 + 10,
                 min(
@@ -2481,169 +2385,91 @@ class MockupView:
                     len(str(group_definition.get("title", ""))) * 7 + 24,
                 ),
             )
+            entries.append(("group", group_definition, estimated_width))
 
-        ribbon = ctk.CTkFrame(
-            parent,
-            fg_color=self.RIBBON_BG,
-            corner_radius=8,
-            border_width=1,
-            border_color=self.BORDER,
-        )
-        ribbon.grid_columnconfigure(0, weight=0)
-        ribbon.grid_columnconfigure(1, weight=1)
-        ribbon.grid_columnconfigure(2, weight=0)
-        ribbon.grid_rowconfigure(0, weight=1)
-
-        # ------------------------------------------------------
-        # Gauche : Début du livre, toujours visible.
-        # ------------------------------------------------------
-        left = self._create_soft_background_container(ribbon)
-        left.grid(
-            row=0,
-            column=0,
-            sticky="nsw",
-            padx=(5, 3),
-            pady=4,
-        )
-
-        if start_group is not None:
-            width = group_width(start_group)
-            start_block = self._create_group_block(
-                left,
-                start_group,
-                width=width,
-            )
-            start_block.pack(side="left", padx=1)
-            self._ribbon_group_widgets["debut_livre"] = start_block
-
-        # ------------------------------------------------------
-        # Centre : toutes les Parties + groupes libres.
-        # Défilement horizontal indépendant.
-        # ------------------------------------------------------
-        middle_shell = ctk.CTkFrame(
-            ribbon,
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        middle_shell.grid(
-            row=0,
-            column=1,
-            sticky="nsew",
-            padx=2,
-            pady=4,
-        )
-        middle_shell.grid_columnconfigure(0, weight=1)
-        middle_shell.grid_rowconfigure(0, weight=1)
-
-        middle_scroll = ctk.CTkScrollableFrame(
-            middle_shell,
-            orientation="horizontal",
-            fg_color="transparent",
-            corner_radius=0,
-            height=154,
-        )
-        middle_scroll.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-        )
-
-        flow = ctk.CTkFrame(
-            middle_scroll,
-            fg_color="transparent",
-            corner_radius=0,
-        )
-        flow.pack(side="left", padx=2, pady=(0, 2))
-
-        for index, group_definition in enumerate(middle_groups):
-            if index:
-                ctk.CTkFrame(
-                    flow,
-                    width=1,
-                    height=100,
-                    fg_color=self.BORDER,
-                    corner_radius=0,
-                ).pack(side="left", fill="y", padx=2, pady=3)
-
-            group_id = str(group_definition.get("id", ""))
-            block = self._create_group_block(
-                flow,
-                group_definition,
-                width=group_width(group_definition),
-            )
-            block.pack(side="left", padx=1)
-            self._ribbon_group_widgets[group_id] = block
-
-        # ------------------------------------------------------
-        # Droite : Fin + historiques + outils, toujours visibles.
-        # ------------------------------------------------------
-        right = self._create_soft_background_container(ribbon)
-        right.grid(
-            row=0,
-            column=2,
-            sticky="nse",
-            padx=(3, 5),
-            pady=4,
-        )
-
-        def separator() -> None:
-            ctk.CTkFrame(
-                right,
-                width=1,
-                height=100,
-                fg_color=self.BORDER,
-                corner_radius=0,
-            ).pack(side="left", fill="y", padx=2, pady=3)
-
-        right_has_item = False
-
-        if end_group is not None:
-            end_block = self._create_group_block(
-                right,
-                end_group,
-                width=group_width(end_group),
-            )
-            end_block.pack(side="left", padx=1)
-            self._ribbon_group_widgets["fin_livre"] = end_block
-            right_has_item = True
-
+        # Historiques compacts : après Fin du livre, avant les outils.
         if deleted_groups:
-            if right_has_item:
-                separator()
-            history = self._create_deleted_history_block(
-                right,
-                deleted_groups,
-                width=116,
-                title="Groupes supprimés",
-                item_kind="group",
-            )
-            history.pack(side="left", padx=1)
-            right_has_item = True
-
+            entries.append(("deleted_groups_history", deleted_groups, 132))
         if deleted_page_types:
-            if right_has_item:
-                separator()
-            history = self._create_deleted_history_block(
-                right,
-                deleted_page_types,
-                width=116,
-                title="Types supprimés",
-                item_kind="type",
+            entries.append(("deleted_types_history", deleted_page_types, 132))
+
+        # Bloc outils : toujours en dernier.
+        entries.append(("tools", None, tools_width))
+
+        rows: list[list[tuple[str, Any, int]]] = [[]]
+        row_width = 0
+        for kind, payload, entry_width in entries:
+            needed = entry_width + (5 if rows[-1] else 0)
+            if rows[-1] and row_width + needed > available_width:
+                rows.append([])
+                row_width = 0
+                needed = entry_width
+            rows[-1].append((kind, payload, entry_width))
+            row_width += needed
+
+        for row_index, row_entries in enumerate(rows):
+            row_frame = ctk.CTkFrame(
+                self._ribbon_groups_panel,
+                fg_color="transparent",
+                corner_radius=0,
             )
-            history.pack(side="left", padx=1)
-            right_has_item = True
+            row_frame.grid(
+                row=row_index,
+                column=0,
+                sticky="w",
+                pady=(0, 3 if row_index < len(rows) - 1 else 0),
+            )
 
-        if right_has_item:
-            separator()
+            for entry_index, (kind, payload, entry_width) in enumerate(row_entries):
+                if entry_index:
+                    ctk.CTkFrame(
+                        row_frame,
+                        width=1,
+                        height=100,
+                        fg_color=self.BORDER,
+                        corner_radius=0,
+                    ).pack(side="left", fill="y", padx=2, pady=3)
 
-        tools = self._create_fixed_tools_panel(right)
-        tools.pack(side="left", padx=1)
+                if kind == "tools":
+                    tools = self._create_fixed_tools_panel(row_frame)
+                    tools.pack(side="left", padx=1)
+                    continue
 
-        self._ribbon_groups_panel = middle_scroll
+                if kind == "deleted_groups_history":
+                    history = self._create_deleted_history_block(
+                        row_frame,
+                        payload,
+                        width=entry_width,
+                        title="Groupes supprimés",
+                        item_kind="group",
+                    )
+                    history.pack(side="left", padx=1)
+                    continue
+
+                if kind == "deleted_types_history":
+                    history = self._create_deleted_history_block(
+                        row_frame,
+                        payload,
+                        width=entry_width,
+                        title="Types supprimés",
+                        item_kind="type",
+                    )
+                    history.pack(side="left", padx=1)
+                    continue
+
+                group_definition = payload
+                group_id = str(group_definition.get("id", ""))
+                block = self._create_group_block(
+                    row_frame,
+                    group_definition,
+                    width=entry_width,
+                )
+                block.pack(side="left", padx=1)
+                self._ribbon_group_widgets[group_id] = block
+
         self._update_page_type_button_states()
         self._update_history_buttons()
         return ribbon
-
 
     def _create_deleted_history_block(
         self,
@@ -3020,7 +2846,7 @@ class MockupView:
         group_definition: dict[str, Any],
         width: int,
     ) -> ctk.CTkFrame:
-        """Carte compacte V3 : contenu vertical interne + identité du groupe."""
+        """Crée un groupe dont toute la palette dérive de sa couleur."""
         group_id = str(group_definition.get("id", ""))
         title = str(group_definition.get("title", "Groupe"))
         symbol = str(group_definition.get("symbol", "▦"))
@@ -3031,42 +2857,114 @@ class MockupView:
         if deleted:
             block = ctk.CTkFrame(
                 parent,
-                width=52,
-                height=154,
+                width=width,
+                height=104,
                 fg_color="transparent",
                 corner_radius=0,
             )
             block.pack_propagate(False)
+
+            number_text = title.removeprefix("Partie ").split("—", 1)[0].strip()
+            trace = ctk.CTkFrame(
+                block,
+                width=44,
+                height=26,
+                fg_color="#F0F1F2",
+                corner_radius=6,
+                border_width=1,
+                border_color="#D5D8DC",
+            )
+            trace.place(relx=0.5, rely=0.80, anchor="center")
+            trace.pack_propagate(False)
+
+            ctk.CTkLabel(
+                trace,
+                text=f"P{number_text}\nsuppr.",
+                font=(Fonts.FAMILY, 7),
+                text_color="#8C9198",
+                justify="center",
+                anchor="center",
+            ).pack(expand=True, fill="both", padx=2, pady=1)
+
             return block
 
-        group_soft = self._mix_color_with_white(accent, 0.92)
+        group_soft = self._mix_color_with_white(accent, 0.90)
         group_title_soft = self._mix_color_with_white(accent, 0.84)
-
-        # Largeur volontairement compacte : on privilégie le nombre
-        # de groupes visibles, le contenu abondant défile verticalement.
-        compact_width = max(96, min(148, width))
 
         block = ctk.CTkFrame(
             parent,
-            width=compact_width,
-            height=154,
+            width=width,
+            height=104,
             fg_color=group_soft,
-            corner_radius=7,
-            border_width=2 if group_id == self._selected_ribbon_group_id else 1,
-            border_color=accent if group_id == self._selected_ribbon_group_id else group_title_soft,
+            corner_radius=5,
+            border_width=1,
+            border_color=group_title_soft,
         )
         block.pack_propagate(False)
         block.grid_propagate(False)
         block.grid_columnconfigure(0, weight=1)
-        block.grid_rowconfigure(1, weight=1)
+        block.grid_rowconfigure(0, weight=1)
+
+        definitions = [
+            definition
+            for definition in self._page_types()
+            if (
+                str(definition.get("group", "")) == group_id
+                and not bool(definition.get("deleted", False))
+            )
+        ]
+        type_columns = max(1, (len(definitions) + 1) // 2)
+
+        types_frame = ctk.CTkFrame(block, fg_color="transparent")
+        types_frame.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=3,
+            pady=(2, 1),
+        )
+        # Dimensions fixes des emplacements : un type isolé conserve
+        # exactement la même taille que lorsqu'il partage le groupe.
+        for column in range(type_columns):
+            types_frame.grid_columnconfigure(
+                column,
+                weight=0,
+                minsize=68,
+            )
+        for row in range(2):
+            types_frame.grid_rowconfigure(
+                row,
+                weight=0,
+                minsize=41,
+            )
+
+        if definitions:
+            for index, definition in enumerate(definitions):
+                column = index // 2
+                row = index % 2
+                button = self._create_page_type_button(types_frame, definition)
+                button.grid(
+                    row=row,
+                    column=column,
+                    sticky="",
+                    padx=1,
+                    pady=1,
+                )
+        else:
+            ctk.CTkLabel(
+                types_frame,
+                text="Aucun type",
+                font=(Fonts.FAMILY, 9),
+                text_color=self.TEXT_LIGHT,
+            ).grid(row=0, column=0, rowspan=2, padx=8, pady=10)
 
         title_bar = ctk.CTkFrame(
             block,
-            height=22,
+            height=18,
             fg_color=group_title_soft,
-            corner_radius=6,
+            corner_radius=0,
         )
-        title_bar.grid(row=0, column=0, sticky="ew", padx=1, pady=1)
+        title_bar.grid(row=1, column=0, sticky="ew", padx=1, pady=(0, 1))
         title_bar.grid_propagate(False)
         title_bar.grid_columnconfigure(0, weight=1)
 
@@ -3077,81 +2975,12 @@ class MockupView:
             text_color=accent,
             anchor="center",
         )
-        title_label.grid(row=0, column=0, sticky="nsew", padx=4)
-
-        definitions = [
-            definition
-            for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == group_id
-                and not bool(definition.get("deleted", False))
-            )
-        ]
-
-        if definitions:
-            types_frame = ctk.CTkScrollableFrame(
-                block,
-                width=compact_width - 8,
-                height=118,
-                fg_color="transparent",
-                corner_radius=0,
-            )
-            types_frame.grid(
-                row=1,
-                column=0,
-                sticky="nsew",
-                padx=2,
-                pady=(0, 2),
-            )
-            types_frame.grid_columnconfigure((0, 1), weight=1)
-
-            for index, definition in enumerate(definitions):
-                row = index // 2
-                column = index % 2
-                button = self._create_page_type_button(types_frame, definition)
-                try:
-                    button.configure(width=54, height=27)
-                except Exception:
-                    pass
-                button.grid(
-                    row=row,
-                    column=column,
-                    sticky="nsew",
-                    padx=1,
-                    pady=1,
-                )
-        else:
-            empty = ctk.CTkFrame(
-                block,
-                fg_color="transparent",
-                corner_radius=0,
-            )
-            empty.grid(row=1, column=0, sticky="nsew", padx=3, pady=2)
-            ctk.CTkLabel(
-                empty,
-                text="Aucun type",
-                font=(Fonts.FAMILY, 8),
-                text_color=self.TEXT_LIGHT,
-            ).place(relx=0.5, rely=0.5, anchor="center")
-
-        # Un clic sur l'en-tête sélectionne le groupe ; le déplacement
-        # existant reste disponible pour les groupes non protégés.
-        title_bar.bind(
-            "<Button-1>",
-            lambda _event, gid=group_id: self._select_ribbon_group(gid),
-            add="+",
-        )
-        title_label.bind(
-            "<Button-1>",
-            lambda _event, gid=group_id: self._select_ribbon_group(gid),
-            add="+",
-        )
+        title_label.grid(row=0, column=0, sticky="nsew", padx=3)
 
         if not protected:
             self._bind_custom_group_drag(title_bar, title_label, group_id)
 
         return block
-
 
     def _create_page_type_button(
         self,
@@ -3414,19 +3243,15 @@ class MockupView:
         widget.bind("<ButtonPress-1>", hide, add="+")
 
     def _select_ribbon_group(self, group_id: str) -> None:
+        if group_id == self._selected_ribbon_group_id:
+            return
         if not any(
             str(group.get("id", "")) == group_id
             for group in self._groups()
         ):
             return
-        if group_id == self._selected_ribbon_group_id:
-            return
         self._selected_ribbon_group_id = group_id
-        self._selected_page_ids.clear()
-        self._sequence_row_widgets.clear()
-        self._sequence_row_signatures.clear()
-        self._rendered_selected_page_ids.clear()
-        self.show()
+        self._refresh_ribbon()
 
     def _refresh_ribbon(self) -> None:
         """Remplace le ruban sans créer de frame vide entre les deux états."""
@@ -3835,7 +3660,7 @@ class MockupView:
             text="▦\nNouveau type de page",
             height=92,
             corner_radius=10,
-            fg_color=self.MAQUETTAGE_SOFT,
+            fg_color="#E7EEF6",
             hover_color="#DCE7F2",
             text_color=self.INK,
             border_width=1,
@@ -4601,7 +4426,7 @@ class MockupView:
 
         thumbnail_box = ctk.CTkFrame(
             body,
-            fg_color="#F1F6F9",
+            fg_color="#EEF2F6",
             corner_radius=7,
             border_width=1,
             border_color=self.BORDER,
@@ -5108,7 +4933,7 @@ class MockupView:
 
         ctk.CTkLabel(
             title_row,
-            text="Détail du groupe sélectionné",
+            text="Plan du livre",
             font=Fonts.H2,
             text_color=self.INK,
         ).grid(row=0, column=0, sticky="w")
@@ -5141,172 +4966,9 @@ class MockupView:
             padx=10,
             pady=(0, 8),
         )
-        workspace.grid_columnconfigure(0, weight=0)
-        workspace.grid_columnconfigure(1, weight=1)
-        workspace.grid_columnconfigure(2, weight=0)
+        workspace.grid_columnconfigure(0, weight=1)
+        workspace.grid_columnconfigure(1, weight=0)
         workspace.grid_rowconfigure(0, weight=1)
-
-        selected_group = next(
-            (
-                group
-                for group in self._groups()
-                if str(group.get("id", "")) == self._selected_ribbon_group_id
-            ),
-            None,
-        )
-
-        selected_group_id = str(
-            selected_group.get("id", "")
-            if selected_group is not None
-            else ""
-        )
-        selected_group_title = str(
-            selected_group.get("title", "Aucun groupe")
-            if selected_group is not None
-            else "Aucun groupe"
-        )
-        selected_group_accent = str(
-            selected_group.get("accent", self.SKY)
-            if selected_group is not None
-            else self.SKY
-        )
-
-        type_count = sum(
-            1
-            for definition in self._page_types()
-            if (
-                str(definition.get("group", "")) == selected_group_id
-                and not bool(definition.get("deleted", False))
-            )
-        )
-        page_count = sum(
-            int(item.get("count", 1) or 1)
-            for item in self._items()
-            if str(
-                self._definition_for(
-                    str(item.get("type", ""))
-                ).get("group", "")
-            ) == selected_group_id
-        )
-
-        if selected_group_id in {"debut_livre", "fin_livre"}:
-            group_kind = "Zone structurelle"
-        elif selected_group_title.startswith("Partie "):
-            group_kind = "Partie numérotée"
-        else:
-            group_kind = "Groupe libre"
-
-        info = ctk.CTkFrame(
-            workspace,
-            width=218,
-            fg_color="#FBFCFD",
-            corner_radius=8,
-            border_width=1,
-            border_color=self.BORDER,
-        )
-        info.grid(
-            row=0,
-            column=0,
-            sticky="ns",
-            padx=(0, 8),
-        )
-        info.grid_propagate(False)
-        info.grid_columnconfigure(0, weight=1)
-
-        info_header = ctk.CTkFrame(
-            info,
-            height=38,
-            fg_color=self._mix_color_with_white(
-                selected_group_accent,
-                0.88,
-            ),
-            corner_radius=7,
-        )
-        info_header.grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=6,
-            pady=6,
-        )
-        info_header.grid_propagate(False)
-
-        ctk.CTkLabel(
-            info_header,
-            text="Informations",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-        ).pack(side="left", padx=10)
-
-        ctk.CTkLabel(
-            info,
-            text=selected_group_title,
-            font=(Fonts.FAMILY, 12, "bold"),
-            text_color=selected_group_accent,
-            anchor="w",
-            justify="left",
-            wraplength=188,
-        ).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(8, 2),
-        )
-
-        ctk.CTkLabel(
-            info,
-            text=group_kind,
-            font=Fonts.SMALL,
-            text_color=self.TEXT_MUTED,
-            anchor="w",
-        ).grid(
-            row=2,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 14),
-        )
-
-        stats = (
-            f"{type_count} type" + ("s" if type_count != 1 else "")
-            + "\n"
-            + f"{page_count} page" + ("s" if page_count != 1 else "")
-        )
-        ctk.CTkLabel(
-            info,
-            text=stats,
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-            justify="left",
-        ).grid(
-            row=3,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 14),
-        )
-
-        ctk.CTkLabel(
-            info,
-            text=(
-                "Sélectionnez un groupe dans la vue globale "
-                "ou dans le bandeau supérieur."
-            ),
-            font=Fonts.SMALL,
-            text_color=self.TEXT_MUTED,
-            anchor="w",
-            justify="left",
-            wraplength=188,
-        ).grid(
-            row=4,
-            column=0,
-            sticky="ew",
-            padx=14,
-            pady=(0, 12),
-        )
 
         rail_shell = ctk.CTkFrame(
             workspace,
@@ -5317,7 +4979,7 @@ class MockupView:
         )
         rail_shell.grid(
             row=0,
-            column=1,
+            column=0,
             sticky="nsew",
             padx=(0, 8),
         )
@@ -5327,7 +4989,7 @@ class MockupView:
         rail_hint = ctk.CTkFrame(
             rail_shell,
             height=30,
-            fg_color="#F1F6F9",
+            fg_color="#EEF2F6",
             corner_radius=6,
         )
         rail_hint.grid(
@@ -5341,19 +5003,11 @@ class MockupView:
 
         ctk.CTkLabel(
             rail_hint,
-            text="Pages du groupe sélectionné",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
+            text="Glisser-déposer pour déplacer · Ctrl pour ajouter · Maj pour une plage",
+            font=Fonts.SMALL,
+            text_color=self.TEXT_MUTED,
             anchor="w",
         ).pack(side="left", padx=9)
-
-        ctk.CTkLabel(
-            rail_hint,
-            text="Glisser-déposer · Ctrl : ajouter · Maj : plage",
-            font=(Fonts.FAMILY, 8),
-            text_color=self.TEXT_MUTED,
-            anchor="e",
-        ).pack(side="right", padx=9)
 
         self._sequence_frame = ctk.CTkScrollableFrame(
             rail_shell,
@@ -5375,15 +5029,15 @@ class MockupView:
         # Panneau contextuel : les commandes ne flottent plus au bout de l'écran.
         context = ctk.CTkFrame(
             workspace,
-            width=310,
-            fg_color="#FBFCFD",
+            width=350,
+            fg_color="#F7F9FB",
             corner_radius=8,
             border_width=1,
-            border_color="#D8E2E9",
+            border_color="#CDD7E2",
         )
         context.grid(
             row=0,
-            column=2,
+            column=1,
             sticky="ns",
         )
         context.grid_propagate(False)
@@ -5392,7 +5046,7 @@ class MockupView:
         context_header = ctk.CTkFrame(
             context,
             height=42,
-            fg_color=self.MAQUETTAGE_SOFT,
+            fg_color="#E7EEF6",
             corner_radius=7,
         )
         context_header.grid(
@@ -5405,32 +5059,18 @@ class MockupView:
         context_header.grid_columnconfigure(0, weight=1)
         context_header.grid_propagate(False)
 
-        ctk.CTkLabel(
-            context_header,
-            text="Propriétés / actions",
-            font=(Fonts.FAMILY, 10, "bold"),
-            text_color=self.INK,
-            anchor="w",
-        ).grid(
-            row=0,
-            column=0,
-            sticky="w",
-            padx=(10, 5),
-        )
-
         self._selection_label = ctk.CTkLabel(
-            context,
+            context_header,
             text="Aucune page sélectionnée",
             font=(Fonts.FAMILY, 10, "bold"),
             text_color=self.INK,
             anchor="w",
         )
         self._selection_label.grid(
-            row=1,
+            row=0,
             column=0,
-            sticky="ew",
-            padx=14,
-            pady=(8, 0),
+            sticky="w",
+            padx=(10, 5),
         )
 
         self._context_clear_button = ctk.CTkButton(
@@ -5479,22 +5119,22 @@ class MockupView:
             wraplength=310,
         )
         self._context_detail_label.grid(
-            row=3,
+            row=2,
             column=0,
             sticky="ew",
             padx=14,
-            pady=(0, 10),
+            pady=(0, 12),
         )
 
         self._context_quantity_frame = ctk.CTkFrame(
             context,
-            fg_color="#F1F6F9",
+            fg_color="#EEF2F6",
             corner_radius=6,
             border_width=1,
             border_color=self.BORDER,
         )
         self._context_quantity_frame.grid(
-            row=4,
+            row=3,
             column=0,
             sticky="ew",
             padx=12,
@@ -5641,7 +5281,7 @@ class MockupView:
 
         self._context_info_box = ctk.CTkFrame(
             context,
-            fg_color="#F5F8FA",
+            fg_color="#F0F4F7",
             corner_radius=6,
             border_width=1,
             border_color=self.BORDER,
@@ -5786,16 +5426,7 @@ class MockupView:
         if self._sequence_frame is None:
             return
 
-        all_items = self._items()
-        selected_group_id = str(self._selected_ribbon_group_id or "")
-
-        items = []
-        for item in all_items:
-            page_type = str(item.get("type", ""))
-            definition = self._definition_for(page_type)
-            if str(definition.get("group", "")) == selected_group_id:
-                items.append(item)
-
+        items = self._items()
         active_ids = {str(item.get("id", "")) for item in items}
         self._sanitize_page_selection(active_ids)
 
@@ -5815,7 +5446,7 @@ class MockupView:
             if self._sequence_empty_label is None:
                 self._sequence_empty_label = ctk.CTkLabel(
                     self._sequence_frame,
-                    text="Aucune page dans ce groupe.",
+                    text="Clique sur une page pour commencer.",
                     font=Fonts.NORMAL,
                     text_color=self.TEXT_LIGHT,
                 )
@@ -5831,29 +5462,8 @@ class MockupView:
                 self._sequence_empty_label.grid_remove()
 
             total = len(items)
-            try:
-                available_width = max(
-                    520,
-                    int(self._sequence_frame.winfo_width()),
-                )
-            except Exception:
-                available_width = 760
-
-            card_width = 185
-            columns = max(2, min(6, available_width // card_width))
-
-            for column in range(columns):
-                self._sequence_frame.grid_columnconfigure(
-                    column,
-                    weight=1,
-                    uniform="page_cards",
-                )
-
             for index, item in enumerate(items):
                 item_id = str(item.get("id", ""))
-                grid_row = index // columns
-                grid_column = index % columns
-
                 if item_id not in self._sequence_row_widgets:
                     row = self._create_sequence_row(
                         self._sequence_frame,
@@ -5862,16 +5472,13 @@ class MockupView:
                         total,
                     )
                     row.grid(
-                        row=grid_row,
-                        column=grid_column,
-                        sticky="nsew",
+                        row=index,
+                        column=0,
+                        sticky="w",
                         padx=4,
-                        pady=4,
+                        pady=3,
                     )
-                    self._sequence_row_widgets[item_id]["grid_index"] = (
-                        grid_row,
-                        grid_column,
-                    )
+                    self._sequence_row_widgets[item_id]["grid_index"] = index
                 else:
                     signature = self._sequence_row_signature(
                         item,
@@ -5885,16 +5492,15 @@ class MockupView:
                         self._update_sequence_row(item, index, total)
 
                     record = self._sequence_row_widgets[item_id]
-                    new_position = (grid_row, grid_column)
-                    if record.get("grid_index") != new_position:
+                    if record.get("grid_index") != index:
                         record["row"].grid_configure(
-                            row=grid_row,
-                            column=grid_column,
-                            sticky="nsew",
+                            row=index,
+                            column=0,
+                            sticky="w",
                             padx=4,
-                            pady=4,
+                            pady=3,
                         )
-                        record["grid_index"] = new_position
+                        record["grid_index"] = index
 
         self._rendered_selected_page_ids = set(
             self._selected_page_ids

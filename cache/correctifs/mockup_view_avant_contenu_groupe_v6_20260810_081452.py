@@ -3422,10 +3422,6 @@ class MockupView:
         if group_id == self._selected_ribbon_group_id:
             return
         self._selected_ribbon_group_id = group_id
-        self._selected_page_ids.clear()
-        self._sequence_row_widgets.clear()
-        self._sequence_row_signatures.clear()
-        self._rendered_selected_page_ids.clear()
         self.show()
 
     def _refresh_ribbon(self) -> None:
@@ -5182,11 +5178,7 @@ class MockupView:
         page_count = sum(
             int(item.get("count", 1) or 1)
             for item in self._items()
-            if str(
-                self._definition_for(
-                    str(item.get("type", ""))
-                ).get("group", "")
-            ) == selected_group_id
+            if str(item.get("group", "")) == selected_group_id
         )
 
         if selected_group_id in {"debut_livre", "fin_livre"}:
@@ -5341,7 +5333,7 @@ class MockupView:
 
         ctk.CTkLabel(
             rail_hint,
-            text="Pages du groupe sélectionné",
+            text="Contenu du groupe",
             font=(Fonts.FAMILY, 10, "bold"),
             text_color=self.INK,
             anchor="w",
@@ -5786,16 +5778,7 @@ class MockupView:
         if self._sequence_frame is None:
             return
 
-        all_items = self._items()
-        selected_group_id = str(self._selected_ribbon_group_id or "")
-
-        items = []
-        for item in all_items:
-            page_type = str(item.get("type", ""))
-            definition = self._definition_for(page_type)
-            if str(definition.get("group", "")) == selected_group_id:
-                items.append(item)
-
+        items = self._items()
         active_ids = {str(item.get("id", "")) for item in items}
         self._sanitize_page_selection(active_ids)
 
@@ -5815,7 +5798,7 @@ class MockupView:
             if self._sequence_empty_label is None:
                 self._sequence_empty_label = ctk.CTkLabel(
                     self._sequence_frame,
-                    text="Aucune page dans ce groupe.",
+                    text="Clique sur une page pour commencer.",
                     font=Fonts.NORMAL,
                     text_color=self.TEXT_LIGHT,
                 )
@@ -5831,29 +5814,8 @@ class MockupView:
                 self._sequence_empty_label.grid_remove()
 
             total = len(items)
-            try:
-                available_width = max(
-                    520,
-                    int(self._sequence_frame.winfo_width()),
-                )
-            except Exception:
-                available_width = 760
-
-            card_width = 185
-            columns = max(2, min(6, available_width // card_width))
-
-            for column in range(columns):
-                self._sequence_frame.grid_columnconfigure(
-                    column,
-                    weight=1,
-                    uniform="page_cards",
-                )
-
             for index, item in enumerate(items):
                 item_id = str(item.get("id", ""))
-                grid_row = index // columns
-                grid_column = index % columns
-
                 if item_id not in self._sequence_row_widgets:
                     row = self._create_sequence_row(
                         self._sequence_frame,
@@ -5862,16 +5824,13 @@ class MockupView:
                         total,
                     )
                     row.grid(
-                        row=grid_row,
-                        column=grid_column,
-                        sticky="nsew",
+                        row=index,
+                        column=0,
+                        sticky="w",
                         padx=4,
-                        pady=4,
+                        pady=3,
                     )
-                    self._sequence_row_widgets[item_id]["grid_index"] = (
-                        grid_row,
-                        grid_column,
-                    )
+                    self._sequence_row_widgets[item_id]["grid_index"] = index
                 else:
                     signature = self._sequence_row_signature(
                         item,
@@ -5885,16 +5844,15 @@ class MockupView:
                         self._update_sequence_row(item, index, total)
 
                     record = self._sequence_row_widgets[item_id]
-                    new_position = (grid_row, grid_column)
-                    if record.get("grid_index") != new_position:
+                    if record.get("grid_index") != index:
                         record["row"].grid_configure(
-                            row=grid_row,
-                            column=grid_column,
-                            sticky="nsew",
+                            row=index,
+                            column=0,
+                            sticky="w",
                             padx=4,
-                            pady=4,
+                            pady=3,
                         )
-                        record["grid_index"] = new_position
+                        record["grid_index"] = index
 
         self._rendered_selected_page_ids = set(
             self._selected_page_ids
