@@ -5052,9 +5052,6 @@ class DocumentView:
             parent=self.parent,
             project=self.project,
             on_back=self._return_to_project_centre,
-            on_home=self._return_home,
-            on_workshop=self._open_model_workshop,
-            on_conception=self._open_atelier,
         ).show()
 
     def _associated_model_id_for_synoptic_item(

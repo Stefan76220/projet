@@ -288,16 +288,10 @@ class MockupView:
         parent,
         project,
         on_back: Callable[[], None] | None = None,
-        on_home: Callable[[], None] | None = None,
-        on_workshop: Callable[[], None] | None = None,
-        on_conception: Callable[[], None] | None = None,
     ) -> None:
         self.parent = parent
         self.project = project
         self.on_back = on_back
-        self.on_home = on_home
-        self.on_workshop = on_workshop
-        self.on_conception = on_conception
 
         self._last_structure_issues: list[dict[str, str]] = []
         self.data: dict[str, Any] = self._load_data()
@@ -1780,7 +1774,7 @@ class MockupView:
 
                 10,
 
-                text="Bureau de maquettage",
+                text="Centre du projet",
 
                 fill=self.INK,
 
@@ -1879,79 +1873,154 @@ class MockupView:
 
 
             steps = (
+
                 (
+
                     "door",
+
                     "Accueil",
+
                     self.NAVY,
-                    self.on_home,
+
+                    self._go_back,
+
                     False,
-                    self.on_home is not None,
+
+                    True,
+
                     72,
+
                 ),
+
                 (
+
                     "home",
+
                     "Centre",
+
                     self.NAVY,
-                    self.on_back,
-                    False,
-                    self.on_back is not None,
+
+                    None,
+
+                    True,
+
+                    True,
+
                     72,
+
                 ),
+
                 (
+
                     "pencil",
+
                     "Maquettage",
+
                     self.MAQUETTAGE,
+
                     None,
+
+                    False,
+
                     True,
-                    True,
+
                     92,
+
                 ),
+
                 (
+
                     "tools",
+
                     "Atelier",
+
                     self.ATELIER,
-                    self.on_workshop,
+
+                    None,
+
                     False,
-                    self.on_workshop is not None,
+
+                    True,
+
                     76,
+
                 ),
+
                 (
+
                     "quill",
+
                     "Conception",
+
                     self.CONCEPTION,
-                    self.on_conception,
+
+                    None,
+
                     False,
-                    self.on_conception is not None,
+
+                    True,
+
                     92,
+
                 ),
+
                 (
+
                     "puzzle",
+
                     "Assemblage",
+
                     self.ASSEMBLAGE,
+
                     None,
+
                     False,
+
                     False,
+
                     94,
+
                 ),
+
                 (
+
                     "verify",
+
                     "Vérification",
+
                     self.VERIFICATION,
+
                     None,
+
                     False,
+
                     False,
+
                     94,
+
                 ),
+
                 (
+
                     "flag",
+
                     "Finalisation",
+
                     self.FINALISATION,
+
                     None,
+
                     False,
+
                     False,
+
                     90,
+
                 ),
+
             )
+
+
 
             total_width = sum(step[6] for step in steps)
 
@@ -2069,9 +2138,9 @@ class MockupView:
 
                 color=self.CORAL,
 
-                command=self.on_home,
+                command=self._go_back,
 
-                enabled=self.on_home is not None,
+                enabled=True,
 
                 width=76,
 
@@ -2923,20 +2992,10 @@ class MockupView:
             padx=3,
             pady=(2, 1),
         )
-        # Dimensions fixes des emplacements : un type isolé conserve
-        # exactement la même taille que lorsqu'il partage le groupe.
         for column in range(type_columns):
-            types_frame.grid_columnconfigure(
-                column,
-                weight=0,
-                minsize=68,
-            )
+            types_frame.grid_columnconfigure(column, weight=0)
         for row in range(2):
-            types_frame.grid_rowconfigure(
-                row,
-                weight=0,
-                minsize=41,
-            )
+            types_frame.grid_rowconfigure(row, weight=1)
 
         if definitions:
             for index, definition in enumerate(definitions):
@@ -2946,7 +3005,7 @@ class MockupView:
                 button.grid(
                     row=row,
                     column=column,
-                    sticky="",
+                    sticky="nsew",
                     padx=1,
                     pady=1,
                 )
