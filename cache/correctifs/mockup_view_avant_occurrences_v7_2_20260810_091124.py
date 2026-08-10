@@ -3191,16 +3191,9 @@ class MockupView:
         )
         border_color = self._mix_color_with_white(group_accent, 0.60)
 
-        usage_count = sum(
-            max(1, int(item.get("count", 1) or 1))
-            for item in self._items()
-            if str(item.get("type", "")) == page_type
-        )
-        usage_suffix = f"  ×{usage_count}" if usage_count else ""
-
         button = ctk.CTkButton(
             parent,
-            text=f"{symbol}\n{short_title}{usage_suffix}",
+            text=f"{symbol}\n{short_title}",
             width=66,
             height=39,
             corner_radius=5,
@@ -5178,34 +5171,22 @@ class MockupView:
             else self.SKY
         )
 
-        group_definitions = [
-            definition
+        type_count = sum(
+            1
             for definition in self._page_types()
             if (
                 str(definition.get("group", "")) == selected_group_id
                 and not bool(definition.get("deleted", False))
             )
-        ]
-        type_count = len(group_definitions)
-
-        group_items = [
-            item
+        )
+        page_count = sum(
+            int(item.get("count", 1) or 1)
             for item in self._items()
             if str(
                 self._definition_for(
                     str(item.get("type", ""))
                 ).get("group", "")
             ) == selected_group_id
-        ]
-        used_type_count = len(
-            {
-                str(item.get("type", ""))
-                for item in group_items
-            }
-        )
-        page_count = sum(
-            max(1, int(item.get("count", 1) or 1))
-            for item in group_items
         )
 
         if selected_group_id in {"debut_livre", "fin_livre"}:
@@ -5290,13 +5271,8 @@ class MockupView:
 
         stats = (
             f"{type_count} type" + ("s" if type_count != 1 else "")
-            + " disponible" + ("s" if type_count != 1 else "")
-            + "\n"
-            + f"{used_type_count} type" + ("s" if used_type_count != 1 else "")
-            + " utilisé" + ("s" if used_type_count != 1 else "")
             + "\n"
             + f"{page_count} page" + ("s" if page_count != 1 else "")
-            + " prévue" + ("s" if page_count != 1 else "")
         )
         ctk.CTkLabel(
             info,
@@ -5365,8 +5341,7 @@ class MockupView:
 
         ctk.CTkLabel(
             rail_hint,
-            text=f"Pages du groupe sélectionné  ·  {page_count} page"
-                 + ("s" if page_count != 1 else ""),
+            text="Pages du groupe sélectionné",
             font=(Fonts.FAMILY, 10, "bold"),
             text_color=self.INK,
             anchor="w",
@@ -5806,61 +5781,56 @@ class MockupView:
                 pass
 
     def _refresh_sequence(self) -> None:
-        """Affiche chaque occurrence réelle du groupe sélectionné."""
+        """Synchronise les lignes sans effacer puis reconstruire la page."""
         self._hide_page_drop_indicator()
         if self._sequence_frame is None:
             return
 
-        # Nettoyage uniquement des cartes gérées par cette vue.
-        for record in list(self._sequence_row_widgets.values()):
+        all_items = self._items()
+        selected_group_id = str(self._selected_ribbon_group_id or "")
+
+        items = []
+        for item in all_items:
+            page_type = str(item.get("type", ""))
+            definition = self._definition_for(page_type)
+            if str(definition.get("group", "")) == selected_group_id:
+                items.append(item)
+
+        active_ids = {str(item.get("id", "")) for item in items}
+        self._sanitize_page_selection(active_ids)
+
+        # Retire uniquement les lignes réellement supprimées.
+        for item_id in list(self._sequence_row_widgets):
+            if item_id in active_ids:
+                continue
+            record = self._sequence_row_widgets.pop(item_id)
+            self._sequence_row_signatures.pop(item_id, None)
+            self._rendered_selected_page_ids.discard(item_id)
             try:
                 record["row"].destroy()
             except Exception:
                 pass
-        self._sequence_row_widgets.clear()
-        self._sequence_row_signatures.clear()
-        self._rendered_selected_page_ids.clear()
 
-        all_items = self._items()
-        selected_group_id = str(self._selected_ribbon_group_id or "")
-
-        source_items = []
-        for item in all_items:
-            definition = self._definition_for(str(item.get("type", "")))
-            if str(definition.get("group", "")) == selected_group_id:
-                source_items.append(item)
-
-        active_ids = {
-            str(item.get("id", ""))
-            for item in source_items
-        }
-        self._sanitize_page_selection(active_ids)
-
-        # Déplie visuellement les quantités : count=5 => 5 vignettes.
-        occurrences: list[tuple[dict[str, Any], int, int]] = []
-        for item in source_items:
-            count = max(1, int(item.get("count", 1) or 1))
-            for occurrence_index in range(1, count + 1):
-                occurrences.append((item, occurrence_index, count))
-
-        if not occurrences:
-            empty = ctk.CTkLabel(
-                self._sequence_frame,
-                text="Aucune page dans ce groupe.",
-                font=Fonts.NORMAL,
-                text_color=self.TEXT_LIGHT,
-            )
-            empty.grid(
+        if not items:
+            if self._sequence_empty_label is None:
+                self._sequence_empty_label = ctk.CTkLabel(
+                    self._sequence_frame,
+                    text="Aucune page dans ce groupe.",
+                    font=Fonts.NORMAL,
+                    text_color=self.TEXT_LIGHT,
+                )
+            self._sequence_empty_label.grid(
                 row=0,
                 column=0,
                 sticky="nsew",
                 padx=20,
                 pady=28,
             )
-            self._sequence_empty_label = empty
         else:
-            self._sequence_empty_label = None
+            if self._sequence_empty_label is not None:
+                self._sequence_empty_label.grid_remove()
 
+            total = len(items)
             try:
                 available_width = max(
                     520,
@@ -5869,41 +5839,70 @@ class MockupView:
             except Exception:
                 available_width = 760
 
-            card_width = 138
-            columns = max(3, min(7, available_width // card_width))
+            card_width = 185
+            columns = max(2, min(6, available_width // card_width))
 
             for column in range(columns):
                 self._sequence_frame.grid_columnconfigure(
                     column,
                     weight=1,
-                    uniform="page_occurrences",
+                    uniform="page_cards",
                 )
 
-            for display_index, (item, occurrence_index, occurrence_total) in enumerate(occurrences):
-                grid_row = display_index // columns
-                grid_column = display_index % columns
+            for index, item in enumerate(items):
+                item_id = str(item.get("id", ""))
+                grid_row = index // columns
+                grid_column = index % columns
 
-                row = self._create_sequence_occurrence_card(
-                    self._sequence_frame,
-                    item,
-                    occurrence_index,
-                    occurrence_total,
-                    display_index + 1,
-                )
-                row.grid(
-                    row=grid_row,
-                    column=grid_column,
-                    sticky="n",
-                    padx=5,
-                    pady=6,
-                )
+                if item_id not in self._sequence_row_widgets:
+                    row = self._create_sequence_row(
+                        self._sequence_frame,
+                        item,
+                        index,
+                        total,
+                    )
+                    row.grid(
+                        row=grid_row,
+                        column=grid_column,
+                        sticky="nsew",
+                        padx=4,
+                        pady=4,
+                    )
+                    self._sequence_row_widgets[item_id]["grid_index"] = (
+                        grid_row,
+                        grid_column,
+                    )
+                else:
+                    signature = self._sequence_row_signature(
+                        item,
+                        index,
+                        total,
+                    )
+                    if (
+                        self._sequence_row_signatures.get(item_id)
+                        != signature
+                    ):
+                        self._update_sequence_row(item, index, total)
 
-        self._rendered_selected_page_ids = set(self._selected_page_ids)
+                    record = self._sequence_row_widgets[item_id]
+                    new_position = (grid_row, grid_column)
+                    if record.get("grid_index") != new_position:
+                        record["row"].grid_configure(
+                            row=grid_row,
+                            column=grid_column,
+                            sticky="nsew",
+                            padx=4,
+                            pady=4,
+                        )
+                        record["grid_index"] = new_position
+
+        self._rendered_selected_page_ids = set(
+            self._selected_page_ids
+        )
         self._update_summary()
         self._update_page_type_button_states()
         self._update_selection_controls()
         self._refresh_plan_background()
-
 
     def _thumbnail_filename_for_type(self, page_type: str) -> str:
         mapping = {
@@ -6143,258 +6142,6 @@ class MockupView:
         self._refresh_sequence()
         self._close_manage_dialog()
         self._open_manage_dialog()
-
-    def _create_sequence_occurrence_card(
-        self,
-        parent,
-        item: dict[str, Any],
-        occurrence_index: int,
-        occurrence_total: int,
-        display_number: int,
-    ) -> tk.Frame:
-        """Carte portrait légère représentant une occurrence de page."""
-        source_id = str(item.get("id", ""))
-        display_id = (
-            source_id
-            if occurrence_index == 1
-            else f"{source_id}::occ::{occurrence_index}"
-        )
-
-        definition = self._definition_for(str(item.get("type", "inconnu")))
-        automatic_blank = bool(item.get("automatic_recto_verso", False))
-        plan_group = self._plan_group_id(item)
-        group = self._group_for(plan_group)
-
-        group_accent = str(group.get("accent", self.INK))
-        type_accent = str(definition.get("accent", self.INK))
-        page_color = self._plan_group_page_color(
-            plan_group,
-            str(definition.get("color", self.GROUP_BG)),
-        )
-
-        outer = tk.Frame(
-            parent,
-            width=126,
-            height=174,
-            background="#FBFAF6",
-            borderwidth=0,
-            highlightthickness=0,
-        )
-        outer.grid_propagate(False)
-        outer.grid_columnconfigure(0, weight=1)
-
-        number_label = tk.Label(
-            outer,
-            text=f"{display_number}",
-            font=(Fonts.FAMILY, 8, "bold"),
-            foreground=self.TEXT_MUTED,
-            background="#FBFAF6",
-            borderwidth=0,
-        )
-        number_label.grid(row=0, column=0, pady=(1, 2))
-
-        card = tk.Frame(
-            outer,
-            width=104,
-            height=132,
-            background=self.CARD_BG,
-            borderwidth=0,
-            highlightthickness=1,
-            highlightbackground=self.BORDER,
-            highlightcolor=self.BORDER,
-        )
-        card.grid(row=1, column=0, padx=10)
-        card.grid_propagate(False)
-        card.grid_columnconfigure(0, weight=1)
-
-        preview = tk.Frame(
-            card,
-            width=72,
-            height=92,
-            background=page_color,
-            borderwidth=0,
-            highlightthickness=1,
-            highlightbackground=group_accent,
-            highlightcolor=group_accent,
-        )
-        preview.grid(row=0, column=0, pady=(8, 4))
-        preview.grid_propagate(False)
-
-        thumbnail_image_label = tk.Label(
-            preview,
-            image="",
-            text="",
-            background=page_color,
-            borderwidth=0,
-            highlightthickness=0,
-        )
-        thumbnail_image_label.place(relx=0.5, rely=0.5, anchor="center")
-
-        symbol_label = tk.Label(
-            preview,
-            text=str(definition.get("symbol", "?")),
-            font=(Fonts.FAMILY, 15, "bold"),
-            foreground=type_accent,
-            background=page_color,
-            borderwidth=0,
-        )
-        symbol_label.place(relx=0.5, rely=0.5, anchor="center")
-
-        if automatic_blank:
-            auto_badge = tk.Label(
-                preview,
-                text="AUTO",
-                font=(Fonts.FAMILY, 6, "bold"),
-                foreground=self.INK,
-                background="#E7EEF6",
-                padx=3,
-                pady=0,
-                borderwidth=0,
-            )
-            auto_badge.place(relx=0.04, rely=0.04, anchor="nw")
-        else:
-            auto_badge = tk.Label(
-                preview,
-                text="",
-                background=page_color,
-                borderwidth=0,
-            )
-
-        title = str(item.get("title") or definition.get("title", "Page"))
-        if len(title) > 17:
-            title = title[:16].rstrip() + "…"
-
-        title_label = tk.Label(
-            card,
-            text=title,
-            font=(Fonts.FAMILY, 8, "bold"),
-            foreground=self.INK,
-            background=self.CARD_BG,
-            anchor="center",
-            borderwidth=0,
-        )
-        title_label.grid(row=1, column=0, sticky="ew", padx=4)
-
-        if occurrence_total > 1:
-            detail_text = f"Occurrence {occurrence_index}/{occurrence_total}"
-        else:
-            completed, remaining = self._sequence_progress_counts(item)
-            detail_text = "Fait" if remaining == 0 else "À faire"
-
-        detail_label = tk.Label(
-            card,
-            text=detail_text,
-            font=(Fonts.FAMILY, 7),
-            foreground=self.TEXT_MUTED,
-            background=self.CARD_BG,
-            anchor="center",
-            borderwidth=0,
-        )
-        detail_label.grid(row=2, column=0, sticky="ew", pady=(1, 4))
-
-        photo = self._thumbnail_photo_for_definition(
-            definition,
-            subsample=5,
-        )
-        if photo is not None:
-            thumbnail_image_label.configure(image=photo)
-            symbol_label.place_forget()
-
-        record = {
-            "row": outer,
-            "card": card,
-            "group_strip": preview,
-            "thumbnail": preview,
-            "thumbnail_image_label": thumbnail_image_label,
-            "symbol_label": symbol_label,
-            "count_badge": detail_label,
-            "info": card,
-            "title_label": title_label,
-            "detail_label": detail_label,
-            "auto_badge": auto_badge,
-            "grid_index": display_number - 1,
-            "display_state": {},
-            "selection_state": None,
-            "photo_ref": photo,
-            "source_id": source_id,
-            "occurrence_index": occurrence_index,
-            "occurrence_total": occurrence_total,
-        }
-        self._sequence_row_widgets[display_id] = record
-
-        widgets = (
-            outer,
-            card,
-            preview,
-            thumbnail_image_label,
-            symbol_label,
-            title_label,
-            detail_label,
-        )
-        for widget in widgets:
-            widget.bind(
-                "<ButtonPress-1>",
-                lambda event, sid=source_id: self._update_page_selection_from_event(
-                    sid,
-                    event,
-                ),
-                add="+",
-            )
-
-        # Le glisser-déposer reste attaché au bloc source.
-        self._bind_sequence_page_drag(
-            source_id,
-            card,
-            preview,
-            thumbnail_image_label,
-            symbol_label,
-            title_label,
-            detail_label,
-        )
-
-        self._update_sequence_occurrence_selection(source_id)
-        return outer
-
-
-    def _update_sequence_occurrence_selection(
-        self,
-        source_id: str,
-    ) -> None:
-        """Met en évidence toutes les occurrences liées au bloc source."""
-        selected = source_id in self._selected_page_ids
-
-        source_item = next(
-            (
-                item
-                for item in self._items()
-                if str(item.get("id", "")) == source_id
-            ),
-            None,
-        )
-        done = False
-        if source_item is not None:
-            _, remaining = self._sequence_progress_counts(source_item)
-            done = remaining == 0
-
-        background = "#EEF4FA" if selected else self.CARD_BG
-        border = self.ACCENT if selected else self.DONE if done else self.BORDER
-
-        for record in self._sequence_row_widgets.values():
-            if str(record.get("source_id", "")) != source_id:
-                continue
-            try:
-                record["card"].configure(
-                    background=background,
-                    highlightbackground=border,
-                    highlightcolor=border,
-                    highlightthickness=2 if selected else 1,
-                )
-                record["title_label"].configure(background=background)
-                record["detail_label"].configure(background=background)
-            except Exception:
-                pass
-            record["selection_state"] = (selected, done)
-
 
     def _create_sequence_row(
         self,
@@ -7243,10 +6990,32 @@ class MockupView:
         self,
         item: dict[str, Any],
     ) -> None:
-        """Compatibilité : sélection appliquée à toutes les occurrences."""
-        source_id = str(item.get("id", ""))
-        self._update_sequence_occurrence_selection(source_id)
+        """Met à jour uniquement la carte visible, pas toute la ligne."""
+        item_id = str(item.get("id", ""))
+        record = self._sequence_row_widgets.get(item_id)
+        if record is None:
+            return
 
+        selected = item_id in self._selected_page_ids
+        _, remaining = self._sequence_progress_counts(item)
+        done = remaining == 0
+        state = (selected, done)
+        if record.get("selection_state") == state:
+            return
+
+        background = "#EEF4FA" if selected else self.CARD_BG
+        border = self.ACCENT if selected else self.DONE if done else self.BORDER
+
+        record["card"].configure(
+            background=background,
+            highlightbackground=border,
+            highlightcolor=border,
+            highlightthickness=2 if selected else 1,
+        )
+        record["info"].configure(background=background)
+        record["title_label"].configure(background=background)
+        record["detail_label"].configure(background=background)
+        record["selection_state"] = state
 
     def _selectable_page_ids(self) -> tuple[str, ...]:
         return tuple(

@@ -3191,16 +3191,9 @@ class MockupView:
         )
         border_color = self._mix_color_with_white(group_accent, 0.60)
 
-        usage_count = sum(
-            max(1, int(item.get("count", 1) or 1))
-            for item in self._items()
-            if str(item.get("type", "")) == page_type
-        )
-        usage_suffix = f"  ×{usage_count}" if usage_count else ""
-
         button = ctk.CTkButton(
             parent,
-            text=f"{symbol}\n{short_title}{usage_suffix}",
+            text=f"{symbol}\n{short_title}",
             width=66,
             height=39,
             corner_radius=5,
@@ -5178,34 +5171,22 @@ class MockupView:
             else self.SKY
         )
 
-        group_definitions = [
-            definition
+        type_count = sum(
+            1
             for definition in self._page_types()
             if (
                 str(definition.get("group", "")) == selected_group_id
                 and not bool(definition.get("deleted", False))
             )
-        ]
-        type_count = len(group_definitions)
-
-        group_items = [
-            item
+        )
+        page_count = sum(
+            int(item.get("count", 1) or 1)
             for item in self._items()
             if str(
                 self._definition_for(
                     str(item.get("type", ""))
                 ).get("group", "")
             ) == selected_group_id
-        ]
-        used_type_count = len(
-            {
-                str(item.get("type", ""))
-                for item in group_items
-            }
-        )
-        page_count = sum(
-            max(1, int(item.get("count", 1) or 1))
-            for item in group_items
         )
 
         if selected_group_id in {"debut_livre", "fin_livre"}:
@@ -5290,13 +5271,8 @@ class MockupView:
 
         stats = (
             f"{type_count} type" + ("s" if type_count != 1 else "")
-            + " disponible" + ("s" if type_count != 1 else "")
-            + "\n"
-            + f"{used_type_count} type" + ("s" if used_type_count != 1 else "")
-            + " utilisé" + ("s" if used_type_count != 1 else "")
             + "\n"
             + f"{page_count} page" + ("s" if page_count != 1 else "")
-            + " prévue" + ("s" if page_count != 1 else "")
         )
         ctk.CTkLabel(
             info,
@@ -5365,8 +5341,7 @@ class MockupView:
 
         ctk.CTkLabel(
             rail_hint,
-            text=f"Pages du groupe sélectionné  ·  {page_count} page"
-                 + ("s" if page_count != 1 else ""),
+            text="Pages du groupe sélectionné",
             font=(Fonts.FAMILY, 10, "bold"),
             text_color=self.INK,
             anchor="w",
@@ -6276,7 +6251,7 @@ class MockupView:
         title_label.grid(row=1, column=0, sticky="ew", padx=4)
 
         if occurrence_total > 1:
-            detail_text = f"Occurrence {occurrence_index}/{occurrence_total}"
+            detail_text = f"{occurrence_index}/{occurrence_total}"
         else:
             completed, remaining = self._sequence_progress_counts(item)
             detail_text = "Fait" if remaining == 0 else "À faire"
