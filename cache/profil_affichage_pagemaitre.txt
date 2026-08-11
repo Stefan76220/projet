@@ -1,0 +1,347 @@
+=== TOP 120 - TEMPS CUMULÉ ===
+
+Mon Aug 10 13:58:40 2026    C:\Users\PC\projet\cache\pagemaitre_affichage.prof
+
+         1137972 function calls (1109293 primitive calls) in 16.584 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1948 to 120 due to restriction <120>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    259/1    0.055    0.000   16.584   16.584 {built-in method builtins.exec}
+        1    0.000    0.000   16.584   16.584 main.py:1(<module>)
+        1    0.000    0.000   15.962   15.962 main.py:6(main)
+        1    0.000    0.000   13.015   13.015 application.py:66(run)
+        1    0.000    0.000   13.015   13.015 main_window.py:119(run)
+        1    0.000    0.000   13.014   13.014 ctk_tk.py:159(mainloop)
+        1    0.000    0.000   11.713   11.713 __init__.py:1597(mainloop)
+        1    5.915    5.915   11.713   11.713 {method 'mainloop' of '_tkinter.tkapp' objects}
+53618/34761    5.481    0.000    7.031    0.000 {method 'call' of '_tkinter.tkapp' objects}
+2397/1126    0.022    0.000    6.886    0.006 __init__.py:2074(__call__)
+       42    0.003    0.000    3.252    0.077 __init__.py:1(<module>)
+    29/16    0.000    0.000    3.025    0.189 __init__.py:1469(update_idletasks)
+        1    0.000    0.000    2.947    2.947 application.py:19(__init__)
+        1    0.000    0.000    2.942    2.942 main_window.py:17(__init__)
+        1    0.000    0.000    2.509    2.509 main_window.py:64(_create_widgets)
+     21/9    0.001    0.000    2.055    0.228 ctk_scrollbar.py:135(_draw)
+        1    0.000    0.000    1.971    1.971 document_view.py:1040(on_click)
+        1    0.000    0.000    1.971    1.971 workspace.py:155(wrapped)
+        1    0.000    0.000    1.954    1.954 document_view.py:5047(_open_mockup)
+        1    0.001    0.001    1.922    1.922 mockup_view.py:374(show)
+        1    0.000    0.000    1.749    1.749 workspace.py:36(__init__)
+        1    0.000    0.000    1.748    1.748 workspace.py:72(show_dashboard)
+        1    0.000    0.000    1.742    1.742 dashboard_view.py:156(show)
+  294/293    0.006    0.000    1.561    0.005 __init__.py:860(callit)
+     1040    0.026    0.000    1.497    0.001 draw_engine.py:187(__draw_rounded_rect_with_border_font_shapes)
+     1028    0.008    0.000    1.490    0.001 draw_engine.py:97(draw_rounded_rect_with_border)
+   138/87    0.004    0.000    1.471    0.017 Image.py:2329(resize)
+       87    1.396    0.016    1.396    0.016 {method 'resize' of 'ImagingCore' objects}
+     13/6    0.000    0.000    1.385    0.231 ctk_scrollbar.py:292(set)
+        2    0.000    0.000    1.327    0.664 ctk_tk.py:265(_windows_set_titlebar_color)
+        2    0.000    0.000    1.325    0.663 __init__.py:1465(update)
+      433    0.008    0.000    1.165    0.003 ctk_frame.py:94(_draw)
+      107    0.004    0.000    1.152    0.011 ctk_button.py:184(_draw)
+     7015    0.074    0.000    1.056    0.000 ctk_canvas.py:83(coords)
+       51    0.002    0.000    1.045    0.020 ctk_button.py:21(__init__)
+    10195    0.047    0.000    1.039    0.000 __init__.py:1802(_configure)
+     1052    0.010    0.000    1.024    0.001 __init__.py:2779(__init__)
+        3    0.000    0.000    0.999    0.333 ctk_scrollable_frame.py:22(__init__)
+        4    0.000    0.000    0.994    0.249 ctk_scrollbar.py:17(__init__)
+        3    0.004    0.001    0.986    0.329 document_view.py:2861(draw_wall)
+      236    0.001    0.000    0.972    0.004 __init__.py:3360(__init__)
+  617/540    0.005    0.000    0.929    0.002 ctk_base_class.py:182(_update_dimensions_event)
+     7641    0.011    0.000    0.835    0.000 __init__.py:3113(itemconfigure)
+      161    0.002    0.000    0.822    0.005 Image.py:1017(convert)
+        1    0.000    0.000    0.816    0.816 mockup_view.py:2456(_create_ribbon)
+        1    0.000    0.000    0.756    0.756 navigation.py:16(__init__)
+        1    0.000    0.000    0.741    0.741 navigation.py:60(_create_menu)
+        6    0.000    0.000    0.741    0.123 sidebar_button.py:17(__init__)
+       64    0.005    0.000    0.708    0.011 ImageFile.py:291(load)
+   1064/5    0.013    0.000    0.704    0.141 __init__.py:2796(destroy)
+    411/3    0.002    0.000    0.697    0.232 ctk_base_class.py:94(destroy)
+      377    0.665    0.002    0.665    0.002 {method 'decode' of 'ImagingDecoder' objects}
+    272/4    0.004    0.000    0.649    0.162 <frozen importlib._bootstrap>:1349(_find_and_load)
+    272/4    0.002    0.000    0.649    0.162 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+     43/3    0.000    0.000    0.648    0.216 {built-in method builtins.__import__}
+    258/5    0.002    0.000    0.646    0.129 <frozen importlib._bootstrap>:911(_load_unlocked)
+    573/6    0.001    0.000    0.646    0.108 <frozen importlib._bootstrap>:480(_call_with_frames_removed)
+        1    0.000    0.000    0.644    0.644 main_window.py:129(close)
+    232/4    0.001    0.000    0.644    0.161 <frozen importlib._bootstrap_external>:1017(exec_module)
+        1    0.000    0.000    0.643    0.643 ctk_tk.py:88(destroy)
+        1    0.000    0.000    0.643    0.643 __init__.py:2510(destroy)
+      162    0.004    0.000    0.638    0.004 ctk_frame.py:17(__init__)
+        1    0.000    0.000    0.610    0.610 application.py:1(<module>)
+        3    0.000    0.000    0.578    0.193 dashboard_view.py:1784(_layout_now)
+       44    0.009    0.000    0.556    0.013 document_view.py:2458(draw_page)
+      181    0.011    0.000    0.518    0.003 ctk_label.py:25(__init__)
+        3    0.009    0.003    0.511    0.170 dashboard_view.py:1930(_compose_background)
+     2947    0.019    0.000    0.490    0.000 __init__.py:2985(_create)
+        1    0.001    0.001    0.469    0.469 mockup_view.py:2343(_create_book_overview_panel)
+      222    0.004    0.000    0.439    0.002 ctk_base_class.py:113(configure)
+        1    0.000    0.000    0.435    0.435 dashboard_view.py:1442(activate)
+        1    0.000    0.000    0.435    0.435 dashboard_view.py:1234(<lambda>)
+        1    0.000    0.000    0.435    0.435 dashboard_view.py:2124(_open_active_workspace)
+        1    0.000    0.000    0.435    0.435 workspace.py:298(_open_recent_workspace)
+        1    0.000    0.000    0.434    0.434 workspace.py:308(_open_project_from_summary)
+        1    0.000    0.000    0.431    0.431 ctk_tk.py:33(__init__)
+        1    0.001    0.001    0.429    0.429 mockup_view.py:5161(_create_sequence_panel)
+        1    0.000    0.000    0.406    0.406 workspace.py:90(show_documents)
+        1    0.000    0.000    0.402    0.402 __init__.py:2450(__init__)
+        1    0.401    0.401    0.401    0.401 {built-in method _tkinter.create}
+    54/37    0.002    0.000    0.399    0.011 ctk_frame.py:134(configure)
+        2    0.004    0.002    0.360    0.180 document_view.py:2381(make_background)
+     1702    0.002    0.000    0.360    0.000 __init__.py:3025(create_text)
+       12    0.001    0.000    0.335    0.028 dashboard_view.py:1962(_paint_rounded_card)
+        6    0.000    0.000    0.334    0.056 mockup_view.py:5812(_refresh_plan_background)
+        1    0.000    0.000    0.333    0.333 navigation.py:1(<module>)
+     1538    0.009    0.000    0.328    0.000 ctk_canvas.py:73(create_aa_circle)
+        2    0.002    0.001    0.323    0.162 main_window.py:85(_maximize_window)
+     7032    0.020    0.000    0.313    0.000 __init__.py:2978(coords)
+      488    0.009    0.000    0.310    0.001 ctk_label.py:176(_draw)
+      184    0.001    0.000    0.308    0.002 ctk_label.py:164(destroy)
+        1    0.000    0.000    0.284    0.284 ctk_tk.py:1(<module>)
+    15798    0.131    0.000    0.276    0.000 __init__.py:1638(_options)
+     1132    0.023    0.000    0.276    0.000 ctk_canvas.py:103(itemconfig)
+     2089    0.058    0.000    0.256    0.000 __init__.py:1717(_substitute)
+        2    0.000    0.000    0.237    0.118 workspace.py:1(<module>)
+        1    0.000    0.000    0.236    0.236 document_view.py:558(show)
+        1    0.001    0.001    0.231    0.231 document_view.py:1885(_create_main_workspace)
+        3    0.000    0.000    0.224    0.075 ctk_scrollable_frame.py:102(destroy)
+     2554    0.004    0.000    0.218    0.000 __init__.py:1815(configure)
+        1    0.000    0.000    0.217    0.217 ctk_button.py:1(<module>)
+        2    0.000    0.000    0.213    0.106 mockup_view.py:443(redraw_background)
+        1    0.000    0.000    0.210    0.210 dashboard_view.py:389(_create_project_type_card)
+        1    0.000    0.000    0.195    0.195 dashboard_view.py:1179(_create_active_project_panel)
+        1    0.000    0.000    0.181    0.181 dashboard_view.py:817(_create_recent_panel)
+        1    0.000    0.000    0.174    0.174 document_editor_view.py:1(<module>)
+        1    0.000    0.000    0.168    0.168 dashboard_view.py:223(_create_header)
+        2    0.001    0.000    0.168    0.084 mockup_view.py:1742(redraw)
+        1    0.000    0.000    0.167    0.167 page_editor_view.py:1(<module>)
+        2    0.000    0.000    0.166    0.083 document_view.py:1134(redraw)
+      232    0.005    0.000    0.164    0.001 <frozen importlib._bootstrap_external>:1090(get_code)
+        8    0.000    0.000    0.162    0.020 dashboard_view.py:1448(leave)
+        9    0.000    0.000    0.162    0.018 dashboard_view.py:1445(enter)
+        1    0.001    0.001    0.159    0.159 mockup_view.py:1370(build_background)
+        1    0.001    0.001    0.150    0.150 document_view.py:948(build_background)
+      111    0.003    0.000    0.143    0.001 ctk_label.py:211(configure)
+      402    0.013    0.000    0.143    0.000 ctk_base_class.py:32(__init__)
+        2    0.000    0.000    0.142    0.071 workspace.py:65(clear)
+        1    0.001    0.001    0.141    0.141 mockup_view.py:5870(_refresh_sequence)
+       63    0.006    0.000    0.134    0.002 ImageTk.py:93(__init__)
+
+
+
+
+=== TOP 120 - TEMPS PROPRE ===
+
+Mon Aug 10 13:58:40 2026    C:\Users\PC\projet\cache\pagemaitre_affichage.prof
+
+         1137972 function calls (1109293 primitive calls) in 16.584 seconds
+
+   Ordered by: internal time
+   List reduced from 1948 to 120 due to restriction <120>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    5.915    5.915   11.713   11.713 {method 'mainloop' of '_tkinter.tkapp' objects}
+53618/34761    5.481    0.000    7.031    0.000 {method 'call' of '_tkinter.tkapp' objects}
+       87    1.396    0.016    1.396    0.016 {method 'resize' of 'ImagingCore' objects}
+      377    0.665    0.002    0.665    0.002 {method 'decode' of 'ImagingDecoder' objects}
+        1    0.401    0.401    0.401    0.401 {built-in method _tkinter.create}
+    15798    0.131    0.000    0.276    0.000 __init__.py:1638(_options)
+        2    0.099    0.050    0.099    0.050 {built-in method _wmi.exec_query}
+      150    0.095    0.001    0.095    0.001 {method 'convert' of 'ImagingCore' objects}
+    33485    0.083    0.000    0.083    0.000 {method 'getint' of '_tkinter.tkapp' objects}
+   268909    0.074    0.000    0.075    0.000 {built-in method builtins.isinstance}
+     7015    0.074    0.000    1.056    0.000 ctk_canvas.py:83(coords)
+     1390    0.059    0.000    0.073    0.000 {built-in method nt.stat}
+     2089    0.058    0.000    0.256    0.000 __init__.py:1717(_substitute)
+      322    0.055    0.000    0.057    0.000 {built-in method _io.open}
+    259/1    0.055    0.000   16.584   16.584 {built-in method builtins.exec}
+    26649    0.049    0.000    0.090    0.000 __init__.py:106(_cnfmerge)
+      232    0.048    0.000    0.048    0.000 {built-in method _io.open_code}
+      232    0.047    0.000    0.047    0.000 {built-in method marshal.loads}
+    10195    0.047    0.000    1.039    0.000 __init__.py:1802(_configure)
+     1726    0.044    0.000    0.044    0.000 {method 'read' of '_io.BufferedReader' objects}
+        4    0.042    0.011    0.042    0.011 {built-in method PIL._imaging.alpha_composite}
+       12    0.036    0.003    0.036    0.003 {built-in method _imp.create_dynamic}
+    13766    0.034    0.000    0.063    0.000 __init__.py:63(_stringify)
+      206    0.033    0.000    0.033    0.000 {built-in method winreg.OpenKey}
+    11881    0.031    0.000    0.034    0.000 __init__.py:1605(_getints)
+      134    0.031    0.000    0.031    0.000 {built-in method nt._getfinalpathname}
+       36    0.031    0.001    0.031    0.001 {method 'paste' of 'ImagingCore' objects}
+     1040    0.026    0.000    1.497    0.001 draw_engine.py:187(__draw_rounded_rect_with_border_font_shapes)
+    35953    0.025    0.000    0.025    0.000 {built-in method _tkinter._flatten}
+    22979    0.025    0.000    0.087    0.000 __init__.py:1723(getint_event)
+     2226    0.024    0.000    0.033    0.000 __init__.py:1664(nametowidget)
+      395    0.023    0.000    0.049    0.000 __init__.py:1790(_getconfigure)
+    27542    0.023    0.000    0.023    0.000 {method 'search' of 're.Pattern' objects}
+     1132    0.023    0.000    0.276    0.000 ctk_canvas.py:103(itemconfig)
+2397/1126    0.022    0.000    6.886    0.006 __init__.py:2074(__call__)
+       64    0.022    0.000    0.022    0.000 {built-in method PIL._imaging.fill}
+     2050    0.021    0.000    0.031    0.000 <frozen importlib._bootstrap_external>:101(_path_join)
+      498    0.021    0.000    0.021    0.000 {method '__exit__' of '_io._IOBase' objects}
+     1570    0.021    0.000    0.035    0.000 __init__.py:1683(_register)
+    33616    0.020    0.000    0.020    0.000 {method 'splitlist' of '_tkinter.tkapp' objects}
+    11871    0.020    0.000    0.112    0.000 __init__.py:3047(find)
+     7032    0.020    0.000    0.313    0.000 __init__.py:2978(coords)
+     2947    0.019    0.000    0.490    0.000 __init__.py:2985(_create)
+2769/2401    0.018    0.000    0.028    0.000 {built-in method __new__ of type object at 0x00007FF9D7B5B8A0}
+    41780    0.018    0.000    0.027    0.000 __init__.py:1730(<genexpr>)
+      847    0.018    0.000    0.122    0.000 {built-in method builtins.__build_class__}
+       24    0.017    0.001    0.020    0.001 {built-in method nt.mkdir}
+      404    0.017    0.000    0.045    0.000 typing.py:3165(__new__)
+    22669    0.017    0.000    0.017    0.000 {method 'update' of 'dict' objects}
+       15    0.017    0.001    0.017    0.001 {built-in method builtins.eval}
+       23    0.016    0.001    0.016    0.001 {method 'copy' of 'ImagingCore' objects}
+       63    0.015    0.000    0.015    0.000 {method 'convert2' of 'ImagingCore' objects}
+     2543    0.015    0.000    0.043    0.000 {built-in method builtins.any}
+      261    0.013    0.000    0.015    0.000 {method 'read' of '_io.TextIOWrapper' objects}
+    32422    0.013    0.000    0.013    0.000 {method 'append' of 'list' objects}
+   1064/5    0.013    0.000    0.704    0.141 __init__.py:2796(destroy)
+      402    0.013    0.000    0.143    0.000 ctk_base_class.py:32(__init__)
+       11    0.012    0.001    0.012    0.001 {method 'crop' of 'ImagingCore' objects}
+     7015    0.012    0.000    0.056    0.000 __init__.py:3089(gettags)
+      181    0.011    0.000    0.518    0.003 ctk_label.py:25(__init__)
+     7641    0.011    0.000    0.835    0.000 __init__.py:3113(itemconfigure)
+     1412    0.011    0.000    0.035    0.000 ctk_tk.py:101(_update_dimensions_event)
+      206    0.011    0.000    0.011    0.000 {built-in method winreg.QueryValueEx}
+    11871    0.010    0.000    0.122    0.000 __init__.py:3081(find_withtag)
+25161/24769    0.010    0.000    0.010    0.000 {built-in method builtins.len}
+       42    0.010    0.000    0.010    0.000 {built-in method nt.listdir}
+    37982    0.010    0.000    0.010    0.000 {built-in method builtins.callable}
+     1052    0.010    0.000    1.024    0.001 __init__.py:2779(__init__)
+      232    0.010    0.000    0.057    0.000 <frozen importlib._bootstrap_external>:779(_compile_bytecode)
+        3    0.009    0.003    0.511    0.170 dashboard_view.py:1930(_compose_background)
+    12244    0.009    0.000    0.010    0.000 {method 'join' of 'str' objects}
+      488    0.009    0.000    0.310    0.001 ctk_label.py:176(_draw)
+       44    0.009    0.000    0.556    0.013 document_view.py:2458(draw_page)
+    17924    0.009    0.000    0.009    0.000 {method 'items' of 'dict' objects}
+     1538    0.009    0.000    0.328    0.000 ctk_canvas.py:73(create_aa_circle)
+     1028    0.008    0.000    1.490    0.001 draw_engine.py:97(draw_rounded_rect_with_border)
+     7006    0.008    0.000    0.010    0.000 scaling_base_class.py:65(_apply_widget_scaling)
+     1052    0.008    0.000    0.011    0.000 __init__.py:2747(_setup)
+     4178    0.008    0.000    0.008    0.000 {method 'getboolean' of '_tkinter.tkapp' objects}
+     1572    0.008    0.000    0.008    0.000 {method 'createcommand' of '_tkinter.tkapp' objects}
+     1225    0.008    0.000    0.013    0.000 scaling_tracker.py:39(get_window_root_of_widget)
+      433    0.008    0.000    1.165    0.003 ctk_frame.py:94(_draw)
+       80    0.008    0.000    0.008    0.000 {method 'draw_rectangle' of 'ImagingDraw' objects}
+     1572    0.008    0.000    0.008    0.000 {method 'deletecommand' of '_tkinter.tkapp' objects}
+       71    0.007    0.000    0.013    0.000 scaling_tracker.py:150(get_window_dpi_scaling)
+      206    0.007    0.000    0.054    0.000 appearance_mode_tracker.py:45(detect_appearance_mode)
+       96    0.007    0.000    0.007    0.000 {method 'draw_pieslice' of 'ImagingDraw' objects}
+     2730    0.007    0.000    0.007    0.000 {method 'split' of 'str' objects}
+6003/2974    0.007    0.000    0.012    0.000 encoder.py:336(_iterencode_dict)
+       41    0.007    0.000    0.007    0.000 {built-in method builtins.compile}
+    12324    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+      407    0.006    0.000    0.081    0.000 <frozen importlib._bootstrap_external>:1621(find_spec)
+  294/293    0.006    0.000    1.561    0.005 __init__.py:860(callit)
+       56    0.006    0.000    0.006    0.000 {built-in method PIL._imaging.new}
+     2136    0.006    0.000    0.010    0.000 enum.py:696(__call__)
+       15    0.006    0.000    0.023    0.002 __init__.py:358(namedtuple)
+       63    0.006    0.000    0.134    0.002 ImageTk.py:93(__init__)
+       12    0.005    0.000    0.009    0.001 {built-in method _imp.exec_dynamic}
+      205    0.005    0.000    0.086    0.000 appearance_mode_tracker.py:80(update)
+      296    0.005    0.000    0.035    0.000 __init__.py:848(after)
+     1264    0.005    0.000    0.030    0.000 __init__.py:1488(_bind)
+      232    0.005    0.000    0.164    0.001 <frozen importlib._bootstrap_external>:1090(get_code)
+  617/540    0.005    0.000    0.929    0.002 ctk_base_class.py:182(_update_dimensions_event)
+      493    0.005    0.000    0.010    0.000 _local.py:257(_parse_path)
+     1466    0.005    0.000    0.005    0.000 {method 'remove' of 'list' objects}
+       64    0.005    0.000    0.708    0.011 ImageFile.py:291(load)
+      368    0.004    0.000    0.010    0.000 enum.py:252(__set_name__)
+      783    0.004    0.000    0.021    0.000 _local.py:227(__str__)
+        5    0.004    0.001    0.023    0.005 __init__.py:120(dump)
+   138/87    0.004    0.000    1.471    0.017 Image.py:2329(resize)
+     1065    0.004    0.000    0.010    0.000 __init__.py:682(destroy)
+     5579    0.004    0.000    0.004    0.000 {built-in method builtins.round}
+     1296    0.004    0.000    0.007    0.000 _local.py:117(__init__)
+   146/29    0.004    0.000    0.011    0.000 _parser.py:511(_parse)
+  856/453    0.004    0.000    0.006    0.000 ctk_base_class.py:190(_detect_color_of_master)
+     2136    0.004    0.000    0.004    0.000 enum.py:1158(__new__)
+      950    0.004    0.000    0.013    0.000 typing.py:173(_type_check)
+        2    0.004    0.002    0.360    0.180 document_view.py:2381(make_background)
+     2826    0.004    0.000    0.004    0.000 scaling_base_class.py:83(_reverse_window_scaling)
+      261    0.004    0.000    0.004    0.000 decoder.py:351(raw_decode)
+
+
+
+
+=== FILTRE TK / CTK / PIL / SHOW / DESTROY / RESIZE ===
+
+Mon Aug 10 13:58:40 2026    C:\Users\PC\projet\cache\pagemaitre_affichage.prof
+
+         1137972 function calls (1109293 primitive calls) in 16.584 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1948 to 67 due to restriction <'tkinter|customtkinter|PIL|show|destroy|resize|winfo|update'>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    5.915    5.915   11.713   11.713 {method 'mainloop' of '_tkinter.tkapp' objects}
+53618/34761    5.481    0.000    7.031    0.000 {method 'call' of '_tkinter.tkapp' objects}
+    29/16    0.000    0.000    3.025    0.189 __init__.py:1469(update_idletasks)
+        1    0.001    0.001    1.922    1.922 mockup_view.py:374(show)
+        1    0.000    0.000    1.748    1.748 workspace.py:72(show_dashboard)
+        1    0.000    0.000    1.742    1.742 dashboard_view.py:156(show)
+   138/87    0.004    0.000    1.471    0.017 Image.py:2329(resize)
+       87    1.396    0.016    1.396    0.016 {method 'resize' of 'ImagingCore' objects}
+        2    0.000    0.000    1.325    0.663 __init__.py:1465(update)
+  617/540    0.005    0.000    0.929    0.002 ctk_base_class.py:182(_update_dimensions_event)
+   1064/5    0.013    0.000    0.704    0.141 __init__.py:2796(destroy)
+    411/3    0.002    0.000    0.697    0.232 ctk_base_class.py:94(destroy)
+        1    0.000    0.000    0.643    0.643 ctk_tk.py:88(destroy)
+        1    0.000    0.000    0.643    0.643 __init__.py:2510(destroy)
+        1    0.000    0.000    0.406    0.406 workspace.py:90(show_documents)
+        1    0.401    0.401    0.401    0.401 {built-in method _tkinter.create}
+      184    0.001    0.000    0.308    0.002 ctk_label.py:164(destroy)
+        1    0.000    0.000    0.236    0.236 document_view.py:558(show)
+        3    0.000    0.000    0.224    0.075 ctk_scrollable_frame.py:102(destroy)
+       51    0.000    0.000    0.123    0.002 ctk_button.py:179(destroy)
+      205    0.005    0.000    0.086    0.000 appearance_mode_tracker.py:80(update)
+    33485    0.083    0.000    0.083    0.000 {method 'getint' of '_tkinter.tkapp' objects}
+        4    0.042    0.011    0.042    0.011 {built-in method PIL._imaging.alpha_composite}
+      182    0.000    0.000    0.042    0.000 ctk_label.py:157(_update_image)
+     1412    0.011    0.000    0.035    0.000 ctk_tk.py:101(_update_dimensions_event)
+    35953    0.025    0.000    0.025    0.000 {built-in method _tkinter._flatten}
+        1    0.000    0.000    0.023    0.023 mockup_view.py:7451(_update_selection_controls)
+       64    0.022    0.000    0.022    0.000 {built-in method PIL._imaging.fill}
+        1    0.000    0.000    0.021    0.021 document_view.py:3547(show_centre_tab)
+    33616    0.020    0.000    0.020    0.000 {method 'splitlist' of '_tkinter.tkapp' objects}
+    22669    0.017    0.000    0.017    0.000 {method 'update' of 'dict' objects}
+     1435    0.002    0.000    0.014    0.000 __init__.py:1448(winfo_width)
+      415    0.001    0.000    0.010    0.000 scaling_base_class.py:43(destroy)
+     1065    0.004    0.000    0.010    0.000 __init__.py:682(destroy)
+        1    0.000    0.000    0.008    0.008 mockup_view.py:9838(_update_history_buttons)
+     4178    0.008    0.000    0.008    0.000 {method 'getboolean' of '_tkinter.tkapp' objects}
+     1572    0.008    0.000    0.008    0.000 {method 'createcommand' of '_tkinter.tkapp' objects}
+      510    0.001    0.000    0.008    0.000 __init__.py:1231(winfo_exists)
+     1572    0.008    0.000    0.008    0.000 {method 'deletecommand' of '_tkinter.tkapp' objects}
+       56    0.006    0.000    0.006    0.000 {built-in method PIL._imaging.new}
+     1436    0.002    0.000    0.006    0.000 __init__.py:1246(winfo_height)
+        4    0.000    0.000    0.005    0.001 ctk_progressbar.py:111(destroy)
+      415    0.002    0.000    0.004    0.000 appearance_mode_base_class.py:19(destroy)
+       42    0.000    0.000    0.003    0.000 ctk_frame.py:67(winfo_children)
+       75    0.001    0.000    0.003    0.000 __init__.py:1251(winfo_id)
+       43    0.001    0.000    0.003    0.000 __init__.py:1197(winfo_children)
+       63    0.002    0.000    0.002    0.000 {built-in method PIL._imaging.new_block}
+        1    0.000    0.000    0.001    0.001 mockup_view.py:10572(_update_summary)
+      303    0.001    0.000    0.001    0.000 dataclasses.py:1222(_update_func_cell_for__class__)
+      810    0.001    0.000    0.001    0.000 {method 'update' of 'set' objects}
+        2    0.000    0.000    0.000    0.000 ctk_button.py:161(_update_font)
+       56    0.000    0.000    0.000    0.000 {built-in method PIL._imaging.zip_decoder}
+        6    0.000    0.000    0.000    0.000 __init__.py:1383(winfo_toplevel)
+        9    0.000    0.000    0.000    0.000 functools.py:36(update_wrapper)
+        1    0.000    0.000    0.000    0.000 resize_command.py:1(<module>)
+       24    0.000    0.000    0.000    0.000 <frozen abc>:146(update_abstractmethods)
+        2    0.000    0.000    0.000    0.000 mockup_view.py:7726(_update_page_type_button_states)
+       28    0.000    0.000    0.000    0.000 {built-in method PIL._imaging.draw}
+        1    0.000    0.000    0.000    0.000 resize_command.py:7(ResizeCommand)
+        2    0.000    0.000    0.000    0.000 {method 'getvar' of '_tkinter.tkapp' objects}
+        1    0.000    0.000    0.000    0.000 {built-in method PIL._imagingtk.tkinit}
+        1    0.000    0.000    0.000    0.000 weakref.py:289(update)
+        1    0.000    0.000    0.000    0.000 mockup_view.py:9726(_on_root_destroyed)
+        2    0.000    0.000    0.000    0.000 workspace.py:246(_destroy_cleanup_view)
+        1    0.000    0.000    0.000    0.000 dashboard_view.py:2224(_on_home_destroy)
+        1    0.000    0.000    0.000    0.000 {method 'intersection_update' of 'set' objects}
+        1    0.000    0.000    0.000    0.000 {method 'interpaddr' of '_tkinter.tkapp' objects}
+
+

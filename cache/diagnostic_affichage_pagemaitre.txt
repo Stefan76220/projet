@@ -1,0 +1,286 @@
+==============================================================================
+src\gui\layout\main_window.py
+==============================================================================
+
+[destruction_widget] 1
+  L132: self.root.destroy()
+==============================================================================
+src\gui\views\dashboard_view.py
+==============================================================================
+
+[destruction_widget] 1
+  L2231: self.parent.winfo_toplevel().destroy()
+
+[after_idle] 1
+  L219: root.after_idle(self._hide_application_menu)
+
+[image_open] 2
+  L2023: return Image.open(path).convert("RGB")
+  L2046: source = Image.open(path).convert("RGBA")
+
+[image_resize] 3
+  L1939: base = self._background_source.resize(
+  L1984: mask = mask.resize(
+  L2005: inner_mask = inner_mask.resize(
+==============================================================================
+src\gui\views\document_view.py
+==============================================================================
+
+[destruction_widget] 8
+  L209: self.destroy()
+  L219: self.destroy()
+  L3693: child.destroy()
+  L3865: widget.destroy()
+  L4544: owner_window.destroy()
+  L4876: owner_window.destroy()
+  L5994: widget.destroy()
+  L6072: window.destroy()
+
+[boucle_winfo_children] 4
+  L3692: for child in self._side_content.winfo_children():
+  L3864: for widget in self._rail_inner.winfo_children():
+  L5449: for widget in centre.winfo_children():
+  L5993: for widget in self.parent.winfo_children():
+
+[clear_parent] 1
+  L5991: def _clear_parent_widgets(self) -> None:
+
+[reconstruction_show] 8
+  L5058: ).show()
+  L5263: ).show()
+  L5321: ).show()
+  L5386: view.show()
+  L5411: self._model_workshop_view.show()
+  L5510: self.show()
+  L5974: ).show()
+  L6049: ).show()
+
+[after_idle] 6
+  L210: self.master.after_idle(
+  L1368: canvas.after_idle(redraw)
+  L3087: wall.after_idle(draw_wall)
+  L3568: wall.after_idle(draw_wall)
+  L3903: self._rail_canvas.after_idle(
+  L5434: wall.after_idle(redraw)
+
+[image_open] 3
+  L955: source = Image.open(background_path).convert("RGBA")
+  L2391: source = Image.open(background_path).convert("RGBA")
+  L2513: source = Image.open(thumbnail_path).convert("RGBA")
+
+[image_resize] 3
+  L961: source = source.resize(
+  L2402: source = source.resize(
+  L2523: source = source.resize(
+
+[ALERTE] Reconstruction complète probable du conteneur :
+  autour de L3692
+  autour de L3864
+  autour de L5993
+==============================================================================
+src\gui\views\mockup_view.py
+==============================================================================
+
+[destruction_widget] 16
+  L3325: window.destroy()
+  L3417: old.destroy()
+  L3440: old.destroy()
+  L3476: old_ribbon.destroy()
+  L3823: indicator.destroy()
+  L4538: owner.destroy()
+  L4981: window.destroy()
+  L5847: child.destroy()
+  L7033: indicator.destroy()
+  L8235: child.destroy()
+  L8478: window.destroy()
+  L8956: self._preview_window.destroy()
+  L9264: widget.destroy()
+  L9498: overlay.destroy()
+  L9502: shadow.destroy()
+  L10595: child.destroy()
+
+[boucle_winfo_children] 4
+  L5845: for child in self._sequence_frame.winfo_children():
+  L8234: for child in rules_scroll.winfo_children():
+  L9425: for child in widget.winfo_children():
+  L10594: for child in self.parent.winfo_children():
+
+[clear_parent] 1
+  L10593: def _clear_parent(self) -> None:
+
+[after_idle] 10
+  L472: self._root.after_idle(redraw_background)
+  L571: frame.after_idle(
+  L2106: canvas.after_idle(redraw)
+  L2235: ribbon.after_idle(redraw)
+  L2305: container.after_idle(redraw)
+  L3473: self._root.after_idle(old_ribbon.destroy)
+  L4918: window.after_idle(
+  L5016: self.parent.after_idle(callback)
+  L5773: self._sequence_frame.after_idle(
+  L8778: canvas.after_idle(redraw_now)
+
+[image_open] 7
+  L418: self._mockup_background_source = Image.open(background_path).convert("RGB")
+  L1355: source = Image.open(background_path).convert("RGBA")
+  L2170: source = Image.open(background_path).convert("RGB")
+  L2264: source = Image.open(background_path).convert("RGB")
+  L5753: self._plan_background_source = Image.open(
+  L8704: source = Image.open(background_path).convert("RGB")
+  L9387: return Image.open(path).convert("RGB")
+
+[image_resize] 7
+  L450: resized = source.resize(
+  L1367: source = source.resize(
+  L2211: resized = source.resize(
+  L2289: resized = source.resize(
+  L5806: resized = source.resize(
+  L8736: resized = source.resize(
+  L9524: page_image = source.resize(
+
+[ALERTE] Reconstruction complète probable du conteneur :
+  autour de L5845
+  autour de L8234
+  autour de L10594
+==============================================================================
+src\gui\views\document_editor_view.py
+==============================================================================
+
+[destruction_widget] 5
+  L149: self.destroy()
+  L152: self.destroy()
+  L329: self.destroy()
+  L332: self.destroy()
+  L481: widget.destroy()
+
+[boucle_winfo_children] 1
+  L480: for widget in self.parent.winfo_children():
+
+[clear_parent] 1
+  L479: def _clear_parent(self) -> None:
+
+[reconstruction_show] 6
+  L489: self.show()
+  L527: ).show()
+  L574: self.show()
+  L656: self.show()
+  L677: self.show()
+  L692: self.show()
+
+[ALERTE] Reconstruction complète probable du conteneur :
+  autour de L480
+==============================================================================
+src\gui\views\page_editor_view.py
+==============================================================================
+
+[destruction_widget] 12
+  L219: self.destroy()
+  L230: self.destroy()
+  L1427: self.destroy()
+  L1437: self.destroy()
+  L1787: self.destroy()
+  L2031: self.destroy()
+  L2250: self.destroy()
+  L2707: self.destroy()
+  L5654: dialog.destroy()
+  L6074: dialog.destroy()
+  L7684: window.destroy()
+  L10151: widget.destroy()
+
+[boucle_winfo_children] 2
+  L3498: widget.winfo_children()
+  L10150: for widget in self.parent.winfo_children():
+
+[clear_parent] 1
+  L10146: def _clear_parent(self) -> None:
+
+[reconstruction_show] 6
+  L9865: self.show()
+  L9925: self.show()
+  L9966: self.show()
+  L10001: self.show()
+  L10084: self.show()
+  L10133: self.show()
+
+[after_idle] 7
+  L221: self.master.after_idle(
+  L1428: self.master.after_idle(
+  L1770: self.master.after_idle(callback)
+  L2917: self.parent.after_idle(self._prepare_first_display)
+  L4319: self.parent.after_idle(self._fit_page_to_window)
+  L9129: lambda _event: self.parent.after_idle(
+  L9720: self.root.after_idle(
+
+[image_open] 7
+  L2598: with Image.open(path) as image:
+  L6511: with Image.open(source_path) as image:
+  L6701: with Image.open(source) as image:
+  L7224: with Image.open(image_path) as source:
+  L7985: with Image.open(image_path) as source:
+  L8319: with Image.open(image_path) as image:
+  L9053: with Image.open(image_path) as source:
+
+[image_resize] 2
+  L7293: rendered = original.resize(
+  L9071: rendered = original.resize(
+
+[ALERTE] Reconstruction complète probable du conteneur :
+  autour de L10150
+==============================================================================
+src\gui\views\model_workshop_view.py
+==============================================================================
+
+[destruction_widget] 11
+  L641: self.destroy()
+  L1073: self.destroy()
+  L1433: self.destroy()
+  L1869: child.destroy()
+  L2371: self.destroy()
+  L2380: self.destroy()
+  L2542: self.destroy()
+  L3439: cover.destroy()
+  L3815: old_pending.destroy()
+  L3900: current_host.destroy()
+  L4434: widget.destroy()
+
+[boucle_winfo_children] 5
+  L1868: for child in self._content.winfo_children():
+  L2568: children = parent.winfo_children()
+  L3259: previous_widgets = tuple(self.parent.winfo_children())
+  L3737: if self._editor_host.winfo_children():
+  L4433: for widget in self.parent.winfo_children():
+
+[clear_parent] 1
+  L4432: def _clear_parent(self) -> None:
+
+[reconstruction_show] 3
+  L3335: self.show()
+  L3771: self._page_editor.show()
+  L3848: pending_editor.show()
+
+[after_idle] 5
+  L643: parent.after_idle(callback)
+  L3038: self.parent.after_idle(self._on_ready)
+  L3419: self.parent.after_idle(self._save_editor_state)
+  L3781: self.parent.after_idle(
+  L3864: self.parent.after_idle(
+
+[ALERTE] Reconstruction complète probable du conteneur :
+  autour de L1868
+  autour de L4433
+
+##############################################################################
+SYNTHÈSE
+##############################################################################
+destruction_widget: 54
+boucle_winfo_children: 16
+clear_parent: 5
+reconstruction_show: 23
+after_idle: 29
+image_open: 19
+image_resize: 15
+
+INTERPRÉTATION
+Si plusieurs vues détruisent tous les enfants du conteneur puis recréent leurs widgets, le clignotement blanc et la latence sont structurels.
+Les Image.open/resize exécutés pendant show()/rafraîchissement aggravent le délai de reconstruction.
+La correction durable consiste à garder un hôte d'écran persistant, créer les grandes zones une seule fois, puis mettre à jour leur contenu sans détruire le parent.

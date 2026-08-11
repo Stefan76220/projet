@@ -1,0 +1,17 @@
+{
+  "nom": "Tomelinea",
+  "reference": "Tomelinea_reference_officielle_INCHANGEE.png",
+  "sha256_reference": "04348fc3c837dbd7e51da956c4a55a61555085517a7b81ff3dca2fdc5607fc11",
+  "dimensions_reference": [
+    1342,
+    358
+  ],
+  "contenu": {
+    "00_reference": "fichier source strictement inchangé",
+    "01_logo_complet": "logo complet, tailles raster utiles + JPG/WebP",
+    "02_symbole_TL_livre": "symbole extrait, PNG transparent et tailles d'icône",
+    "03_wordmark": "TOMELINEA + ligne/stations + baseline",
+    "04_windows": "ICO multirésolution + PNG Windows"
+  },
+  "note": "Aucun SVG n'est inclus : la référence fournie est raster. Un vrai SVG nécessiterait un redessin vectoriel, ce qui contreviendrait à la consigne de ne pas modifier le logo."
+}
