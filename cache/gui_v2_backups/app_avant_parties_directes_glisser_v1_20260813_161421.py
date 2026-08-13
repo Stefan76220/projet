@@ -6551,15 +6551,6 @@ class PageMaitreV2(tk.Tk):
         maquettage_structure_regions: list[dict] = []
         maquettage_structure_hovered: int | None = None
 
-        # STRUCTURE_GLISSER_DEPOSER_PARTIES_V1
-        # Début et Fin restent fixes. Les parties intermédiaires sont
-        # manipulées directement sur la ligne.
-        maquettage_structure_pressed: int | None = None
-        maquettage_structure_press_xy: tuple[float, float] | None = None
-        maquettage_structure_dragging = False
-        maquettage_structure_drop_slot: int | None = None
-        maquettage_structure_editor = None
-
         def maquettage_button_id(text, x1, y1, x2, y2):
             return (
                 f"{text}|{int(round(x1))}|{int(round(y1))}|"
@@ -6592,203 +6583,6 @@ class PageMaitreV2(tk.Tk):
                 ):
                     return region
             return None
-
-        def maquettage_structure_drop_slot_at(x, y):
-            """Slot d'insertion d'une partie, toujours entre Début et Fin."""
-            if len(structure_model) < 3:
-                return 1
-
-            regions = sorted(
-                maquettage_structure_regions,
-                key=lambda item: int(item["index"]),
-            )
-            if len(regions) != len(structure_model):
-                return None
-
-            centers = [
-                (item["x1"] + item["x2"]) / 2
-                for item in regions
-            ]
-
-            # Les slots valides sont 1 .. len(model)-1 :
-            # 1 = juste après Début ; dernier = juste avant Fin.
-            for slot in range(1, len(centers)):
-                boundary = (centers[slot - 1] + centers[slot]) / 2
-                if x < boundary:
-                    return slot
-
-            return len(structure_model) - 1
-
-        def maquettage_structure_center(index):
-            """Recalcule le centre visuel d'un nœud de structure."""
-            width = max(canvas.winfo_width(), 1180)
-            margin = 44
-            tools_width = 292
-            tools_left = width - margin - tools_width
-            track_left = margin + 32
-            track_right = tools_left - 24
-
-            fixed_start_x = track_left + 52
-            fixed_end_x = track_right - 52
-
-            count = len(structure_model)
-            if count <= 1:
-                centers = [fixed_start_x]
-            elif count == 2:
-                centers = [fixed_start_x, fixed_end_x]
-            else:
-                internal_count = count - 2
-                step = (
-                    fixed_end_x - fixed_start_x
-                ) / (internal_count + 1)
-                centers = [fixed_start_x]
-                centers.extend(
-                    fixed_start_x + step * (i + 1)
-                    for i in range(internal_count)
-                )
-                centers.append(fixed_end_x)
-
-            if 0 <= index < len(centers):
-                return centers[index]
-            return fixed_start_x
-
-        def close_structure_editor(*, commit=True):
-            nonlocal maquettage_structure_editor
-            editor = maquettage_structure_editor
-            if editor is None:
-                return
-
-            try:
-                group = editor._tomelinea_group
-                old_name = str(group.get("name", "Partie"))
-                new_name = editor.get().strip()
-
-                if commit and new_name:
-                    group["name"] = new_name
-
-                    # Si un ordre de pages existait déjà sous l'ancien nom,
-                    # il suit automatiquement le nouveau nom.
-                    if (
-                        old_name != new_name
-                        and old_name in self._maquettage_page_orders
-                        and new_name not in self._maquettage_page_orders
-                    ):
-                        self._maquettage_page_orders[new_name] = (
-                            self._maquettage_page_orders.pop(old_name)
-                        )
-            except Exception:
-                pass
-
-            try:
-                editor.destroy()
-            except Exception:
-                pass
-
-            maquettage_structure_editor = None
-            render()
-
-        def start_structure_editor(index):
-            """Édition directe du nom, exactement sous le livre sélectionné."""
-            nonlocal maquettage_structure_editor
-
-            if not (1 <= index < len(structure_model) - 1):
-                return
-
-            if maquettage_structure_editor is not None:
-                close_structure_editor(commit=True)
-
-            render()
-
-            group = structure_model[index]
-            cx = maquettage_structure_center(index)
-
-            # Le nom est dessiné à track_y + 27. On pose le champ dessus.
-            top_y1 = 14
-            track_y = top_y1 + 102
-
-            editor = tk.Entry(
-                canvas,
-                bg="#FFFEFC",
-                fg="#111111",
-                insertbackground="#173E70",
-                relief="solid",
-                bd=1,
-                highlightthickness=1,
-                highlightbackground="#8D70C7",
-                highlightcolor="#8D70C7",
-                justify="center",
-                font=("Georgia", 10, "bold"),
-            )
-            editor.insert(0, str(group.get("name", "Partie")))
-            editor._tomelinea_group = group
-            editor.place(
-                x=cx - 65,
-                y=track_y + 15,
-                width=130,
-                height=25,
-            )
-            maquettage_structure_editor = editor
-
-            def validate(_event=None):
-                close_structure_editor(commit=True)
-                return "break"
-
-            def cancel(_event=None):
-                close_structure_editor(commit=False)
-                return "break"
-
-            def focus_lost(_event=None):
-                canvas.after_idle(
-                    lambda: (
-                        close_structure_editor(commit=True)
-                        if maquettage_structure_editor is editor
-                        else None
-                    )
-                )
-
-            editor.bind("<Return>", validate)
-            editor.bind("<Escape>", cancel)
-            editor.bind("<FocusOut>", focus_lost)
-
-            editor.focus_set()
-            editor.selection_range(0, "end")
-
-        def add_part_directly():
-            """+ Partie : création immédiate juste après Début."""
-            nonlocal selected_index, selected_group
-
-            if maquettage_structure_editor is not None:
-                close_structure_editor(commit=True)
-
-            used_names = {
-                str(group.get("name", "")).strip().lower()
-                for group in structure_model
-            }
-            number = 1
-            while f"partie {number}".lower() in used_names:
-                number += 1
-
-            colors = (
-                "#8D70C7",
-                "#72AFCB",
-                "#E28A6D",
-                "#75B89E",
-            )
-            internal_count = max(0, len(structure_model) - 2)
-
-            new_group = {
-                "name": f"Partie {number}",
-                "pages": 0,
-                "color": colors[internal_count % len(colors)],
-            }
-
-            structure_model.insert(1, new_group)
-            selected_index = 1
-            selected_group = new_group
-            self._maquettage_structure_model = structure_model
-
-            render()
-            canvas.after_idle(lambda: start_structure_editor(1))
 
         def maquettage_drop_slot_at(x, y):
             if not maquettage_page_regions:
@@ -7271,38 +7065,6 @@ class PageMaitreV2(tk.Tk):
                 tags="maquettage_ui",
             )
 
-            if (
-                maquettage_structure_dragging
-                and maquettage_structure_drop_slot is not None
-                and 1 <= maquettage_structure_drop_slot < node_count
-            ):
-                slot = int(maquettage_structure_drop_slot)
-                marker_x = (
-                    node_centers[slot - 1] + node_centers[slot]
-                ) / 2
-                canvas.create_line(
-                    marker_x,
-                    track_y - 31,
-                    marker_x,
-                    track_y + 13,
-                    fill="#173E70",
-                    width=2,
-                    tags="maquettage_ui",
-                )
-                canvas.create_polygon(
-                    marker_x,
-                    track_y - 36,
-                    marker_x + 5,
-                    track_y - 31,
-                    marker_x,
-                    track_y - 26,
-                    marker_x - 5,
-                    track_y - 31,
-                    fill="#173E70",
-                    outline="",
-                    tags="maquettage_ui",
-                )
-
             for index, group in enumerate(structure_model):
                 cx = node_centers[index]
                 is_selected = index == selected_index
@@ -7370,10 +7132,10 @@ class PageMaitreV2(tk.Tk):
                 maquettage_structure_regions.append(
                     {
                         "index": index,
-                        "x1": cx - max(icon_w / 2 + 5, 46),
+                        "x1": cx - icon_w / 2 - 5,
                         "y1": icon_anchor_y - icon_h - 7,
-                        "x2": cx + max(icon_w / 2 + 5, 46),
-                        "y2": track_y + 58,
+                        "x2": cx + icon_w / 2 + 5,
+                        "y2": icon_anchor_y + 5,
                     }
                 )
 
@@ -7449,7 +7211,7 @@ class PageMaitreV2(tk.Tk):
                 "+ Partie",
                 "#75B89E",
                 muted=True,
-                command=add_part_directly,
+                command=self._tomelinea_open_add_part_window,
             )
             secondary_button(
                 tool_x1 + tool_half + tool_gap,
@@ -8371,27 +8133,6 @@ class PageMaitreV2(tk.Tk):
             nonlocal maquettage_page_dragging
             nonlocal maquettage_page_drop_slot
             nonlocal maquettage_structure_hovered
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
-
-            # Une partie interne maintenue devient un glisser-déposer.
-            if maquettage_structure_pressed is not None:
-                if maquettage_structure_press_xy is not None:
-                    dx = event.x - maquettage_structure_press_xy[0]
-                    dy = event.y - maquettage_structure_press_xy[1]
-                    if dx * dx + dy * dy >= 36:
-                        maquettage_structure_dragging = True
-
-                if maquettage_structure_dragging:
-                    new_slot = maquettage_structure_drop_slot_at(
-                        event.x,
-                        event.y,
-                    )
-                    if new_slot != maquettage_structure_drop_slot:
-                        maquettage_structure_drop_slot = new_slot
-                        render()
-                    canvas.configure(cursor="hand2")
-                    return
 
             # Une page maintenue devient un glisser dès que le pointeur
             # s'écarte de quelques pixels du point d'appui.
@@ -8510,10 +8251,6 @@ class PageMaitreV2(tk.Tk):
             nonlocal selected_index, selected_group
             nonlocal maquettage_pressed, maquettage_hovered
             nonlocal maquettage_structure_hovered
-            nonlocal maquettage_structure_pressed
-            nonlocal maquettage_structure_press_xy
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
             nonlocal maquettage_page_pressed
             nonlocal maquettage_page_pressed_slot
             nonlocal maquettage_page_press_xy
@@ -8547,21 +8284,6 @@ class PageMaitreV2(tk.Tk):
                     maquettage_structure_hovered = selected_index
                     maquettage_pressed = None
                     maquettage_hovered = None
-
-                    if 1 <= new_index < len(structure_model) - 1:
-                        maquettage_structure_pressed = new_index
-                        maquettage_structure_press_xy = (
-                            event.x,
-                            event.y,
-                        )
-                        maquettage_structure_dragging = False
-                        maquettage_structure_drop_slot = new_index
-                    else:
-                        maquettage_structure_pressed = None
-                        maquettage_structure_press_xy = None
-                        maquettage_structure_dragging = False
-                        maquettage_structure_drop_slot = None
-
                     canvas.configure(cursor="hand2")
                     render()
                 return
@@ -8576,56 +8298,13 @@ class PageMaitreV2(tk.Tk):
                 render()
 
         def on_maquettage_release(event):
-            nonlocal selected_index, selected_group
             nonlocal maquettage_pressed, maquettage_hovered
-            nonlocal maquettage_structure_pressed
-            nonlocal maquettage_structure_press_xy
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
             nonlocal maquettage_page_pressed
             nonlocal maquettage_page_pressed_slot
             nonlocal maquettage_page_press_xy
             nonlocal maquettage_page_dragging
             nonlocal maquettage_page_drop_slot
             nonlocal maquettage_page_hovered
-
-            if maquettage_structure_pressed is not None:
-                source_index = int(maquettage_structure_pressed)
-                was_dragging = bool(maquettage_structure_dragging)
-                drop_slot = maquettage_structure_drop_slot
-
-                if (
-                    was_dragging
-                    and drop_slot is not None
-                    and 1 <= source_index < len(structure_model) - 1
-                ):
-                    moving = structure_model[source_index]
-                    target = max(
-                        1,
-                        min(len(structure_model) - 1, int(drop_slot)),
-                    )
-
-                    structure_model.pop(source_index)
-                    if target > source_index:
-                        target -= 1
-
-                    target = max(
-                        1,
-                        min(len(structure_model) - 1, target),
-                    )
-                    structure_model.insert(target, moving)
-
-                    selected_group = moving
-                    selected_index = structure_model.index(moving)
-                    self._maquettage_structure_model = structure_model
-
-                maquettage_structure_pressed = None
-                maquettage_structure_press_xy = None
-                maquettage_structure_dragging = False
-                maquettage_structure_drop_slot = None
-                canvas.configure(cursor="arrow")
-                render()
-                return
 
             if maquettage_page_pressed is not None:
                 page_id = maquettage_page_pressed

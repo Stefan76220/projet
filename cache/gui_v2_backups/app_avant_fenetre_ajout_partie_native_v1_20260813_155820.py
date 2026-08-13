@@ -4695,450 +4695,78 @@ class PageMaitreV2(tk.Tk):
     # Fenêtres volontairement minimales : elles servent uniquement de base
     # aux futures fonctions du Maquettage.
 
-    # FENETRE_AJOUT_PARTIE_NATIVE_MAQUETTAGE_V1
     def _tomelinea_open_add_part_window(self):
         win = tk.Toplevel(self)
         win.title("TomeLinea — Ajouter une partie")
+        win.transient(self)
+        win.resizable(False, False)
+        self._tomelinea_center_toplevel(win, 540, 360)
 
-        # Même cycle d'apparition atomique que les autres fenêtres validées.
-        self._prepare_accueil_dialog(win)
-        self._accueil_center_base_window(win, 650, 430)
-        win.configure(bg="#F6F2EA")
-
-        canvas = tk.Canvas(
-            win,
-            bg="#F6F2EA",
-            highlightthickness=0,
-            bd=0,
-        )
-        canvas.pack(fill="both", expand=True)
-
-        # --------------------------------------------------------------
-        # Fond identique au bureau Maquettage.
-        # --------------------------------------------------------------
-        bg_path = (
-            PROJECT_ROOT
-            / "assets"
-            / "gui_v2"
-            / "maquettage_backgrounds"
-            / "maquettage_studio_pro.png"
-        )
-
-        win._tomelinea_add_part_bg_source = None
-        win._tomelinea_add_part_bg_photo = None
-
-        try:
-            if bg_path.exists():
-                win._tomelinea_add_part_bg_source = Image.open(
-                    bg_path
-                ).convert("RGB")
-        except Exception:
-            win._tomelinea_add_part_bg_source = None
-
-        PANEL = "#FFFEFC"
-        FIELD = "#FBFAF7"
-        INK = "#25323E"
-        MUTED = "#68717A"
-        NAVY = "#173E70"
-        BORDER = "#BFC7D0"
-
-        panel = tk.Frame(
-            canvas,
-            bg=PANEL,
-            bd=0,
-            highlightthickness=0,
-        )
-        panel_id = canvas.create_window(
-            48,
-            34,
-            anchor="nw",
-            window=panel,
-        )
-
-        def _panel_points(x1, y1, x2, y2, cut=18, dx=0, dy=0):
-            return [
-                x1 + dx, y1 + dy,
-                x2 - cut + dx, y1 + dy,
-                x2 + dx, y1 + cut + dy,
-                x2 + dx, y2 + dy,
-                x1 + cut + dx, y2 + dy,
-                x1 + dx, y2 - cut + dy,
-            ]
-
-        def _redraw(_event=None):
-            width = max(canvas.winfo_width(), 650)
-            height = max(canvas.winfo_height(), 430)
-
-            canvas.delete("add_part_bg")
-            canvas.delete("add_part_panel")
-
-            if win._tomelinea_add_part_bg_source is not None:
-                try:
-                    image = win._tomelinea_add_part_bg_source.resize(
-                        (width, height),
-                        Image.Resampling.LANCZOS,
-                    )
-                    image = Image.blend(
-                        image.convert("RGB"),
-                        Image.new("RGB", image.size, "#D7D9DC"),
-                        0.10,
-                    )
-                    win._tomelinea_add_part_bg_photo = ImageTk.PhotoImage(image)
-                    canvas.create_image(
-                        0,
-                        0,
-                        image=win._tomelinea_add_part_bg_photo,
-                        anchor="nw",
-                        tags=("add_part_bg",),
-                    )
-                except Exception:
-                    canvas.create_rectangle(
-                        0, 0, width, height,
-                        fill="#EEEDEA",
-                        outline="",
-                        tags=("add_part_bg",),
-                    )
-            else:
-                canvas.create_rectangle(
-                    0, 0, width, height,
-                    fill="#EEEDEA",
-                    outline="",
-                    tags=("add_part_bg",),
-                )
-
-            x1, y1 = 22, 18
-            x2, y2 = width - 22, height - 18
-
-            canvas.create_polygon(
-                _panel_points(x1, y1, x2, y2, dx=2, dy=4),
-                fill="#D3CEC5",
-                outline="",
-                tags=("add_part_panel",),
-            )
-            canvas.create_polygon(
-                _panel_points(x1, y1, x2, y2),
-                fill=PANEL,
-                outline="#D5D1CA",
-                width=1,
-                tags=("add_part_panel",),
-            )
-
-            # Rail violet = Maquettage / Structure.
-            canvas.create_line(
-                x1 + 4,
-                y1 + 19,
-                x1 + 4,
-                y2 - 19,
-                fill="#8D70C7",
-                width=4,
-                tags=("add_part_panel",),
-            )
-
-            canvas.coords(panel_id, x1 + 28, y1 + 20)
-            canvas.itemconfigure(
-                panel_id,
-                width=max(500, x2 - x1 - 56),
-                height=max(320, y2 - y1 - 40),
-            )
-
-            canvas.tag_lower("add_part_panel")
-            canvas.tag_lower("add_part_bg")
-
-        canvas.bind("<Configure>", _redraw)
-        win._tomelinea_dialog_redraw = _redraw
-
-        # --------------------------------------------------------------
-        # Petits composants TomeLinea locaux.
-        # --------------------------------------------------------------
-        def _round_rect(c, x1, y1, x2, y2, radius, **kwargs):
-            r = max(1, min(radius, (x2 - x1) / 2, (y2 - y1) / 2))
-            pts = [
-                x1 + r, y1,
-                x2 - r, y1,
-                x2, y1,
-                x2, y1 + r,
-                x2, y2 - r,
-                x2, y2,
-                x2 - r, y2,
-                x1 + r, y2,
-                x1, y2,
-                x1, y2 - r,
-                x1, y1 + r,
-                x1, y1,
-            ]
-            return c.create_polygon(
-                pts,
-                smooth=True,
-                splinesteps=22,
-                **kwargs,
-            )
-
-        def _make_button(
-            parent,
-            *,
-            text,
-            command,
-            primary=False,
-            min_width=112,
-            enabled=True,
-        ):
-            width = max(min_width, int(len(text) * 7.2) + 34)
-            height = 36
-
-            btn = tk.Canvas(
-                parent,
-                width=width + 5,
-                height=height + 6,
-                bg=PANEL,
-                highlightthickness=0,
-                bd=0,
-                cursor="hand2" if enabled else "arrow",
-                takefocus=0,
-            )
-
-            state = {
-                "enabled": bool(enabled),
-                "hover": False,
-                "pressed": False,
-                "command": command,
-            }
-
-            def draw():
-                btn.delete("all")
-
-                active = state["enabled"]
-                hover = state["hover"] and active
-                pressed = state["pressed"] and active
-                dy = 1 if pressed else 0
-
-                if primary:
-                    if not active:
-                        face, outline, fg = "#D9DEE4", "#C9CFD5", "#9299A0"
-                        shadow, shadow_y = "#E0E2E4", 1
-                    elif pressed:
-                        face, outline, fg = "#12345F", "#12345F", "#FFFFFF"
-                        shadow, shadow_y = "#AEB7C0", 1
-                    elif hover:
-                        face, outline, fg = "#24558A", "#24558A", "#FFFFFF"
-                        shadow, shadow_y = "#B9C0C7", 3
-                    else:
-                        face, outline, fg = "#173E70", "#173E70", "#FFFFFF"
-                        shadow, shadow_y = "#C6CBD0", 2
-                else:
-                    if not active:
-                        face, outline, fg = "#F1F0ED", "#DDDAD4", "#A0A5AA"
-                        shadow, shadow_y = "#E5E2DD", 1
-                    elif pressed:
-                        face, outline, fg = "#E9F0F7", "#355C85", "#173E70"
-                        shadow, shadow_y = "#BFC7CF", 1
-                    elif hover:
-                        face, outline, fg = "#F3F7FB", "#496D94", "#173E70"
-                        shadow, shadow_y = "#C4CBD2", 3
-                    else:
-                        face, outline, fg = "#FFFDFC", "#BFC7D0", "#173E70"
-                        shadow, shadow_y = "#CDD2D6", 2
-
-                x1, y1 = 2, 1 + dy
-                x2, y2 = width + 1, height + dy
-
-                _round_rect(
-                    btn,
-                    x1 + 1,
-                    y1 + shadow_y,
-                    x2 + 1,
-                    y2 + shadow_y,
-                    8,
-                    fill=shadow,
-                    outline="",
-                )
-                _round_rect(
-                    btn,
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                    8,
-                    fill=face,
-                    outline=outline,
-                    width=1,
-                )
-                btn.create_text(
-                    (x1 + x2) / 2,
-                    (y1 + y2) / 2,
-                    text=text,
-                    fill=fg,
-                    font=("Segoe UI", 9, "bold" if primary else "normal"),
-                    anchor="center",
-                )
-
-            def set_enabled(value):
-                state["enabled"] = bool(value)
-                state["hover"] = False
-                state["pressed"] = False
-                btn.configure(
-                    cursor="hand2" if state["enabled"] else "arrow"
-                )
-                draw()
-
-            def enter(_event=None):
-                if state["enabled"]:
-                    state["hover"] = True
-                    draw()
-
-            def leave(_event=None):
-                state["hover"] = False
-                state["pressed"] = False
-                draw()
-
-            def press(_event=None):
-                if state["enabled"]:
-                    state["pressed"] = True
-                    draw()
-
-            def release(_event=None):
-                if not state["enabled"]:
-                    return
-                state["pressed"] = False
-                state["hover"] = True
-                draw()
-                action = state.get("command")
-                if callable(action):
-                    action()
-
-            btn.bind("<Enter>", enter)
-            btn.bind("<Leave>", leave)
-            btn.bind("<ButtonPress-1>", press)
-            btn.bind("<ButtonRelease-1>", release)
-            btn.set_enabled = set_enabled
-            draw()
-            return btn
-
-        def _title_row(parent, text):
-            row = tk.Frame(parent, bg=PANEL)
-            row.pack(fill="x")
-
-            label = tk.Label(
-                row,
-                text=text,
-                bg=PANEL,
-                fg=theme.INK,
-                font=("Georgia", 15, "bold"),
-            )
-            label.pack(side="left")
-
-            line = tk.Canvas(
-                row,
-                height=22,
-                bg=PANEL,
-                highlightthickness=0,
-                bd=0,
-            )
-            line.pack(side="left", fill="x", expand=True, padx=(16, 0))
-
-            def draw_line(_event=None):
-                line.delete("all")
-                w = max(line.winfo_width(), 40)
-                y = 11
-                line.create_line(
-                    0,
-                    y,
-                    max(0, w - 8),
-                    y,
-                    fill="#202020",
-                    width=1,
-                )
-                line.create_oval(
-                    max(0, w - 9),
-                    y - 3,
-                    max(0, w - 3),
-                    y + 3,
-                    fill=PANEL,
-                    outline="#202020",
-                    width=1,
-                )
-
-            line.bind("<Configure>", draw_line)
-            line.after_idle(draw_line)
-
-        def _field(parent, label_text, initial=""):
-            holder = tk.Frame(parent, bg=PANEL)
-            holder.pack(fill="x", pady=(0, 10))
-
-            tk.Label(
-                holder,
-                text=label_text,
-                bg=PANEL,
-                fg="#4F5963",
-                font=("Segoe UI", 8, "bold"),
-            ).pack(anchor="w")
-
-            field_frame = tk.Frame(
-                holder,
-                bg=FIELD,
-                highlightthickness=1,
-                highlightbackground=BORDER,
-                padx=8,
-                pady=6,
-            )
-            field_frame.pack(fill="x", pady=(4, 0))
-
-            var = tk.StringVar(value=initial)
-            entry = tk.Entry(
-                field_frame,
-                textvariable=var,
-                bg=FIELD,
-                fg=INK,
-                insertbackground=NAVY,
-                relief="flat",
-                bd=0,
-                highlightthickness=0,
-                font=("Segoe UI", 9),
-            )
-            entry.pack(fill="x")
-            return var, entry
-
-        # --------------------------------------------------------------
-        # Titre / intro.
-        # --------------------------------------------------------------
-        _title_row(panel, "Ajouter une partie")
+        shell = tk.Frame(win, padx=22, pady=20)
+        shell.pack(fill="both", expand=True)
 
         tk.Label(
-            panel,
-            text="Ajoutez une nouvelle partie à la structure du livre.",
-            bg=PANEL,
-            fg=MUTED,
-            font=("Segoe UI", 8),
-        ).pack(anchor="w", pady=(5, 18))
+            shell,
+            text="Ajouter une partie",
+            font=("Segoe UI", 15, "bold"),
+        ).pack(anchor="w")
 
-        # --------------------------------------------------------------
-        # Formulaire.
-        # --------------------------------------------------------------
-        form = tk.Frame(panel, bg=PANEL)
+        tk.Label(
+            shell,
+            text=(
+                "Base de la future commande. "
+                "Les réglages seront définis plus tard."
+            ),
+            font=("Segoe UI", 9),
+        ).pack(anchor="w", pady=(4, 18))
+
+        form = tk.Frame(shell)
         form.pack(fill="x")
 
-        name_var, name_entry = _field(
+        tk.Label(
             form,
-            "Nom de la partie",
-            "Nouvelle partie",
-        )
+            text="Nom de la partie",
+            width=22,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", pady=7)
 
-        pages_var, _pages_entry = _field(
-            form,
-            "Pages prévues",
-            "12",
+        name_entry = tk.Entry(form)
+        name_entry.insert(0, "Nouvelle partie")
+        name_entry.grid(
+            row=0,
+            column=1,
+            sticky="ew",
+            pady=7,
         )
-
-        # Position : champ visuel TomeLinea + menu contextuel simple.
-        position_holder = tk.Frame(form, bg=PANEL)
-        position_holder.pack(fill="x", pady=(0, 10))
 
         tk.Label(
-            position_holder,
+            form,
+            text="Pages prévues",
+            width=22,
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=7)
+
+        pages_entry = tk.Spinbox(
+            form,
+            from_=1,
+            to=999,
+            width=10,
+        )
+        pages_entry.delete(0, "end")
+        pages_entry.insert(0, "12")
+        pages_entry.grid(
+            row=1,
+            column=1,
+            sticky="w",
+            pady=7,
+        )
+
+        tk.Label(
+            form,
             text="Position",
-            bg=PANEL,
-            fg="#4F5963",
-            font=("Segoe UI", 8, "bold"),
-        ).pack(anchor="w")
+            width=22,
+            anchor="w",
+        ).grid(row=2, column=0, sticky="w", pady=7)
 
         model = getattr(
             self,
@@ -5153,125 +4781,43 @@ class PageMaitreV2(tk.Tk):
             choices = ["Avant Fin"]
 
         position_var = tk.StringVar(value=choices[-1])
-
-        selector = tk.Frame(
-            position_holder,
-            bg=FIELD,
-            highlightthickness=1,
-            highlightbackground=BORDER,
-            height=34,
-        )
-        selector.pack(fill="x", pady=(4, 0))
-        selector.pack_propagate(False)
-
-        position_label = tk.Label(
-            selector,
-            textvariable=position_var,
-            bg=FIELD,
-            fg=INK,
-            font=("Segoe UI", 9),
-            anchor="w",
-            padx=9,
-            cursor="hand2",
-        )
-        position_label.pack(side="left", fill="both", expand=True)
-
-        arrow_label = tk.Label(
-            selector,
-            text="⌄",
-            bg=FIELD,
-            fg="#56708A",
-            font=("Segoe UI", 11, "bold"),
-            width=3,
-            cursor="hand2",
-        )
-        arrow_label.pack(side="right", fill="y")
-
-        menu = tk.Menu(
-            win,
-            tearoff=False,
-            bg="#FFFEFC",
-            fg=INK,
-            activebackground="#F3F7FB",
-            activeforeground=NAVY,
-            bd=1,
-            relief="solid",
-            font=("Segoe UI", 9),
+        tk.OptionMenu(
+            form,
+            position_var,
+            *choices,
+        ).grid(
+            row=2,
+            column=1,
+            sticky="ew",
+            pady=7,
         )
 
-        for choice in choices:
-            menu.add_command(
-                label=choice,
-                command=lambda value=choice: position_var.set(value),
-            )
-
-        def _open_position_menu(event=None):
-            try:
-                x = selector.winfo_rootx()
-                y = selector.winfo_rooty() + selector.winfo_height()
-                menu.tk_popup(x, y)
-            finally:
-                try:
-                    menu.grab_release()
-                except Exception:
-                    pass
-
-        position_label.bind("<Button-1>", _open_position_menu)
-        arrow_label.bind("<Button-1>", _open_position_menu)
-        selector.bind("<Button-1>", _open_position_menu)
-
-        # Repère fonctionnel discret.
-        note = tk.Frame(panel, bg=PANEL)
-        note.pack(fill="x", pady=(7, 0))
-
-        tk.Frame(
-            note,
-            bg="#DDD8D1",
-            height=1,
-        ).pack(fill="x", pady=(0, 10))
+        form.columnconfigure(1, weight=1)
 
         tk.Label(
-            note,
+            shell,
             text="Début et Fin restent les bornes fixes du livre.",
-            bg=PANEL,
-            fg=MUTED,
             font=("Segoe UI", 8),
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(15, 8))
 
-        # --------------------------------------------------------------
-        # Actions.
-        # --------------------------------------------------------------
-        actions = tk.Frame(panel, bg=PANEL)
-        actions.pack(side="bottom", fill="x", pady=(16, 0))
+        actions = tk.Frame(shell)
+        actions.pack(side="bottom", fill="x", pady=(18, 0))
 
-        close_button = _make_button(
+        tk.Button(
             actions,
             text="Fermer",
             command=win.destroy,
-            primary=False,
-            min_width=100,
-            enabled=True,
-        )
-        close_button.pack(side="right")
+            width=12,
+        ).pack(side="right")
 
-        # La logique métier n'est toujours pas active : bouton volontairement inactif.
-        add_button = _make_button(
+        tk.Button(
             actions,
-            text="Ajouter la partie   ›",
-            command=lambda: None,
-            primary=True,
-            min_width=150,
-            enabled=False,
-        )
-        add_button.pack(side="right", padx=(0, 10))
+            text="Ajouter",
+            state="disabled",
+            width=12,
+        ).pack(side="right", padx=(0, 8))
 
-        self._reveal_accueil_dialog(win)
-        try:
-            name_entry.focus_set()
-            name_entry.selection_range(0, "end")
-        except Exception:
-            pass
-
+        win.after_idle(name_entry.focus_set)
 
     # FENETRE_TYPE_PAGE_TOMELINEA_V1
     # FENETRE_TYPE_PAGE_NATIVE_MAQUETTAGE_V4
@@ -6551,15 +6097,6 @@ class PageMaitreV2(tk.Tk):
         maquettage_structure_regions: list[dict] = []
         maquettage_structure_hovered: int | None = None
 
-        # STRUCTURE_GLISSER_DEPOSER_PARTIES_V1
-        # Début et Fin restent fixes. Les parties intermédiaires sont
-        # manipulées directement sur la ligne.
-        maquettage_structure_pressed: int | None = None
-        maquettage_structure_press_xy: tuple[float, float] | None = None
-        maquettage_structure_dragging = False
-        maquettage_structure_drop_slot: int | None = None
-        maquettage_structure_editor = None
-
         def maquettage_button_id(text, x1, y1, x2, y2):
             return (
                 f"{text}|{int(round(x1))}|{int(round(y1))}|"
@@ -6592,203 +6129,6 @@ class PageMaitreV2(tk.Tk):
                 ):
                     return region
             return None
-
-        def maquettage_structure_drop_slot_at(x, y):
-            """Slot d'insertion d'une partie, toujours entre Début et Fin."""
-            if len(structure_model) < 3:
-                return 1
-
-            regions = sorted(
-                maquettage_structure_regions,
-                key=lambda item: int(item["index"]),
-            )
-            if len(regions) != len(structure_model):
-                return None
-
-            centers = [
-                (item["x1"] + item["x2"]) / 2
-                for item in regions
-            ]
-
-            # Les slots valides sont 1 .. len(model)-1 :
-            # 1 = juste après Début ; dernier = juste avant Fin.
-            for slot in range(1, len(centers)):
-                boundary = (centers[slot - 1] + centers[slot]) / 2
-                if x < boundary:
-                    return slot
-
-            return len(structure_model) - 1
-
-        def maquettage_structure_center(index):
-            """Recalcule le centre visuel d'un nœud de structure."""
-            width = max(canvas.winfo_width(), 1180)
-            margin = 44
-            tools_width = 292
-            tools_left = width - margin - tools_width
-            track_left = margin + 32
-            track_right = tools_left - 24
-
-            fixed_start_x = track_left + 52
-            fixed_end_x = track_right - 52
-
-            count = len(structure_model)
-            if count <= 1:
-                centers = [fixed_start_x]
-            elif count == 2:
-                centers = [fixed_start_x, fixed_end_x]
-            else:
-                internal_count = count - 2
-                step = (
-                    fixed_end_x - fixed_start_x
-                ) / (internal_count + 1)
-                centers = [fixed_start_x]
-                centers.extend(
-                    fixed_start_x + step * (i + 1)
-                    for i in range(internal_count)
-                )
-                centers.append(fixed_end_x)
-
-            if 0 <= index < len(centers):
-                return centers[index]
-            return fixed_start_x
-
-        def close_structure_editor(*, commit=True):
-            nonlocal maquettage_structure_editor
-            editor = maquettage_structure_editor
-            if editor is None:
-                return
-
-            try:
-                group = editor._tomelinea_group
-                old_name = str(group.get("name", "Partie"))
-                new_name = editor.get().strip()
-
-                if commit and new_name:
-                    group["name"] = new_name
-
-                    # Si un ordre de pages existait déjà sous l'ancien nom,
-                    # il suit automatiquement le nouveau nom.
-                    if (
-                        old_name != new_name
-                        and old_name in self._maquettage_page_orders
-                        and new_name not in self._maquettage_page_orders
-                    ):
-                        self._maquettage_page_orders[new_name] = (
-                            self._maquettage_page_orders.pop(old_name)
-                        )
-            except Exception:
-                pass
-
-            try:
-                editor.destroy()
-            except Exception:
-                pass
-
-            maquettage_structure_editor = None
-            render()
-
-        def start_structure_editor(index):
-            """Édition directe du nom, exactement sous le livre sélectionné."""
-            nonlocal maquettage_structure_editor
-
-            if not (1 <= index < len(structure_model) - 1):
-                return
-
-            if maquettage_structure_editor is not None:
-                close_structure_editor(commit=True)
-
-            render()
-
-            group = structure_model[index]
-            cx = maquettage_structure_center(index)
-
-            # Le nom est dessiné à track_y + 27. On pose le champ dessus.
-            top_y1 = 14
-            track_y = top_y1 + 102
-
-            editor = tk.Entry(
-                canvas,
-                bg="#FFFEFC",
-                fg="#111111",
-                insertbackground="#173E70",
-                relief="solid",
-                bd=1,
-                highlightthickness=1,
-                highlightbackground="#8D70C7",
-                highlightcolor="#8D70C7",
-                justify="center",
-                font=("Georgia", 10, "bold"),
-            )
-            editor.insert(0, str(group.get("name", "Partie")))
-            editor._tomelinea_group = group
-            editor.place(
-                x=cx - 65,
-                y=track_y + 15,
-                width=130,
-                height=25,
-            )
-            maquettage_structure_editor = editor
-
-            def validate(_event=None):
-                close_structure_editor(commit=True)
-                return "break"
-
-            def cancel(_event=None):
-                close_structure_editor(commit=False)
-                return "break"
-
-            def focus_lost(_event=None):
-                canvas.after_idle(
-                    lambda: (
-                        close_structure_editor(commit=True)
-                        if maquettage_structure_editor is editor
-                        else None
-                    )
-                )
-
-            editor.bind("<Return>", validate)
-            editor.bind("<Escape>", cancel)
-            editor.bind("<FocusOut>", focus_lost)
-
-            editor.focus_set()
-            editor.selection_range(0, "end")
-
-        def add_part_directly():
-            """+ Partie : création immédiate juste après Début."""
-            nonlocal selected_index, selected_group
-
-            if maquettage_structure_editor is not None:
-                close_structure_editor(commit=True)
-
-            used_names = {
-                str(group.get("name", "")).strip().lower()
-                for group in structure_model
-            }
-            number = 1
-            while f"partie {number}".lower() in used_names:
-                number += 1
-
-            colors = (
-                "#8D70C7",
-                "#72AFCB",
-                "#E28A6D",
-                "#75B89E",
-            )
-            internal_count = max(0, len(structure_model) - 2)
-
-            new_group = {
-                "name": f"Partie {number}",
-                "pages": 0,
-                "color": colors[internal_count % len(colors)],
-            }
-
-            structure_model.insert(1, new_group)
-            selected_index = 1
-            selected_group = new_group
-            self._maquettage_structure_model = structure_model
-
-            render()
-            canvas.after_idle(lambda: start_structure_editor(1))
 
         def maquettage_drop_slot_at(x, y):
             if not maquettage_page_regions:
@@ -7271,38 +6611,6 @@ class PageMaitreV2(tk.Tk):
                 tags="maquettage_ui",
             )
 
-            if (
-                maquettage_structure_dragging
-                and maquettage_structure_drop_slot is not None
-                and 1 <= maquettage_structure_drop_slot < node_count
-            ):
-                slot = int(maquettage_structure_drop_slot)
-                marker_x = (
-                    node_centers[slot - 1] + node_centers[slot]
-                ) / 2
-                canvas.create_line(
-                    marker_x,
-                    track_y - 31,
-                    marker_x,
-                    track_y + 13,
-                    fill="#173E70",
-                    width=2,
-                    tags="maquettage_ui",
-                )
-                canvas.create_polygon(
-                    marker_x,
-                    track_y - 36,
-                    marker_x + 5,
-                    track_y - 31,
-                    marker_x,
-                    track_y - 26,
-                    marker_x - 5,
-                    track_y - 31,
-                    fill="#173E70",
-                    outline="",
-                    tags="maquettage_ui",
-                )
-
             for index, group in enumerate(structure_model):
                 cx = node_centers[index]
                 is_selected = index == selected_index
@@ -7370,10 +6678,10 @@ class PageMaitreV2(tk.Tk):
                 maquettage_structure_regions.append(
                     {
                         "index": index,
-                        "x1": cx - max(icon_w / 2 + 5, 46),
+                        "x1": cx - icon_w / 2 - 5,
                         "y1": icon_anchor_y - icon_h - 7,
-                        "x2": cx + max(icon_w / 2 + 5, 46),
-                        "y2": track_y + 58,
+                        "x2": cx + icon_w / 2 + 5,
+                        "y2": icon_anchor_y + 5,
                     }
                 )
 
@@ -7449,7 +6757,7 @@ class PageMaitreV2(tk.Tk):
                 "+ Partie",
                 "#75B89E",
                 muted=True,
-                command=add_part_directly,
+                command=self._tomelinea_open_add_part_window,
             )
             secondary_button(
                 tool_x1 + tool_half + tool_gap,
@@ -8371,27 +7679,6 @@ class PageMaitreV2(tk.Tk):
             nonlocal maquettage_page_dragging
             nonlocal maquettage_page_drop_slot
             nonlocal maquettage_structure_hovered
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
-
-            # Une partie interne maintenue devient un glisser-déposer.
-            if maquettage_structure_pressed is not None:
-                if maquettage_structure_press_xy is not None:
-                    dx = event.x - maquettage_structure_press_xy[0]
-                    dy = event.y - maquettage_structure_press_xy[1]
-                    if dx * dx + dy * dy >= 36:
-                        maquettage_structure_dragging = True
-
-                if maquettage_structure_dragging:
-                    new_slot = maquettage_structure_drop_slot_at(
-                        event.x,
-                        event.y,
-                    )
-                    if new_slot != maquettage_structure_drop_slot:
-                        maquettage_structure_drop_slot = new_slot
-                        render()
-                    canvas.configure(cursor="hand2")
-                    return
 
             # Une page maintenue devient un glisser dès que le pointeur
             # s'écarte de quelques pixels du point d'appui.
@@ -8510,10 +7797,6 @@ class PageMaitreV2(tk.Tk):
             nonlocal selected_index, selected_group
             nonlocal maquettage_pressed, maquettage_hovered
             nonlocal maquettage_structure_hovered
-            nonlocal maquettage_structure_pressed
-            nonlocal maquettage_structure_press_xy
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
             nonlocal maquettage_page_pressed
             nonlocal maquettage_page_pressed_slot
             nonlocal maquettage_page_press_xy
@@ -8547,21 +7830,6 @@ class PageMaitreV2(tk.Tk):
                     maquettage_structure_hovered = selected_index
                     maquettage_pressed = None
                     maquettage_hovered = None
-
-                    if 1 <= new_index < len(structure_model) - 1:
-                        maquettage_structure_pressed = new_index
-                        maquettage_structure_press_xy = (
-                            event.x,
-                            event.y,
-                        )
-                        maquettage_structure_dragging = False
-                        maquettage_structure_drop_slot = new_index
-                    else:
-                        maquettage_structure_pressed = None
-                        maquettage_structure_press_xy = None
-                        maquettage_structure_dragging = False
-                        maquettage_structure_drop_slot = None
-
                     canvas.configure(cursor="hand2")
                     render()
                 return
@@ -8576,56 +7844,13 @@ class PageMaitreV2(tk.Tk):
                 render()
 
         def on_maquettage_release(event):
-            nonlocal selected_index, selected_group
             nonlocal maquettage_pressed, maquettage_hovered
-            nonlocal maquettage_structure_pressed
-            nonlocal maquettage_structure_press_xy
-            nonlocal maquettage_structure_dragging
-            nonlocal maquettage_structure_drop_slot
             nonlocal maquettage_page_pressed
             nonlocal maquettage_page_pressed_slot
             nonlocal maquettage_page_press_xy
             nonlocal maquettage_page_dragging
             nonlocal maquettage_page_drop_slot
             nonlocal maquettage_page_hovered
-
-            if maquettage_structure_pressed is not None:
-                source_index = int(maquettage_structure_pressed)
-                was_dragging = bool(maquettage_structure_dragging)
-                drop_slot = maquettage_structure_drop_slot
-
-                if (
-                    was_dragging
-                    and drop_slot is not None
-                    and 1 <= source_index < len(structure_model) - 1
-                ):
-                    moving = structure_model[source_index]
-                    target = max(
-                        1,
-                        min(len(structure_model) - 1, int(drop_slot)),
-                    )
-
-                    structure_model.pop(source_index)
-                    if target > source_index:
-                        target -= 1
-
-                    target = max(
-                        1,
-                        min(len(structure_model) - 1, target),
-                    )
-                    structure_model.insert(target, moving)
-
-                    selected_group = moving
-                    selected_index = structure_model.index(moving)
-                    self._maquettage_structure_model = structure_model
-
-                maquettage_structure_pressed = None
-                maquettage_structure_press_xy = None
-                maquettage_structure_dragging = False
-                maquettage_structure_drop_slot = None
-                canvas.configure(cursor="arrow")
-                render()
-                return
 
             if maquettage_page_pressed is not None:
                 page_id = maquettage_page_pressed

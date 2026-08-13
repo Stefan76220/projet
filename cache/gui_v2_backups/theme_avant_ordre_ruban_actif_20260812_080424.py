@@ -15,8 +15,8 @@ WHITE = "#FFFFFF"
 
 NAV_ITEMS = (
     ("accueil", "⌂", "Accueil", SKY),
-    ("maquettage", "▦", "Maquettage", LILAC),
     ("centre", "◎", "Centre", CELADON),
+    ("maquettage", "▦", "Maquettage", LILAC),
     ("atelier", "⌑", "Atelier", SKY),
     ("conception", "✎", "Conception", CORAL),
     ("assemblage", "▤", "Assemblage", CELADON),
