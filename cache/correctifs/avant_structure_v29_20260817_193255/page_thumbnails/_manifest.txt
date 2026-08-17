@@ -1,0 +1,5 @@
+type_page_titre.png|1
+type_page_blanche.png|1
+type_page_personnalisee.png|1
+type_page_page_titre.png|1
+type_page_page_blanche.png|1

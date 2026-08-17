@@ -12,6 +12,9 @@ from src.gui_v2.components import PMCommandButton
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+TOMELINEA_SPIRAL_LOOP_V16 = PROJECT_ROOT / "assets" / "spirale_tomelinea_boucle_v16.png"
+TOMELINEA_SPIRAL_MODEL_V13 = PROJECT_ROOT / "assets" / "spirale_tomelinea_modele_v13.png"
+TOMELINEA_SPIRAL_MODEL = PROJECT_ROOT / "assets" / "spirale_tomelinea_modele_v12.jpg"
 ACCUEIL_BG = (
     PROJECT_ROOT
     / "assets"
@@ -45,6 +48,7 @@ BRAND_ICON_PNG = (
 
 
 class PageMaitreV2(tk.Tk):
+    # SPIRALE_GLOBALE_UNIFORME_TRANSPARENTE_V16
     """Prototype parallèle TomeLinea V2 — navigation et apparence."""
 
     # DEMARRAGE_ATOMIQUE_ET_NAVIGATION_STABLE_V3
@@ -281,9 +285,17 @@ class PageMaitreV2(tk.Tk):
             arrowcolor=theme.INK,
         )
 
+    # VISUALISATION_SUPPRIMEE_REPART_ZERO_V1
+    # VISUALISATION_VIERGE_RUBAN_V1
+    # VISUALISATION_FOND_OUTILS_V1
+    # VISUALISATION_GLOBALE_HAUT_SANS_RUBAN_V1
+    # VISUALISATION_TROIS_ZONES_V1
+    # VISUALISATION_EQUILIBRE_TROIS_BAS_V1
+    # VISUALISATION_NAVIGATION_ATOMIQUE_RETOUR_V1
+    # VISUALISATION_INFOS_SANS_FONDS_V1
     # NAVIGATION_PROPRE_CENTRE_CANVAS_V1
     def _build_shell(self) -> None:
-        """Structure stable : Accueil et Espace Projet sont deux frères."""
+        """Structure stable : Accueil et Espace Projet sont séparés."""
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
@@ -306,7 +318,7 @@ class PageMaitreV2(tk.Tk):
 
         self.header = tk.Canvas(
             self.project_shell,
-            bg="#F8F4EC",
+            bg=theme.WINDOW,
             height=108,
             highlightthickness=0,
             bd=0,
@@ -323,6 +335,22 @@ class PageMaitreV2(tk.Tk):
         self.project_host.grid(row=1, column=0, sticky="nsew")
         self.project_host.grid_rowconfigure(0, weight=1)
         self.project_host.grid_columnconfigure(0, weight=1)
+
+        # Visualisation : calque plein écran déjà dimensionné, mais gardé
+        # sous l'Espace Projet jusqu'à son ouverture. Aucun reflow du ruban.
+        self.visualisation_host = tk.Frame(
+            self.project_shell,
+            bg=theme.WINDOW,
+        )
+        self.visualisation_host.grid(
+            row=0,
+            column=0,
+            rowspan=2,
+            sticky="nsew",
+        )
+        self.visualisation_host.grid_rowconfigure(0, weight=1)
+        self.visualisation_host.grid_columnconfigure(0, weight=1)
+        self.visualisation_host.lower()
 
         # Compatibilité avec le reste du prototype.
         self.host = self.project_host
@@ -491,42 +519,27 @@ class PageMaitreV2(tk.Tk):
         self._header_nav_hitboxes = {}
         self._header_side_hitboxes = {}
 
-        # Décor léger du bandeau, conforme à la version validée.
-        if ACCUEIL_BG.exists():
-            try:
-                source = Image.open(ACCUEIL_BG).convert("RGB")
-                sw, sh = source.size
-                crop_h = max(1, min(sh, int(sh * 0.18)))
-                source = source.crop((0, 0, sw, crop_h))
-                source = source.resize(
-                    (width, height),
-                    Image.Resampling.LANCZOS,
-                )
-                bg_photo = ImageTk.PhotoImage(source)
-                self._header_canvas_images.append(bg_photo)
-                canvas.create_image(
-                    0, 0,
-                    image=bg_photo,
-                    anchor="nw",
-                )
-            except Exception:
-                canvas.create_rectangle(
-                    0, 0, width, height,
-                    fill="#F8F4EC",
-                    outline="",
-                )
-        else:
-            canvas.create_rectangle(
-                0, 0, width, height,
-                fill="#F8F4EC",
-                outline="",
-            )
-
-        # Voile clair d'origine pour garder la lecture nette des commandes.
+        # Ruban sans fond propre : même base que la page.
         canvas.create_rectangle(
             0, 0, width, height,
-            fill="#FFFDFC",
-            stipple="gray75",
+            fill=theme.WINDOW,
+            outline="",
+        )
+
+        # Effet léger de volume :
+        # trait fin au-dessus, trait plus épais en dessous.
+        fine = self._mix(theme.WINDOW, "#FFFFFF", 0.18)
+        volume = self._mix(theme.WINDOW, "#000000", 0.22)
+        canvas.create_line(
+            0, height - 5,
+            width, height - 5,
+            fill=fine,
+            width=1,
+        )
+        canvas.create_rectangle(
+            0, height - 4,
+            width, height,
+            fill=volume,
             outline="",
         )
 
@@ -540,6 +553,7 @@ class PageMaitreV2(tk.Tk):
             "assemblage": "Assemblage",
             "verification": "Vérification",
             "finalisation": "Finalisation",
+            "visualisation": "Visualisation",
         }
         current_title = labels.get(
             getattr(self, "_active", "accueil"),
@@ -553,7 +567,7 @@ class PageMaitreV2(tk.Tk):
             x=62,
             y=57,
             enabled=getattr(self, "_active", "accueil") != "accueil",
-            command=self.open_visualisation_window,
+            command=lambda: self.show_screen("visualisation"),
         )
         self._draw_side_canvas_item(
             key="suivi_du_livre",
@@ -629,11 +643,6 @@ class PageMaitreV2(tk.Tk):
             command=self.destroy,
         )
 
-        canvas.create_line(
-            0, height - 1,
-            width, height - 1,
-            fill=theme.BORDER,
-        )
 
         self._bind_header_canvas_events()
         self._header_ready = True
@@ -976,6 +985,17 @@ class PageMaitreV2(tk.Tk):
             self._screens[name] = screen
             builder(screen)
 
+        # Visualisation vit dans son propre calque plein écran, directement
+        # au-dessus du ruban + bureau Projet.
+        visualisation_screen = tk.Frame(
+            self.visualisation_host,
+            bg=theme.WINDOW,
+        )
+        visualisation_screen.grid(row=0, column=0, sticky="nsew")
+        self._screens["visualisation"] = visualisation_screen
+        self._build_visualisation_vierge(visualisation_screen)
+        self.visualisation_host.lower()
+
         # NAVIGATION_PRECHAUFFAGE_VUES_V2
         # Principe utilisé dans les interfaces à vues empilées : toutes les
         # vues sont réalisées et calculées une première fois hors écran.
@@ -988,6 +1008,7 @@ class PageMaitreV2(tk.Tk):
             "assemblage",
             "verification",
             "finalisation",
+            "visualisation",
         )
 
         for name in warm_order:
@@ -1018,12 +1039,2118 @@ class PageMaitreV2(tk.Tk):
         self.accueil_host.tkraise()
 
 
+    def _build_visualisation_vierge(self, parent: tk.Frame) -> None:
+        """Visualisation — fond + Vue globale exacte en haut + Outils sous la vue."""
+        parent.configure(bg=theme.WINDOW)
+
+        PANEL = "#2F333B"
+        INK = "#F2F3F5"
+        VIOLET = "#8D70C7"
+        MOUNT = "#F1EFE9"
+        GRID = "#E5E1DA"
+
+        # Fond général : directement sur la page.
+        bg_canvas = tk.Canvas(
+            parent,
+            bg=theme.WINDOW,
+            bd=0,
+            highlightthickness=0,
+        )
+        bg_canvas.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+        self._visualisation_bg_canvas = bg_canvas
+        self._visualisation_bg_photo = None
+        self._visualisation_bg_size = None
+
+        def draw_background(_event=None):
+            from PIL import ImageFilter
+
+            width = max(parent.winfo_width(), 1180)
+            height = max(parent.winfo_height(), 720)
+            size = (width, height)
+
+            if self._visualisation_bg_size != size:
+                base = Image.new("RGBA", size, "#D8D4CD")
+                haze = Image.new("RGBA", size, (0, 0, 0, 0))
+                draw = ImageDraw.Draw(haze, "RGBA")
+
+                draw.ellipse(
+                    (-int(width * 0.18), -int(height * 0.18),
+                     int(width * 0.38), int(height * 0.38)),
+                    fill=(250, 247, 240, 116),
+                )
+                draw.ellipse(
+                    (int(width * 0.67), -int(height * 0.15),
+                     int(width * 1.10), int(height * 0.35)),
+                    fill=(245, 243, 237, 100),
+                )
+                draw.ellipse(
+                    (-int(width * 0.14), int(height * 0.62),
+                     int(width * 0.34), int(height * 1.12)),
+                    fill=(244, 239, 231, 86),
+                )
+                draw.ellipse(
+                    (int(width * 0.72), int(height * 0.52),
+                     int(width * 1.12), int(height * 1.10)),
+                    fill=(101, 112, 118, 34),
+                )
+                draw.ellipse(
+                    (-int(width * 0.12), int(height * 0.20),
+                     int(width * 0.20), int(height * 0.72)),
+                    fill=(113, 105, 96, 24),
+                )
+
+                haze = haze.filter(
+                    ImageFilter.GaussianBlur(
+                        max(28, int(min(width, height) * 0.045))
+                    )
+                )
+                base = Image.alpha_composite(base, haze)
+
+                details = Image.new("RGBA", size, (0, 0, 0, 0))
+                d = ImageDraw.Draw(details, "RGBA")
+                accent = (63, 99, 118, 28)
+                for offset in (0, 15, 30):
+                    d.arc(
+                        (-110 - offset, 35 + offset,
+                         170 + offset, 315 + offset),
+                        start=278, end=82, fill=accent, width=1,
+                    )
+                for offset in (0, 18, 36):
+                    d.arc(
+                        (width - 175 - offset, height - 250 - offset,
+                         width + 105 + offset, height + 30 + offset),
+                        start=96, end=258, fill=accent, width=1,
+                    )
+
+                base = Image.alpha_composite(base, details).convert("RGB")
+                self._visualisation_bg_photo = ImageTk.PhotoImage(base)
+                self._visualisation_bg_size = size
+
+            bg_canvas.delete("visualisation_bg")
+            bg_canvas.create_image(
+                0, 0,
+                image=self._visualisation_bg_photo,
+                anchor="nw",
+                tags=("visualisation_bg",),
+            )
+
+        # Vue globale : une zone TomeLinea directe, posée sur le fond.
+        # Son contenu reste le panorama validé du Maquettage.
+        global_panel = tk.Canvas(
+            parent,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._visualisation_global_panel = global_panel
+
+        def _panel_points(x1, y1, x2, y2, cut=18, dx=0, dy=0):
+            return [
+                x1 + dx, y1 + dy,
+                x2 - cut + dx, y1 + dy,
+                x2 + dx, y1 + cut + dy,
+                x2 + dx, y2 + dy,
+                x1 + cut + dx, y2 + dy,
+                x1 + dx, y2 - cut + dy,
+            ]
+
+        def draw_global_panel(_event=None):
+            global_panel.delete("panel_decor")
+            w = max(1, global_panel.winfo_width())
+            h = max(1, global_panel.winfo_height())
+            if w < 80 or h < 80:
+                return
+            global_panel.create_polygon(
+                _panel_points(0, 0, w - 3, h - 4),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+                tags=("panel_decor",),
+            )
+            self._draw_notebook_spiral_canvas(
+                global_panel,
+                4,
+                17,
+                h - 22,
+                "#75B89E",
+                tags=("panel_decor",),
+                step=18,
+            )
+            global_panel.create_text(
+                20, 17,
+                text="Vue globale",
+                fill=INK,
+                font=("Georgia", 12, "bold"),
+                anchor="nw",
+                tags=("panel_decor",),
+            )
+            line_x1 = 128
+            line_x2 = max(line_x1 + 20, w - 150)
+            global_panel.create_line(
+                line_x1, 28, line_x2, 28,
+                fill="#A8A29A",
+                width=1,
+                tags=("panel_decor",),
+            )
+            global_panel.create_oval(
+                line_x2 - 3, 25, line_x2 + 3, 31,
+                fill="#D8D4CD",
+                outline="#A8A29A",
+                width=1,
+                tags=("panel_decor",),
+            )
+
+        global_panel.bind("<Configure>", draw_global_panel)
+
+        return_button = tk.Button(
+            global_panel,
+            text="← Retour",
+            command=self._return_from_visualisation,
+            bg="#FFFEFC",
+            fg="#173E70",
+            activebackground="#F3F7FB",
+            activeforeground="#173E70",
+            relief="solid",
+            bd=1,
+            highlightthickness=0,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2",
+            padx=12,
+            pady=4,
+        )
+        return_button.place(
+            relx=1.0,
+            x=-18,
+            y=10,
+            anchor="ne",
+            width=112,
+            height=28,
+        )
+        self._visualisation_return_button = return_button
+
+        panorama = tk.Canvas(
+            global_panel,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+            xscrollincrement=18,
+        )
+        self._visualisation_global_canvas = panorama
+        self._visualisation_global_photo_cache = {}
+        self._visualisation_global_structure_cache = {}
+
+        page_thumb_root = PROJECT_ROOT / "assets" / "page_thumbnails"
+        structure_icon_dir = (
+            PROJECT_ROOT / "assets" / "gui_v2" / "structure_line_icons"
+        )
+        ribbon_flag_path = (
+            PROJECT_ROOT
+            / "assets"
+            / "gui_v2"
+            / "navigation_icons_photorealistes"
+            / "10_finalisation"
+            / "10_finalisation_64px.png"
+        )
+        fallback_flag_path = structure_icon_dir / "debut_final.png"
+        book_icon_paths = [
+            structure_icon_dir / "partie_1.png",
+            structure_icon_dir / "partie_2.png",
+            structure_icon_dir / "partie_3.png",
+        ]
+
+        def mix_hex(color_a, color_b, ratio):
+            ratio = max(0.0, min(1.0, float(ratio)))
+
+            def rgb(value):
+                value = str(value).lstrip("#")
+                if len(value) != 6:
+                    return (128, 128, 128)
+                try:
+                    return tuple(
+                        int(value[index:index + 2], 16)
+                        for index in (0, 2, 4)
+                    )
+                except Exception:
+                    return (128, 128, 128)
+
+            a = rgb(color_a)
+            b = rgb(color_b)
+            mixed = tuple(
+                int(round(a[index] * (1.0 - ratio) + b[index] * ratio))
+                for index in range(3)
+            )
+            return "#{:02X}{:02X}{:02X}".format(*mixed)
+
+        def polygon_points(x1, y1, x2, y2, cut=16, dx=0, dy=0):
+            return [
+                x1 + dx, y1 + dy,
+                x2 - cut + dx, y1 + dy,
+                x2 + dx, y1 + cut + dy,
+                x2 + dx, y2 + dy,
+                x1 + cut + dx, y2 + dy,
+                x1 + dx, y2 - cut + dy,
+            ]
+
+        def rounded(canvas, x1, y1, x2, y2, radius, **kwargs):
+            r = max(1, min(radius, (x2 - x1) / 2, (y2 - y1) / 2))
+            pts = [
+                x1 + r, y1,
+                x2 - r, y1,
+                x2, y1,
+                x2, y1 + r,
+                x2, y2 - r,
+                x2, y2,
+                x2 - r, y2,
+                x1 + r, y2,
+                x1, y2,
+                x1, y2 - r,
+                x1, y1 + r,
+                x1, y1,
+            ]
+            return canvas.create_polygon(
+                pts,
+                smooth=True,
+                splinesteps=24,
+                **kwargs,
+            )
+
+        def normalized_type_name(page):
+            for key in ("type_name", "page_type", "type", "kind"):
+                value = page.get(key)
+                if value:
+                    return str(value).strip()
+            return "Page courante"
+
+        def thumbnail_path_for_type(type_name):
+            low = str(type_name).strip().lower()
+            aliases = {
+                "couverture": "type_page_couverture.png",
+                "2e de couverture": "type_page_deuxieme_couverture.png",
+                "deuxième de couverture": "type_page_deuxieme_couverture.png",
+                "deuxieme de couverture": "type_page_deuxieme_couverture.png",
+                "page de titre": "type_page_titre.png",
+                "titre": "type_page_titre.png",
+                "avant-propos": "type_page_avant_propos.png",
+                "avant propos": "type_page_avant_propos.png",
+                "sommaire": "type_page_sommaire.png",
+                "chapitre": "type_page_chapitre.png",
+                "tête de chapitre": "type_page_chapitre.png",
+                "tete de chapitre": "type_page_chapitre.png",
+                "tête de partie": "type_page_chapitre.png",
+                "tete de partie": "type_page_chapitre.png",
+                "texte": "type_page_texte.png",
+                "page courante": "type_page_texte.png",
+                "page commune": "type_page_texte.png",
+                "fiche": "type_page_fiche.png",
+                "illustration": "type_page_illustration.png",
+                "transition": "type_page_transition.png",
+                "conclusion": "type_page_conclusion.png",
+                "page blanche": "type_page_blanche.png",
+                "3e de couverture": "type_page_troisieme_couverture.png",
+                "troisième de couverture": "type_page_troisieme_couverture.png",
+                "troisieme de couverture": "type_page_troisieme_couverture.png",
+                "4e de couverture": "type_page_quatrieme_couverture.png",
+                "quatrième de couverture": "type_page_quatrieme_couverture.png",
+                "quatrieme de couverture": "type_page_quatrieme_couverture.png",
+                "personnalisée": "type_page_personnalisee.png",
+                "personnalisee": "type_page_personnalisee.png",
+                "page auto": "type_page_sommaire.png",
+            }
+
+            filename = aliases.get(low)
+            if filename:
+                candidate = page_thumb_root / filename
+                if candidate.exists():
+                    return candidate
+
+            for item in getattr(self, "_maquettage_custom_page_types", []):
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("name", "")).strip().lower() == low:
+                    image_value = str(item.get("image", "") or "").strip()
+                    if image_value:
+                        candidate = Path(image_value)
+                        if candidate.exists():
+                            return candidate
+
+            fallback = page_thumb_root / "type_page_texte.png"
+            return fallback if fallback.exists() else None
+
+        def page_photo(page, width, height):
+            type_name = normalized_type_name(page)
+            path = thumbnail_path_for_type(type_name)
+            key = (
+                str(path) if path else "",
+                int(width),
+                int(height),
+            )
+            if key in self._visualisation_global_photo_cache:
+                return self._visualisation_global_photo_cache[key]
+
+            photo = None
+            if path is not None:
+                try:
+                    image = Image.open(path).convert("RGBA")
+                    image = image.resize(
+                        (max(1, int(width)), max(1, int(height))),
+                        Image.Resampling.LANCZOS,
+                    )
+                    photo = ImageTk.PhotoImage(image)
+                except Exception:
+                    photo = None
+
+            self._visualisation_global_photo_cache[key] = photo
+            return photo
+
+        def structure_photo(path, max_w, max_h, *, green_flag=False):
+            key = (
+                str(path),
+                int(max_w),
+                int(max_h),
+                bool(green_flag),
+            )
+            cached = self._visualisation_global_structure_cache.get(key)
+            if cached is not None:
+                return cached
+
+            if not path.exists():
+                return None
+
+            try:
+                image = Image.open(path).convert("RGBA")
+                alpha = image.getchannel("A")
+                bbox = alpha.getbbox()
+                if bbox:
+                    image = image.crop(bbox)
+
+                if green_flag:
+                    pixels = image.load()
+                    for yy in range(image.height):
+                        for xx in range(image.width):
+                            r, g, b, a = pixels[xx, yy]
+                            if (
+                                a > 0
+                                and r > 95
+                                and r > g * 1.22
+                                and r > b * 1.18
+                            ):
+                                luminosity = max(0.52, min(1.18, r / 205.0))
+                                pixels[xx, yy] = (
+                                    int(max(0, min(255, 83 * luminosity))),
+                                    int(max(0, min(255, 151 * luminosity))),
+                                    int(max(0, min(255, 105 * luminosity))),
+                                    a,
+                                )
+
+                image.thumbnail(
+                    (max_w, max_h),
+                    Image.Resampling.LANCZOS,
+                )
+                photo = ImageTk.PhotoImage(image)
+                self._visualisation_global_structure_cache[key] = photo
+                return photo
+            except Exception:
+                return None
+
+        def page_visual_size(page):
+            low = normalized_type_name(page).lower()
+            if low in (
+                "couverture",
+                "4e de couverture",
+                "tête de partie",
+                "tete de partie",
+                "tête de chapitre",
+                "tete de chapitre",
+                "chapitre",
+            ):
+                return 84, int(84 * 1.40), "large"
+
+            if low == "page auto":
+                return 58, int(58 * 1.40), "auto"
+
+            return 68, int(68 * 1.40), "normal"
+
+        def draw_structure_tile(
+            canvas,
+            cx,
+            icon_anchor_y,
+            *,
+            book=False,
+            accent=VIOLET,
+        ):
+            tile_w = 98 if book else 86
+            tile_h = 62 if book else 58
+            x1 = cx - tile_w / 2
+            x2 = cx + tile_w / 2
+            y2 = icon_anchor_y + 7
+            y1 = y2 - tile_h
+            cut = 8
+
+            def points(dx=0, dy=0):
+                return [
+                    x1 + dx, y1 + dy,
+                    x2 - cut + dx, y1 + dy,
+                    x2 + dx, y1 + cut + dy,
+                    x2 + dx, y2 + dy,
+                    x1 + cut + dx, y2 + dy,
+                    x1 + dx, y2 - cut + dy,
+                ]
+
+            canvas.create_polygon(
+                points(2, 3),
+                fill="#D8D4CD",
+                outline="",
+            )
+
+            if book:
+                fill = mix_hex(accent, "#FFFFFF", 0.86)
+                outline = mix_hex(accent, "#BDB8B0", 0.62)
+                grid = mix_hex(accent, "#FFFFFF", 0.91)
+            else:
+                fill = "#F4F1E9"
+                outline = "#D3CEC5"
+                grid = "#E0E4E0"
+
+            canvas.create_polygon(
+                points(),
+                fill=fill,
+                outline=outline,
+                width=1,
+            )
+            canvas.create_line(
+                x1 + tile_w * 0.34,
+                y1 + 8,
+                x1 + tile_w * 0.34,
+                y2 - 8,
+                fill=grid,
+                width=1,
+            )
+            canvas.create_line(
+                x1 + tile_w * 0.67,
+                y1 + 8,
+                x1 + tile_w * 0.67,
+                y2 - 8,
+                fill=grid,
+                width=1,
+            )
+            canvas.create_line(
+                x1 + 8,
+                y1 + tile_h * 0.5,
+                x2 - 8,
+                y1 + tile_h * 0.5,
+                fill=grid,
+                width=1,
+            )
+
+        def draw_global(_event=None):
+            panorama.delete("all")
+
+            pages = self._tomelinea_collect_book_pages()
+            model = getattr(self, "_maquettage_structure_model", None) or [
+                {"name": "Début", "pages": 3, "color": "#75B89E"},
+                {"name": "Partie 1", "pages": 12, "color": "#8D70C7"},
+                {"name": "Partie 2", "pages": None, "color": "#72AFCB"},
+                {"name": "Partie 3", "pages": None, "color": "#E28A6D"},
+                {"name": "Fin", "pages": 3, "color": "#75B89E"},
+            ]
+
+            pages_by_group = {}
+            for page in pages:
+                pages_by_group.setdefault(
+                    str(page.get("group", "Partie")),
+                    [],
+                ).append(page)
+
+            view_w = max(900, panorama.winfo_width())
+            view_h = max(245, panorama.winfo_height())
+
+            page_gap = 24
+            group_gap = 70
+            left_pad = 72
+            right_pad = 72
+
+            marker_y = int(view_h * 0.22)
+            guide_y = int(view_h * 0.34)
+            page_baseline = int(view_h * 0.68)
+
+            groups_layout = []
+            cursor_x = left_pad
+
+            for group_index, group in enumerate(model):
+                group_name = str(group.get("name", "Partie"))
+                group_pages = pages_by_group.get(group_name, [])
+                start_x = cursor_x
+                layouts = []
+
+                for page_index, page in enumerate(group_pages):
+                    pw, ph, size_kind = page_visual_size(page)
+                    layouts.append({
+                        "page": page,
+                        "x": cursor_x,
+                        "w": pw,
+                        "h": ph,
+                        "size_kind": size_kind,
+                    })
+                    cursor_x += pw
+                    if page_index < len(group_pages) - 1:
+                        cursor_x += page_gap
+
+                end_x = cursor_x if layouts else start_x + 44
+                if not layouts:
+                    cursor_x = end_x
+
+                groups_layout.append({
+                    "index": group_index,
+                    "group": group,
+                    "name": group_name,
+                    "layouts": layouts,
+                    "start_x": start_x,
+                    "end_x": end_x,
+                })
+
+                if group_index < len(model) - 1:
+                    cursor_x += group_gap
+
+            natural_total = cursor_x + right_pad
+            content_offset = (
+                (view_w - natural_total) / 2
+                if natural_total < view_w
+                else 0
+            )
+
+            if content_offset > 0:
+                for group_data in groups_layout:
+                    group_data["start_x"] += content_offset
+                    group_data["end_x"] += content_offset
+                    for layout in group_data["layouts"]:
+                        layout["x"] += content_offset
+                natural_total = view_w
+
+            band_x1 = 18
+            band_x2 = max(view_w - 18, natural_total - 18)
+            band_y1 = max(12, marker_y - 75)
+            band_y2 = min(view_h - 20, page_baseline + 95)
+
+            panorama.create_polygon(
+                polygon_points(
+                    band_x1, band_y1, band_x2, band_y2,
+                    cut=14,
+                ),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+            )
+
+            gx = band_x1 + 38
+            while gx < band_x2 - 20:
+                panorama.create_line(
+                    gx,
+                    band_y1 + 14,
+                    gx,
+                    band_y2 - 14,
+                    fill=GRID,
+                    width=1,
+                )
+                gx += 96
+
+            gy = band_y1 + 28
+            while gy < band_y2 - 16:
+                panorama.create_line(
+                    band_x1 + 14,
+                    gy,
+                    band_x2 - 14,
+                    gy,
+                    fill=GRID,
+                    width=1,
+                )
+                gy += 44
+
+            previous_box = None
+
+            for group_data in groups_layout:
+                index = group_data["index"]
+                group = group_data["group"]
+                layouts = group_data["layouts"]
+                accent = str(group.get("color", VIOLET) or VIOLET)
+
+                if layouts:
+                    marker_x = layouts[0]["x"]
+                else:
+                    marker_x = (
+                        group_data["start_x"] + group_data["end_x"]
+                    ) / 2
+
+                is_start = index == 0
+                is_end = index == len(groups_layout) - 1
+
+                if is_start:
+                    marker_center = marker_x + 10
+                    icon_path = (
+                        ribbon_flag_path
+                        if ribbon_flag_path.exists()
+                        else fallback_flag_path
+                    )
+                    photo = structure_photo(
+                        icon_path,
+                        56,
+                        48,
+                        green_flag=True,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=False,
+                        accent=accent,
+                    )
+                elif is_end:
+                    marker_center = (
+                        group_data["end_x"] - 10
+                        if layouts
+                        else marker_x
+                    )
+                    icon_path = (
+                        ribbon_flag_path
+                        if ribbon_flag_path.exists()
+                        else fallback_flag_path
+                    )
+                    photo = structure_photo(
+                        icon_path,
+                        56,
+                        48,
+                        green_flag=False,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=False,
+                        accent=accent,
+                    )
+                else:
+                    marker_center = marker_x
+                    icon_path = book_icon_paths[
+                        (index - 1) % len(book_icon_paths)
+                    ]
+                    photo = structure_photo(
+                        icon_path,
+                        70,
+                        50,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=True,
+                        accent=accent,
+                    )
+
+                if photo is not None:
+                    panorama.create_image(
+                        marker_center,
+                        marker_y,
+                        image=photo,
+                        anchor="s",
+                    )
+
+                diamond_r = 4
+                panorama.create_polygon(
+                    marker_center,
+                    guide_y - diamond_r,
+                    marker_center + diamond_r,
+                    guide_y,
+                    marker_center,
+                    guide_y + diamond_r,
+                    marker_center - diamond_r,
+                    guide_y,
+                    fill="#FFFFFF",
+                    outline="#111111",
+                    width=1,
+                )
+                panorama.create_text(
+                    marker_center,
+                    guide_y + 21,
+                    text=group_data["name"],
+                    fill=INK,
+                    font=("Georgia", 9, "bold"),
+                    anchor="center",
+                )
+                panorama.create_line(
+                    marker_center,
+                    guide_y + 33,
+                    marker_center,
+                    page_baseline - 72,
+                    fill="#D8D2CA",
+                    width=1,
+                    dash=(2, 3),
+                )
+
+                for layout in layouts:
+                    page = layout["page"]
+                    px = layout["x"]
+                    pw = layout["w"]
+                    ph = layout["h"]
+                    py = page_baseline - ph / 2
+
+                    rounded(
+                        panorama,
+                        px + 2,
+                        py + 4,
+                        px + pw + 2,
+                        py + ph + 4,
+                        7,
+                        fill="#D0CBC3",
+                        outline="",
+                    )
+                    rounded(
+                        panorama,
+                        px,
+                        py,
+                        px + pw,
+                        py + ph,
+                        7,
+                        fill="#FFFEFB",
+                        outline="#CDC8C0",
+                        width=1,
+                    )
+
+                    photo_page = page_photo(
+                        page,
+                        pw - 4,
+                        ph - 4,
+                    )
+                    if photo_page is not None:
+                        panorama.create_image(
+                            px + pw / 2,
+                            py + ph / 2,
+                            image=photo_page,
+                            anchor="center",
+                        )
+                    else:
+                        panorama.create_text(
+                            px + pw / 2,
+                            py + ph / 2,
+                            text=normalized_type_name(page),
+                            fill="#5E666D",
+                            font=("Segoe UI", 6),
+                            justify="center",
+                        )
+
+                    box = {
+                        "x1": px,
+                        "x2": px + pw,
+                        "y1": py,
+                        "y2": py + ph,
+                    }
+
+                    if previous_box is not None:
+                        x1 = previous_box["x2"] + 5
+                        x2 = box["x1"] - 5
+                        if x2 > x1:
+                            yy = page_baseline
+                            panorama.create_line(
+                                x1,
+                                yy,
+                                x2,
+                                yy,
+                                fill="#B7B1A8",
+                                width=1,
+                            )
+                            dot = (x1 + x2) / 2
+                            panorama.create_oval(
+                                dot - 3,
+                                yy - 3,
+                                dot + 3,
+                                yy + 3,
+                                fill=MOUNT,
+                                outline="#9F988F",
+                                width=1,
+                            )
+
+                    previous_box = box
+
+            panorama.configure(
+                scrollregion=(
+                    0,
+                    0,
+                    max(view_w, natural_total),
+                    view_h,
+                )
+            )
+
+        pan_state = {
+            "active": False,
+            "moved": False,
+            "press_x": 0,
+            "press_y": 0,
+            "y_origin": 0.0,
+        }
+
+        def panorama_pan_press(event):
+            pan_state["active"] = True
+            pan_state["moved"] = False
+            pan_state["press_x"] = event.x
+            pan_state["press_y"] = event.y
+            try:
+                pan_state["y_origin"] = float(panorama.yview()[0])
+            except Exception:
+                pan_state["y_origin"] = 0.0
+
+            panorama.scan_mark(event.x, event.y)
+            panorama.configure(cursor="hand2")
+
+        def panorama_pan_drag(event):
+            if not pan_state["active"]:
+                return None
+
+            if abs(event.x - pan_state["press_x"]) >= 3:
+                pan_state["moved"] = True
+
+            panorama.scan_dragto(
+                event.x,
+                pan_state["press_y"],
+                gain=1,
+            )
+            try:
+                panorama.yview_moveto(pan_state["y_origin"])
+            except Exception:
+                pass
+            return "break"
+
+        def panorama_pan_release(_event=None):
+            if not pan_state["active"]:
+                return
+            pan_state["active"] = False
+            panorama.configure(cursor="arrow")
+
+        def global_wheel(event):
+            if getattr(event, "delta", 0):
+                panorama.xview_scroll(
+                    -3 if event.delta > 0 else 3,
+                    "units",
+                )
+                return "break"
+            return None
+
+        panorama.bind("<Configure>", draw_global)
+        panorama.bind("<ButtonPress-1>", panorama_pan_press)
+        panorama.bind("<B1-Motion>", panorama_pan_drag)
+        panorama.bind("<ButtonRelease-1>", panorama_pan_release)
+        panorama.bind(
+            "<Leave>",
+            lambda _e: (
+                panorama_pan_release()
+                if pan_state["active"]
+                else None
+            ),
+        )
+        panorama.bind("<MouseWheel>", global_wheel)
+
+        self._visualisation_global_render = draw_global
+
+        # ----------------------------------------------------------
+        # Vue feuilletée : contenu et réactions repris du Maquettage.
+        # ----------------------------------------------------------
+        feuillet_panel = tk.Canvas(
+            parent,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._visualisation_feuillet_panel = feuillet_panel
+
+        def draw_feuillet_panel(_event=None):
+            feuillet_panel.delete("panel_decor")
+            w = max(1, feuillet_panel.winfo_width())
+            h = max(1, feuillet_panel.winfo_height())
+            if w < 80 or h < 80:
+                return
+            feuillet_panel.create_polygon(
+                _panel_points(0, 0, w - 3, h - 4),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+                tags=("panel_decor",),
+            )
+            self._draw_notebook_spiral_canvas(
+                feuillet_panel,
+                4,
+                17,
+                h - 22,
+                "#8D70C7",
+                tags=("panel_decor",),
+                step=18,
+            )
+            feuillet_panel.create_text(
+                20, 17,
+                text="Vue feuilletée",
+                fill=INK,
+                font=("Georgia", 12, "bold"),
+                anchor="nw",
+                tags=("panel_decor",),
+            )
+            line_x1 = 145
+            line_x2 = max(line_x1 + 20, w - 28)
+            feuillet_panel.create_line(
+                line_x1, 28, line_x2, 28,
+                fill="#A8A29A",
+                width=1,
+                tags=("panel_decor",),
+            )
+            feuillet_panel.create_oval(
+                line_x2 - 3, 25, line_x2 + 3, 31,
+                fill="#D8D4CD",
+                outline="#A8A29A",
+                width=1,
+                tags=("panel_decor",),
+            )
+
+        feuillet_panel.bind("<Configure>", draw_feuillet_panel)
+
+        book_canvas = tk.Canvas(
+            feuillet_panel,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._visualisation_book_canvas = book_canvas
+        self._visualisation_book_source_cache = {}
+        self._visualisation_book_turn_frames = []
+        self._visualisation_book_support_cache = {}
+
+        spread_left = [-1]
+        flip_state = {
+            "active": False,
+            "after": None,
+            "direction": 0,
+        }
+
+        def page_source_image(page):
+            if page is None:
+                return None
+            type_name = normalized_type_name(page)
+            path = thumbnail_path_for_type(type_name)
+            key = str(path) if path is not None else ""
+            if key in self._visualisation_book_source_cache:
+                return self._visualisation_book_source_cache[key]
+            image = None
+            if path is not None:
+                try:
+                    image = Image.open(path).convert("RGBA")
+                except Exception:
+                    image = None
+            self._visualisation_book_source_cache[key] = image
+            return image
+
+        def animated_page_photo(page, width, height, *, shade=0.0):
+            width = max(2, int(width))
+            height = max(2, int(height))
+            source = page_source_image(page)
+            if source is None:
+                image = Image.new(
+                    "RGBA",
+                    (width, height),
+                    (245, 242, 235, 255),
+                )
+            else:
+                image = source.resize(
+                    (width, height),
+                    Image.Resampling.BILINEAR,
+                )
+            shade = max(0.0, min(0.38, float(shade)))
+            if shade > 0:
+                veil = Image.new(
+                    "RGBA",
+                    image.size,
+                    (92, 84, 76, 255),
+                )
+                image = Image.blend(image, veil, shade)
+            photo = ImageTk.PhotoImage(image)
+            self._visualisation_book_turn_frames = [photo]
+            return photo
+
+        def draw_large_page(canvas, page, x1, y1, x2, y2, *, blank=False):
+            if blank or page is None:
+                canvas.create_rectangle(
+                    x1 + 3, y1 + 5, x2 + 3, y2 + 5,
+                    fill="#B9B1A8", outline="",
+                )
+                canvas.create_rectangle(
+                    x1, y1, x2, y2,
+                    fill="#EEEAE3", outline="#CFC8BF", width=1,
+                )
+                return
+
+            canvas.create_rectangle(
+                x1 + 4, y1 + 6, x2 + 4, y2 + 6,
+                fill="#A69D93", outline="",
+            )
+            canvas.create_rectangle(
+                x1, y1, x2, y2,
+                fill="#FFFEFB", outline="#C9C2BA", width=1,
+            )
+            photo = page_photo(
+                page,
+                max(1, int(x2 - x1 - 8)),
+                max(1, int(y2 - y1 - 8)),
+            )
+            if photo is not None:
+                canvas.create_image(
+                    (x1 + x2) / 2,
+                    (y1 + y2) / 2,
+                    image=photo,
+                    anchor="center",
+                )
+            else:
+                canvas.create_text(
+                    (x1 + x2) / 2,
+                    (y1 + y2) / 2,
+                    text=normalized_type_name(page),
+                    fill="#4E565D",
+                    font=("Georgia", 13, "bold"),
+                    justify="center",
+                )
+
+        def book_geometry():
+            # Le support du livre est centré avec la même respiration
+            # en haut, en bas, à gauche et à droite.
+            w = max(360, book_canvas.winfo_width())
+            h = max(220, book_canvas.winfo_height())
+            gap = 15
+
+            uniform_margin = 24
+            support_extra_x = 84
+            support_extra_y = 70
+
+            by_height = max(
+                150,
+                h - support_extra_y - uniform_margin * 2,
+            )
+            by_width = max(
+                150,
+                (
+                    (
+                        w
+                        - support_extra_x
+                        - gap
+                        - uniform_margin * 2
+                    )
+                    / 2
+                )
+                * 1.40,
+            )
+
+            page_h = max(150, min(by_height, by_width))
+            page_w = page_h / 1.40
+            total_w = page_w * 2 + gap
+
+            support_w = total_w + support_extra_x
+            support_h = page_h + support_extra_y
+            support_left = (w - support_w) / 2
+            support_top = (h - support_h) / 2
+
+            left_x = support_left + 42
+            right_x = left_x + page_w + gap
+            y1 = support_top + 28
+            gutter_x = left_x + page_w + gap / 2
+
+            return {
+                "w": w,
+                "h": h,
+                "page_w": page_w,
+                "page_h": page_h,
+                "gap": gap,
+                "total_w": total_w,
+                "left_x": left_x,
+                "right_x": right_x,
+                "y1": y1,
+                "gutter_x": gutter_x,
+            }
+
+        def support_photo(width, height):
+            from PIL import ImageFilter as _ImageFilter
+
+            width = max(220, int(width))
+            height = max(180, int(height))
+            key = (width, height)
+            cached = self._visualisation_book_support_cache.get(key)
+            if cached is not None:
+                return cached
+
+            scale = 2
+            sw = width * scale
+            sh = height * scale
+            image = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+
+            shadow = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(shadow)
+            pad = 22 * scale
+            sd.rounded_rectangle(
+                (pad, pad + 8 * scale, sw - pad, sh - pad + 5 * scale),
+                radius=18 * scale,
+                fill=(95, 82, 68, 70),
+            )
+            shadow = shadow.filter(_ImageFilter.GaussianBlur(12 * scale))
+            image.alpha_composite(shadow)
+
+            plate = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+            pd = ImageDraw.Draw(plate)
+            outer = (
+                20 * scale,
+                16 * scale,
+                sw - 20 * scale,
+                sh - 25 * scale,
+            )
+            pd.rounded_rectangle(
+                outer,
+                radius=17 * scale,
+                fill=(223, 214, 202, 255),
+                outline=(194, 183, 169, 255),
+                width=1 * scale,
+            )
+
+            bevel_colors = (
+                (226, 217, 205, 255),
+                (232, 224, 213, 255),
+                (238, 231, 221, 255),
+                (244, 239, 232, 255),
+            )
+            for i, color in enumerate(bevel_colors, start=1):
+                inset = (20 + i * 3) * scale
+                pd.rounded_rectangle(
+                    (
+                        inset,
+                        (16 + i * 3) * scale,
+                        sw - inset,
+                        sh - (25 + i * 3) * scale,
+                    ),
+                    radius=max(5, (17 - i * 2) * scale),
+                    fill=color,
+                )
+
+            texture = Image.effect_noise((sw, sh), 10.0).convert("L")
+            texture = texture.point(
+                lambda value: int(232 + (value - 128) * 0.08)
+            )
+            texture_rgba = Image.merge(
+                "RGBA",
+                (
+                    texture,
+                    texture,
+                    texture,
+                    Image.new("L", (sw, sh), 30),
+                ),
+            )
+            mask = Image.new("L", (sw, sh), 0)
+            md = ImageDraw.Draw(mask)
+            md.rounded_rectangle(
+                (
+                    30 * scale,
+                    26 * scale,
+                    sw - 30 * scale,
+                    sh - 35 * scale,
+                ),
+                radius=12 * scale,
+                fill=255,
+            )
+            texture_rgba.putalpha(
+                Image.eval(mask, lambda a: int(a * 0.12))
+            )
+            plate.alpha_composite(texture_rgba)
+            pd = ImageDraw.Draw(plate)
+
+            pd.rounded_rectangle(
+                (
+                    38 * scale,
+                    34 * scale,
+                    sw - 38 * scale,
+                    sh - 48 * scale,
+                ),
+                radius=10 * scale,
+                fill=(248, 245, 239, 236),
+                outline=(236, 230, 221, 255),
+                width=1 * scale,
+            )
+            pd.line(
+                (
+                    52 * scale,
+                    42 * scale,
+                    sw - 52 * scale,
+                    42 * scale,
+                ),
+                fill=(255, 255, 255, 210),
+                width=1 * scale,
+            )
+
+            lip_y = sh - 52 * scale
+            pd.rounded_rectangle(
+                (
+                    48 * scale,
+                    lip_y,
+                    sw - 48 * scale,
+                    lip_y + 16 * scale,
+                ),
+                radius=5 * scale,
+                fill=(211, 200, 186, 255),
+                outline=(190, 178, 163, 255),
+                width=1 * scale,
+            )
+            pd.line(
+                (
+                    58 * scale,
+                    lip_y + 2 * scale,
+                    sw - 58 * scale,
+                    lip_y + 2 * scale,
+                ),
+                fill=(252, 249, 244, 220),
+                width=1 * scale,
+            )
+
+            stop_y = sh - 78 * scale
+            stop_w = 55 * scale
+            stop_h = 13 * scale
+            for center_x in (int(sw * 0.29), int(sw * 0.71)):
+                pd.rounded_rectangle(
+                    (
+                        center_x - stop_w // 2,
+                        stop_y,
+                        center_x + stop_w // 2,
+                        stop_y + stop_h,
+                    ),
+                    radius=4 * scale,
+                    fill=(218, 208, 195, 255),
+                    outline=(195, 183, 168, 255),
+                    width=1 * scale,
+                )
+                pd.line(
+                    (
+                        center_x - stop_w // 2 + 8 * scale,
+                        stop_y + 2 * scale,
+                        center_x + stop_w // 2 - 8 * scale,
+                        stop_y + 2 * scale,
+                    ),
+                    fill=(252, 250, 246, 235),
+                    width=1 * scale,
+                )
+
+            center_x = sw // 2
+            pd.rounded_rectangle(
+                (
+                    center_x - 9 * scale,
+                    47 * scale,
+                    center_x + 9 * scale,
+                    sh - 72 * scale,
+                ),
+                radius=5 * scale,
+                fill=(226, 218, 207, 180),
+                outline=(205, 195, 182, 190),
+                width=1 * scale,
+            )
+            image.alpha_composite(plate)
+            image = image.resize((width, height), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+            self._visualisation_book_support_cache[key] = photo
+            return photo
+
+        def draw_book_background(geometry):
+            w = geometry["w"]
+            h = geometry["h"]
+            left_x = geometry["left_x"]
+            right_x = geometry["right_x"]
+            y1 = geometry["y1"]
+            page_w = geometry["page_w"]
+            page_h = geometry["page_h"]
+
+            margin = 20
+            x1 = margin
+            y_top = 10
+            x2 = w - margin
+            y2 = h - 12
+
+            book_canvas.create_polygon(
+                polygon_points(x1, y_top, x2, y2, cut=14),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+            )
+
+            gx = x1 + 38
+            while gx < x2 - 20:
+                book_canvas.create_line(
+                    gx, y_top + 14, gx, y2 - 14,
+                    fill=GRID, width=1,
+                )
+                gx += 96
+            gy = y_top + 28
+            while gy < y2 - 16:
+                book_canvas.create_line(
+                    x1 + 14, gy, x2 - 14, gy,
+                    fill=GRID, width=1,
+                )
+                gy += 44
+
+            stand_x = left_x - 42
+            stand_y = y1 - 28
+            stand_w = int((right_x + page_w + 42) - stand_x)
+            stand_h = int(page_h + 70)
+            photo = support_photo(stand_w, stand_h)
+            book_canvas.create_image(
+                stand_x, stand_y, image=photo, anchor="nw"
+            )
+            book_canvas.create_oval(
+                left_x + 24,
+                y1 + page_h - 7,
+                right_x + page_w - 24,
+                y1 + page_h + 13,
+                fill="#D9D1C6",
+                outline="",
+            )
+
+        def draw_gutter(geometry):
+            gutter_x = geometry["gutter_x"]
+            y1 = geometry["y1"]
+            page_h = geometry["page_h"]
+            book_canvas.create_line(
+                gutter_x, y1 + 4, gutter_x, y1 + page_h - 4,
+                fill="#6F655C", width=3,
+            )
+            book_canvas.create_line(
+                gutter_x - 5, y1 + 8,
+                gutter_x - 2, y1 + page_h - 8,
+                fill="#B7AEA5", width=1,
+            )
+            book_canvas.create_line(
+                gutter_x + 2, y1 + 8,
+                gutter_x + 5, y1 + page_h - 8,
+                fill="#B7AEA5", width=1,
+            )
+
+        def current_pages():
+            return self._tomelinea_collect_book_pages()
+
+        def page_at(index, pages=None):
+            if pages is None:
+                pages = current_pages()
+            if 0 <= index < len(pages):
+                return pages[index]
+            return None
+
+        def draw_spread(left_page, right_page):
+            geometry = book_geometry()
+            draw_book_background(geometry)
+            left_x = geometry["left_x"]
+            right_x = geometry["right_x"]
+            y1 = geometry["y1"]
+            page_w = geometry["page_w"]
+            page_h = geometry["page_h"]
+            draw_large_page(
+                book_canvas, left_page,
+                left_x, y1,
+                left_x + page_w, y1 + page_h,
+                blank=left_page is None,
+            )
+            draw_large_page(
+                book_canvas, right_page,
+                right_x, y1,
+                right_x + page_w, y1 + page_h,
+                blank=right_page is None,
+            )
+            draw_gutter(geometry)
+            return geometry
+
+        def render_book(_event=None):
+            if flip_state["active"]:
+                return
+            pages = current_pages()
+            if spread_left[0] > len(pages) - 1:
+                spread_left[0] = max(-1, len(pages) - 2)
+                if spread_left[0] % 2 == 0:
+                    spread_left[0] -= 1
+            book_canvas.delete("all")
+            li = spread_left[0]
+            draw_spread(
+                page_at(li, pages),
+                page_at(li + 1, pages),
+            )
+
+        def draw_turning_page(
+            page, x1, y1, x2, y2, *, shade=0.0, edge_x=None
+        ):
+            width = max(1.0, x2 - x1)
+            height = max(1.0, y2 - y1)
+            if width <= 3:
+                xx = edge_x if edge_x is not None else (x1 + x2) / 2
+                book_canvas.create_line(
+                    xx, y1 + 2, xx, y2 - 2,
+                    fill="#6B6259", width=3,
+                )
+                return
+            book_canvas.create_rectangle(
+                x1 + 3, y1 + 5, x2 + 3, y2 + 5,
+                fill="#81786F", outline="",
+            )
+            book_canvas.create_rectangle(
+                x1, y1, x2, y2,
+                fill="#FFFEFB", outline="#AFA79F", width=1,
+            )
+            photo = animated_page_photo(
+                page,
+                max(2, int(width - 4)),
+                max(2, int(height - 4)),
+                shade=shade,
+            )
+            book_canvas.create_image(
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
+                image=photo,
+                anchor="center",
+            )
+            if edge_x is not None:
+                for offset, color in (
+                    (0, "#625A52"),
+                    (2, "#8A8178"),
+                    (4, "#B0A79D"),
+                ):
+                    book_canvas.create_line(
+                        edge_x + offset,
+                        y1 + 2,
+                        edge_x + offset,
+                        y2 - 2,
+                        fill=color,
+                        width=1,
+                    )
+
+        def animate_page_turn(direction):
+            if flip_state["active"]:
+                return
+
+            pages = current_pages()
+            current = spread_left[0]
+            if direction > 0:
+                target = current + 2
+                if target > len(pages) - 1:
+                    return
+            else:
+                target = current - 2
+                if target < -1:
+                    return
+
+            current_left = page_at(current, pages)
+            current_right = page_at(current + 1, pages)
+            target_left = page_at(target, pages)
+            target_right = page_at(target + 1, pages)
+
+            flip_state["active"] = True
+            flip_state["direction"] = 1 if direction > 0 else -1
+            if flip_state["after"] is not None:
+                try:
+                    parent.after_cancel(flip_state["after"])
+                except Exception:
+                    pass
+                flip_state["after"] = None
+
+            frames = 22
+            frame_ms = 15
+
+            def frame(index):
+                try:
+                    if not parent.winfo_exists():
+                        return
+                except Exception:
+                    return
+
+                t = index / frames
+                eased = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+                book_canvas.delete("all")
+                geometry = book_geometry()
+                left_x = geometry["left_x"]
+                right_x = geometry["right_x"]
+                y1 = geometry["y1"]
+                page_w = geometry["page_w"]
+                page_h = geometry["page_h"]
+                gutter_left = left_x + page_w
+                gutter_right = right_x
+
+                if direction > 0:
+                    if eased < 0.5:
+                        phase = eased / 0.5
+                        draw_spread(current_left, target_right)
+                        fraction = max(0.0, 1.0 - phase)
+                        moving_w = page_w * fraction
+                        bend = int(13 * (1.0 - fraction))
+                        x1 = gutter_right
+                        x2 = gutter_right + moving_w
+                        draw_turning_page(
+                            current_right,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x2,
+                        )
+                    else:
+                        phase = (eased - 0.5) / 0.5
+                        draw_spread(current_left, target_right)
+                        fraction = max(0.0, min(1.0, phase))
+                        moving_w = page_w * fraction
+                        bend = int(13 * (1.0 - fraction))
+                        x2 = gutter_left
+                        x1 = gutter_left - moving_w
+                        draw_turning_page(
+                            target_left,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x1,
+                        )
+                else:
+                    if eased < 0.5:
+                        phase = eased / 0.5
+                        draw_spread(target_left, current_right)
+                        fraction = max(0.0, 1.0 - phase)
+                        moving_w = page_w * fraction
+                        bend = int(13 * (1.0 - fraction))
+                        x2 = gutter_left
+                        x1 = gutter_left - moving_w
+                        draw_turning_page(
+                            current_left,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x1,
+                        )
+                    else:
+                        phase = (eased - 0.5) / 0.5
+                        draw_spread(target_left, current_right)
+                        fraction = max(0.0, min(1.0, phase))
+                        moving_w = page_w * fraction
+                        bend = int(13 * (1.0 - fraction))
+                        x1 = gutter_right
+                        x2 = gutter_right + moving_w
+                        draw_turning_page(
+                            target_right,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x2,
+                        )
+
+                shadow_strength = 1.0 - abs(eased - 0.5) * 2.0
+                shadow_strength = max(0.0, min(1.0, shadow_strength))
+                gutter = geometry["gutter_x"]
+                for offset, color in (
+                    (0, "#5F564E"),
+                    (3, "#7A7067"),
+                    (6, "#A59B92"),
+                ):
+                    book_canvas.create_line(
+                        gutter + (offset if direction > 0 else -offset),
+                        y1 + 8,
+                        gutter + (offset if direction > 0 else -offset),
+                        y1 + page_h - 8,
+                        fill=color,
+                        width=2 if shadow_strength > 0.45 else 1,
+                    )
+
+                if index < frames:
+                    flip_state["after"] = parent.after(
+                        frame_ms,
+                        lambda: frame(index + 1),
+                    )
+                else:
+                    spread_left[0] = target
+                    flip_state["active"] = False
+                    flip_state["direction"] = 0
+                    flip_state["after"] = None
+                    self._visualisation_book_turn_frames = []
+                    render_book()
+
+            frame(0)
+
+        def turn(step):
+            animate_page_turn(1 if step > 0 else -1)
+
+        def book_click(event):
+            if flip_state["active"]:
+                return
+            book_canvas.focus_set()
+            w = max(1, book_canvas.winfo_width())
+            if event.x >= w / 2:
+                turn(1)
+            else:
+                turn(-1)
+
+        def book_wheel(event):
+            if getattr(event, "delta", 0):
+                turn(1 if event.delta < 0 else -1)
+                return "break"
+            return None
+
+        book_canvas.bind("<Configure>", render_book)
+        book_canvas.bind("<Button-1>", book_click)
+        book_canvas.bind("<MouseWheel>", book_wheel)
+        book_canvas.bind("<Right>", lambda _e: turn(1))
+        book_canvas.bind("<Left>", lambda _e: turn(-1))
+        self._visualisation_book_render = render_book
+
+        # ----------------------------------------------------------
+        # Informations : données vivantes du même modèle que le Maquettage.
+        # Aucun état du livre n'est dupliqué dans Visualisation.
+        # ----------------------------------------------------------
+        info_canvas = tk.Canvas(
+            parent,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._visualisation_info_canvas = info_canvas
+
+        def draw_info(_event=None):
+            info_canvas.delete("all")
+            w = max(1, info_canvas.winfo_width())
+            h = max(1, info_canvas.winfo_height())
+            if w < 40 or h < 40:
+                return
+
+            # Zone TomeLinea sans fond : seulement sa structure visuelle.
+            info_canvas.create_polygon(
+                _panel_points(0, 0, w - 3, h - 4),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+            )
+            self._draw_notebook_spiral_canvas(
+                info_canvas,
+                4,
+                17,
+                h - 22,
+                "#72AFCB",
+                step=18,
+            )
+            info_canvas.create_text(
+                20, 17,
+                text="Informations",
+                fill=INK,
+                font=("Georgia", 12, "bold"),
+                anchor="nw",
+            )
+            line_x1 = 115
+            line_x2 = max(line_x1 + 20, w - 28)
+            info_canvas.create_line(
+                line_x1, 28, line_x2, 28,
+                fill="#A8A29A",
+                width=1,
+            )
+            info_canvas.create_oval(
+                line_x2 - 3, 25, line_x2 + 3, 31,
+                fill="#D8D4CD",
+                outline="#A8A29A",
+                width=1,
+            )
+
+            # Toujours relire le modèle courant : pas de copie locale.
+            pages = self._tomelinea_collect_book_pages()
+            model = getattr(self, "_maquettage_structure_model", None) or [
+                {"name": "Début", "pages": 3},
+                {"name": "Partie 1", "pages": 12},
+                {"name": "Partie 2", "pages": None},
+                {"name": "Partie 3", "pages": None},
+                {"name": "Fin", "pages": 3},
+            ]
+
+            groups = []
+            for group in model:
+                name = str(group.get("name", "Partie"))
+                count = int(group.get("pages") or 0)
+                if count > 0:
+                    groups.append((name, count))
+
+            total_pages = len(pages)
+            auto_pages = sum(
+                1
+                for page in pages
+                if str(page.get("kind", "")).strip().lower() == "page auto"
+            )
+            part_count = sum(
+                1
+                for name, _count in groups
+                if name.strip().lower() not in ("début", "debut", "fin")
+            )
+            represented_types = len({
+                str(page.get("kind", "Page courante"))
+                for page in pages
+            })
+
+            x_label = 22
+            x_value = max(150, w - 24)
+            y = 62
+
+            info_canvas.create_text(
+                x_label, y,
+                text="Vue d'ensemble du livre",
+                fill="#173E70",
+                font=("Georgia", 10, "bold"),
+                anchor="nw",
+            )
+            y += 30
+
+            rows = (
+                ("Pages", total_pages),
+                ("Parties", part_count),
+                ("Pages automatiques", auto_pages),
+                ("Types représentés", represented_types),
+            )
+            for label, value in rows:
+                info_canvas.create_text(
+                    x_label, y,
+                    text=label,
+                    fill="#5D6267",
+                    font=("Segoe UI", 9),
+                    anchor="nw",
+                )
+                info_canvas.create_text(
+                    x_value, y,
+                    text=str(value),
+                    fill="#173E70",
+                    font=("Segoe UI", 9, "bold"),
+                    anchor="ne",
+                )
+                y += 25
+
+            y += 7
+            info_canvas.create_line(
+                x_label, y, max(x_label + 20, w - 22), y,
+                fill="#CFC9C1",
+                width=1,
+            )
+            y += 17
+            info_canvas.create_text(
+                x_label, y,
+                text="Structure",
+                fill="#173E70",
+                font=("Georgia", 10, "bold"),
+                anchor="nw",
+            )
+            y += 28
+
+            # La liste s'adapte à la hauteur disponible.
+            line_h = 24
+            available_rows = max(1, int((h - y - 28) / line_h))
+            visible_groups = groups[:available_rows]
+            for name, count in visible_groups:
+                info_canvas.create_text(
+                    x_label, y,
+                    text=name,
+                    fill="#555B60",
+                    font=("Segoe UI", 9),
+                    anchor="nw",
+                )
+                info_canvas.create_text(
+                    x_value, y,
+                    text=f"{count} page" + ("s" if count != 1 else ""),
+                    fill="#555B60",
+                    font=("Segoe UI", 9),
+                    anchor="ne",
+                )
+                y += line_h
+
+            hidden = len(groups) - len(visible_groups)
+            if hidden > 0:
+                info_canvas.create_text(
+                    x_label, min(h - 28, y + 2),
+                    text=f"+ {hidden} autre" + ("s" if hidden > 1 else "") + " section" + ("s" if hidden > 1 else ""),
+                    fill="#7A7F83",
+                    font=("Segoe UI", 8, "italic"),
+                    anchor="nw",
+                )
+
+        self._visualisation_info_render = draw_info
+        info_canvas.bind("<Configure>", draw_info)
+
+        # ----------------------------------------------------------
+        # Outils : zone TomeLinea vide, à droite de la Vue feuilletée.
+        # ----------------------------------------------------------
+        tools_canvas = tk.Canvas(
+            parent,
+            bg="#D8D4CD",
+            highlightthickness=0,
+            bd=0,
+        )
+        self._visualisation_tools_canvas = tools_canvas
+
+        def draw_tools(_event=None):
+            tools_canvas.delete("all")
+            w = max(1, tools_canvas.winfo_width())
+            h = max(1, tools_canvas.winfo_height())
+            if w < 40 or h < 40:
+                return
+            tools_canvas.create_polygon(
+                _panel_points(0, 0, w - 3, h - 4),
+                fill="",
+                outline="#C8C3BB",
+                width=1,
+            )
+            self._draw_notebook_spiral_canvas(
+                tools_canvas,
+                4,
+                17,
+                h - 22,
+                "#E28A6D",
+                step=18,
+            )
+            tools_canvas.create_text(
+                20, 17,
+                text="Outils",
+                fill=INK,
+                font=("Georgia", 12, "bold"),
+                anchor="nw",
+            )
+            line_x1 = 80
+            line_x2 = max(line_x1 + 20, w - 28)
+            tools_canvas.create_line(
+                line_x1, 28, line_x2, 28,
+                fill="#A8A29A",
+                width=1,
+            )
+            tools_canvas.create_oval(
+                line_x2 - 3, 25, line_x2 + 3, 31,
+                fill="#D8D4CD",
+                outline="#A8A29A",
+                width=1,
+            )
+
+        tools_canvas.bind("<Configure>", draw_tools)
+
+        # ----------------------------------------------------------
+        # Placement direct sur le fond :
+        # haut = Vue globale pleine largeur ; bas = Feuilletée + Outils.
+        # ----------------------------------------------------------
+        def layout_visualisation(_event=None):
+            width = max(parent.winfo_width(), 1180)
+            height = max(parent.winfo_height(), 720)
+            draw_background()
+
+            margin_x = 16
+            margin_y = 14
+            gap = 14
+
+            # Vue globale inchangée.
+            global_h = min(360, max(320, int(height * 0.34)))
+            global_w = max(900, width - margin_x * 2)
+
+            global_panel.place(
+                x=margin_x,
+                y=margin_y,
+                width=global_w,
+                height=global_h,
+            )
+            panorama.place(
+                x=12,
+                y=46,
+                width=max(820, global_w - 24),
+                height=max(245, global_h - 58),
+            )
+
+            # Partie basse : Informations | Vue feuilletée | Outils.
+            bottom_y = margin_y + global_h + gap
+            bottom_h = max(260, height - bottom_y - margin_y)
+            bottom_gap = 14
+
+            available_w = max(
+                900,
+                width - margin_x * 2 - bottom_gap * 2,
+            )
+
+            # La largeur de la Vue feuilletée découle de sa hauteur :
+            # le support du livre garde la même respiration sur 4 côtés.
+            book_body_h = max(220, bottom_h - 58)
+            book_margin = 24
+            page_h_target = max(
+                150,
+                book_body_h - 70 - book_margin * 2,
+            )
+            page_w_target = page_h_target / 1.40
+            support_w_target = page_w_target * 2 + 15 + 84
+            book_body_w = support_w_target + book_margin * 2
+            feuillet_w = int(round(book_body_w + 24))
+
+            min_side_w = 220
+            max_feuillet_w = max(
+                480,
+                available_w - min_side_w * 2,
+            )
+            feuillet_w = max(
+                480,
+                min(feuillet_w, max_feuillet_w),
+            )
+
+            # Gauche et droite ont exactement le même poids visuel.
+            side_total = max(440, available_w - feuillet_w)
+            info_w = side_total // 2
+            tools_w = side_total - info_w
+
+            info_x = margin_x
+            feuillet_x = info_x + info_w + bottom_gap
+            tools_x = feuillet_x + feuillet_w + bottom_gap
+
+            info_canvas.place(
+                x=info_x,
+                y=bottom_y,
+                width=info_w,
+                height=bottom_h,
+            )
+
+            feuillet_panel.place(
+                x=feuillet_x,
+                y=bottom_y,
+                width=feuillet_w,
+                height=bottom_h,
+            )
+            book_canvas.place(
+                x=12,
+                y=46,
+                width=max(360, feuillet_w - 24),
+                height=max(220, bottom_h - 58),
+            )
+
+            tools_canvas.place(
+                x=tools_x,
+                y=bottom_y,
+                width=tools_w,
+                height=bottom_h,
+            )
+
+            global_panel.after_idle(draw_global_panel)
+            panorama.after_idle(draw_global)
+            info_canvas.after_idle(draw_info)
+            feuillet_panel.after_idle(draw_feuillet_panel)
+            book_canvas.after_idle(render_book)
+            tools_canvas.after_idle(draw_tools)
+
+        self._visualisation_layout = layout_visualisation
+        parent.bind("<Configure>", layout_visualisation, add="+")
+        parent.after_idle(layout_visualisation)
+    def _return_from_visualisation(self) -> None:
+        """Retourne exactement au bureau qui a ouvert Visualisation."""
+        target = getattr(self, "_visualisation_return_screen", "centre")
+        if target == "visualisation" or target not in self._screens:
+            target = "centre"
+
+        if target == "accueil":
+            self._active = "accueil"
+            self.accueil_host.tkraise()
+            self.visualisation_host.lower()
+            return
+
+        screen = self._screens.get(target)
+        if screen is None:
+            target = "centre"
+            screen = self._screens.get(target)
+        if screen is None:
+            return
+
+        # Préparation derrière le calque Visualisation.
+        self._active = target
+        screen.tkraise()
+        if target == "centre":
+            render_centre = getattr(self, "_centre_render", None)
+            if callable(render_centre):
+                render_centre()
+
+        self._render_header_canvas()
+        screen.update_idletasks()
+        self.project_host.update_idletasks()
+        self.project_shell.update_idletasks()
+
+        # Révélation atomique : le ruban et le bureau réapparaissent ensemble.
+        self.visualisation_host.lower()
+        self.project_shell.tkraise()
+
+
     def show_screen(self, name: str) -> None:
         screen = self._screens.get(name)
         if screen is None:
             return
 
         previous = getattr(self, "_active", None)
+
+        # Visualisation est un calque plein écran indépendant du ruban.
+        # Rien n'est redimensionné : la page est préparée hors écran, puis
+        # révélée en un seul tkraise().
+        if name == "visualisation":
+            if previous != "visualisation":
+                if previous in self._screens:
+                    self._visualisation_return_screen = previous
+                else:
+                    self._visualisation_return_screen = "centre"
+
+            self._active = "visualisation"
+            screen.tkraise()
+
+            layout_visualisation = getattr(
+                self,
+                "_visualisation_layout",
+                None,
+            )
+            if callable(layout_visualisation):
+                layout_visualisation()
+
+            render_global = getattr(
+                self,
+                "_visualisation_global_render",
+                None,
+            )
+            if callable(render_global):
+                render_global()
+
+            render_book = getattr(
+                self,
+                "_visualisation_book_render",
+                None,
+            )
+            if callable(render_book):
+                render_book()
+
+            # Tous les calculs sont terminés avant la révélation.
+            screen.update_idletasks()
+            self.visualisation_host.update_idletasks()
+            self.project_shell.update_idletasks()
+            self.project_shell.tkraise()
+            self.visualisation_host.tkraise()
+            return
+
+        # Si une navigation appelle directement un bureau pendant que le
+        # calque Visualisation est ouvert, on prépare le bureau derrière le
+        # calque puis on révèle l'ensemble d'un seul coup.
+        if previous == "visualisation":
+            if name == "accueil":
+                if previous != "accueil":
+                    self._reset_accueil_project_selection()
+                self._active = "accueil"
+                self.accueil_host.tkraise()
+                self.visualisation_host.lower()
+                return
+
+            self._active = name
+            screen.tkraise()
+            if name == "centre":
+                render_centre = getattr(self, "_centre_render", None)
+                if callable(render_centre):
+                    render_centre()
+            self._render_header_canvas()
+            screen.update_idletasks()
+            self.project_host.update_idletasks()
+            self.project_shell.update_idletasks()
+            self.visualisation_host.lower()
+            self.project_shell.tkraise()
+            return
 
         if name == "accueil":
             if previous != "accueil":
@@ -1045,10 +3172,8 @@ class PageMaitreV2(tk.Tk):
             self.project_shell.tkraise()
             return
 
-        # NAVIGATION_PRECHAUFFAGE_VUES_V2
-        # Depuis l'Accueil, le bureau demandé a déjà été réalisé une première
-        # fois au démarrage. Il n'y a donc plus de phase de construction à
-        # attendre : bureau + ruban sont révélés par un seul changement de pile.
+        # Depuis l'Accueil : bureau + ruban sont préparés tant que l'Accueil
+        # reste au-dessus, puis révélés ensemble.
         self.accueil_host.tkraise()
         screen.tkraise()
 
@@ -1062,11 +3187,7 @@ class PageMaitreV2(tk.Tk):
         self.project_host.update_idletasks()
         self.project_shell.update_idletasks()
 
-        # Révélation atomique de l'espace Projet déjà préparé.
         self.project_shell.tkraise()
-
-
-
 
     def _set_header_tool_state(
         self, box: tk.Frame, *, enabled: bool
@@ -1129,70 +3250,6 @@ class PageMaitreV2(tk.Tk):
             cursor="hand2",
         ).pack(side="bottom", pady=18)
 
-    def open_visualisation_window(self) -> None:
-        win = tk.Toplevel(self)
-        win.title("Visualisation — TomeLinea V2")
-        win.configure(bg=theme.WINDOW)
-        win.geometry("980x680")
-        win.transient(self)
-
-        header = tk.Frame(win, bg=theme.PANEL, height=58)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-
-        tk.Label(
-            header,
-            text="Visualisation du livre",
-            bg=theme.PANEL,
-            fg=theme.INK,
-            font=("Segoe UI", 15, "bold"),
-        ).pack(side="left", padx=18, pady=16)
-
-        tk.Button(
-            header,
-            text="Fermer",
-            command=win.destroy,
-            relief="flat",
-            bd=0,
-            bg=theme.INK,
-            fg=theme.WHITE,
-            padx=14,
-            pady=7,
-            cursor="hand2",
-        ).pack(side="right", padx=16, pady=12)
-
-        canvas = tk.Canvas(
-            win,
-            bg="#EAE8E2",
-            highlightthickness=0,
-        )
-        canvas.pack(fill="both", expand=True, padx=18, pady=18)
-        canvas.create_rectangle(
-            180, 70, 470, 570,
-            fill=theme.WHITE,
-            outline=theme.BORDER,
-        )
-        canvas.create_rectangle(
-            490, 70, 780, 570,
-            fill=theme.WHITE,
-            outline=theme.BORDER,
-        )
-        canvas.create_text(
-            480,
-            620,
-            text="Double page — aperçu V2",
-            fill=theme.MUTED,
-            font=("Segoe UI", 10),
-        )
-
-    # ==========================================================
-    # ACCUEIL — PREMIÈRE PAGE DE RÉFÉRENCE V2
-    # ==========================================================
-
-    # ACCUEIL_FENETRES_BASE_V1
-    # Fenêtres de base de l'Accueil.
-    # Elles restent volontairement simples et sans fonctions métier.
-
     def _accueil_center_base_window(self, win, width, height):
         self.update_idletasks()
         sw = max(self.winfo_screenwidth(), width)
@@ -1237,11 +3294,11 @@ class PageMaitreV2(tk.Tk):
         subtitle,
         accent,
     ):
-        win.configure(bg="#F5F1E9")
+        win.configure(bg=theme.WINDOW)
 
         canvas = tk.Canvas(
             win,
-            bg="#F5F1E9",
+            bg=theme.WINDOW,
             highlightthickness=0,
             bd=0,
         )
@@ -1274,7 +3331,7 @@ class PageMaitreV2(tk.Tk):
 
         body = tk.Frame(
             canvas,
-            bg="#FFFEFC",
+            bg=theme.PANEL,
             padx=22,
             pady=18,
         )
@@ -1311,14 +3368,14 @@ class PageMaitreV2(tk.Tk):
 
             canvas.create_polygon(
                 shadow,
-                fill="#D8D2C9",
+                fill="#242830",
                 outline="",
                 tags=("dialog_panel",),
             )
             canvas.create_polygon(
                 points,
-                fill="#FFFEFC",
-                outline="#D7D1C7",
+                fill=theme.PANEL,
+                outline=theme.BORDER,
                 width=1,
                 tags=("dialog_panel",),
             )
@@ -1354,16 +3411,16 @@ class PageMaitreV2(tk.Tk):
         tk.Label(
             body,
             text=title,
-            bg="#FFFEFC",
-            fg="#173553",
+            bg=theme.PANEL,
+            fg=theme.INK,
             font=("Georgia", 15, "bold"),
         ).pack(anchor="w")
 
         tk.Label(
             body,
             text=subtitle,
-            bg="#FFFEFC",
-            fg="#68717A",
+            bg=theme.PANEL,
+            fg=theme.MUTED,
             font=("Segoe UI", 8),
             justify="left",
             wraplength=650,
@@ -2273,10 +4330,14 @@ class PageMaitreV2(tk.Tk):
 
     def _build_accueil(self, parent: tk.Frame) -> None:
         """Accueil TomeLinea — atelier éditorial professionnel à angles coupés."""
+        # ACCUEIL_FOND_TEST_IMAGE_V2
+        # CHARTE_FOND_ET_ZONES_GLOBALE_V1
+        # RUBAN_SANS_FOND_ET_MAQUETTAGE_SANS_FOND_V1
+        # RESSORTS_CAHIER_ZONES_V1
 
         canvas = tk.Canvas(
             parent,
-            bg="#F5F1E9",
+            bg="#33373F",
             highlightthickness=0,
             bd=0,
         )
@@ -2400,12 +4461,14 @@ class PageMaitreV2(tk.Tk):
 
             if accent:
                 if rail == "left":
-                    canvas.create_line(
-                        x1 + 3, y1 + 18,
-                        x1 + 3, y2 - 18,
-                        fill=accent,
-                        width=4,
+                    self._draw_notebook_spiral_canvas(
+                        canvas,
+                        x1 + 3,
+                        y1 + 18,
+                        y2 - 18,
+                        accent,
                         tags=tags,
+                        step=18,
                     )
                 elif rail == "top":
                     canvas.create_line(
@@ -2415,6 +4478,26 @@ class PageMaitreV2(tk.Tk):
                         width=3,
                         tags=tags,
                     )
+
+            # Relief discret en bas de zone :
+            # un trait plus épais, légèrement plus sombre,
+            # comme sur le rendu de référence.
+            relief = mix(fill, "#000000", 0.20)
+            relief_high = mix(fill, "#FFFFFF", 0.16)
+            canvas.create_line(
+                x1 + 16, y2 - 4,
+                x2 - 24, y2 - 4,
+                fill=relief_high,
+                width=1,
+                tags=tags,
+            )
+            canvas.create_line(
+                x1 + 14, y2 - 2,
+                x2 - 22, y2 - 2,
+                fill=relief,
+                width=3,
+                tags=tags,
+            )
 
             return panel_id
 
@@ -2817,24 +4900,22 @@ class PageMaitreV2(tk.Tk):
             if self._accueil_bg_source is not None:
                 try:
                     image = cover(self._accueil_bg_source, max(1, width), max(1, height))
-                    cream = Image.new("RGB", image.size, (248, 245, 238))
-                    image = Image.blend(image, cream, 0.20)
                     self._accueil_bg_photo = ImageTk.PhotoImage(image)
                     canvas.create_image(0, 0, image=self._accueil_bg_photo, anchor="nw")
                 except Exception:
-                    canvas.configure(bg="#F5F1E9")
+                    canvas.configure(bg="#33373F")
 
             canvas.create_text(
                 X(105), Y(48),
                 text="Bienvenue dans TomeLinea",
-                fill="#173553",
+                fill="#F3F4F6",
                 font=("Georgia", F(23), "bold"),
                 anchor="nw",
             )
             canvas.create_text(
                 X(107), Y(84),
                 text="LA LIGNE ÉDITORIALE JUSQU’AU LIVRE",
-                fill="#4C936D",
+                fill="#7BC89C",
                 font=("Segoe UI", F(9), "bold"),
                 anchor="nw",
             )
@@ -2844,7 +4925,7 @@ class PageMaitreV2(tk.Tk):
                     "Créez un ouvrage, reprenez le dernier projet "
                     "ou accédez directement au bureau dont vous avez besoin."
                 ),
-                fill="#5C6670",
+                fill="#C4CAD2",
                 font=("Segoe UI", F(8)),
                 anchor="nw",
             )
@@ -2865,8 +4946,8 @@ class PageMaitreV2(tk.Tk):
 
             cut_panel(
                 X(95), Y(160), X(805), Y(430),
-                fill="#FFFEFC",
-                outline="#D8D4CE",
+                fill="#2F333B",
+                outline="#59606A",
                 accent="#6FB293",
                 rail="left",
                 cut_tr=X(28),
@@ -2877,24 +4958,24 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(145), Y(185),
                 text="Créer un nouveau projet",
-                fill="#173553",
+                fill="#F3F4F6",
                 font=("Georgia", F(14), "bold"),
                 anchor="nw",
             )
             canvas.create_line(
                 X(445), Y(197), X(755), Y(197),
-                fill="#111111", width=1,
+                fill="#BFC5CD", width=1,
             )
             canvas.create_oval(
                 X(750), Y(193), X(758), Y(201),
-                fill="#FFFDFC",
-                outline="#111111",
+                fill="#2F333B",
+                outline="#BFC5CD",
                 width=1,
             )
             canvas.create_text(
                 X(145), Y(216),
                 text="Choisissez le type d’ouvrage à créer.",
-                fill="#68717A",
+                fill="#C1C7CF",
                 font=("Segoe UI", F(8)),
                 anchor="nw",
             )
@@ -2978,8 +5059,8 @@ class PageMaitreV2(tk.Tk):
 
             cut_panel(
                 X(825), Y(160), X(1490), Y(430),
-                fill="#FFFEFC",
-                outline="#D8D4CE",
+                fill="#2F333B",
+                outline="#59606A",
                 accent="#4A98D0",
                 rail="left",
                 cut_tr=X(28),
@@ -2990,7 +5071,7 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(875), Y(185),
                 text="Ouvrir un projet",
-                fill="#173553",
+                fill="#F2F3F5",
                 font=("Georgia", F(14), "bold"),
                 anchor="nw",
             )
@@ -3043,8 +5124,8 @@ class PageMaitreV2(tk.Tk):
             # Le bouton Reprendre est supprimé ; Centre reste dans les accès directs.
             cut_panel(
                 X(95), Y(448), X(1490), Y(645),
-                fill="#FFFEFC",
-                outline="#D8D4CE",
+                fill="#2F333B",
+                outline="#59606A",
                 accent="#8B6AB8",
                 rail="left",
                 cut_tr=X(28),
@@ -3059,7 +5140,7 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(145), Y(470),
                 text="Dernier projet actif",
-                fill="#173553",
+                fill="#F2F3F5",
                 font=("Georgia", F(13), "bold"),
                 anchor="nw",
             )
@@ -3077,7 +5158,7 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(145), Y(500),
                 text="Dernier projet actif et projets ouverts récemment.",
-                fill="#68717A",
+                fill="#C1C7CF",
                 font=("Segoe UI", F(8)),
                 anchor="nw",
             )
@@ -3176,7 +5257,7 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(855), Y(470),
                 text="Repères & accès directs",
-                fill="#173553",
+                fill="#F2F3F5",
                 font=("Georgia", F(13), "bold"),
                 anchor="nw",
             )
@@ -3194,7 +5275,7 @@ class PageMaitreV2(tk.Tk):
             canvas.create_text(
                 X(855), Y(500),
                 text="Raccourcis du dernier projet actif.",
-                fill="#68717A",
+                fill="#C1C7CF",
                 font=("Segoe UI", F(8)),
                 anchor="nw",
             )
@@ -3869,8 +5950,6 @@ class PageMaitreV2(tk.Tk):
         title: str,
         subtitle: str,
         accent: str,
-        *,
-        visualisation: bool = True,
     ) -> tk.Frame:
         block = tk.Frame(parent, bg=theme.WINDOW)
         block.pack(fill="x", padx=22, pady=(18, 10))
@@ -3898,23 +5977,6 @@ class PageMaitreV2(tk.Tk):
             font=("Segoe UI", 10),
         ).pack(anchor="w", pady=(2, 0))
 
-        if visualisation:
-            tk.Button(
-                block,
-                text="◫  Visualisation",
-                command=self.open_visualisation_window,
-                relief="flat",
-                bd=0,
-                padx=14,
-                pady=8,
-                bg=theme.PANEL,
-                fg=theme.INK,
-                activebackground=accent,
-                highlightthickness=1,
-                highlightbackground=theme.BORDER,
-                font=("Segoe UI", 9, "bold"),
-                cursor="hand2",
-            ).pack(side="right", padx=4)
 
         return block
 
@@ -3932,13 +5994,362 @@ class PageMaitreV2(tk.Tk):
             relief="flat",
             bd=0,
             bg=theme.PANEL_ALT,
-            fg="#8A8F95",
-            disabledforeground="#8A8F95",
+            fg="#C5CBD3",
+            disabledforeground="#C5CBD3",
             padx=12,
             pady=8,
             width=width,
             font=("Segoe UI", 9),
         )
+
+
+
+
+
+
+    def _get_notebook_spiral_photo(
+        self,
+        height: int,
+        accent: str = "#8FA0AE",
+        *,
+        opacity: float = 0.84,
+    ):
+        # SPIRALES_TOMELINEA_PRESENTES_V6
+        # SPIRALES_COULEUR_PLUS_PRESENTE_RELIEF_ACCUEIL_V7
+# SPIRALE_MODELE_REFERENCE_V12
+# SPIRALE_AJUSTEE_POSITION_COULEUR_V13
+# SPIRALE_FINE_PROPORTIONS_V14
+        from PIL import ImageDraw, ImageEnhance
+
+        cache = getattr(self, "_notebook_spiral_photo_cache", None)
+        if cache is None:
+            cache = {}
+            self._notebook_spiral_photo_cache = cache
+
+        base = getattr(self, "_notebook_spiral_base_source", None)
+        if base is None:
+            spiral_path = PROJECT_ROOT / "assets" / "interface" / "ui" / "spirale_zone_realiste.png"
+            if not spiral_path.exists():
+                self._notebook_spiral_base_source = False
+                return None
+            try:
+                image = Image.open(spiral_path).convert("RGBA")
+                alpha = image.getchannel("A")
+                mask = alpha.point(lambda v: 255 if v > 20 else 0)
+                bbox = mask.getbbox()
+                if bbox:
+                    image = image.crop(bbox)
+                image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+                self._notebook_spiral_base_source = image
+                base = image
+            except Exception:
+                self._notebook_spiral_base_source = False
+                return None
+
+        if base is False:
+            return None
+
+        # Un peu plus grosse que la V5, mais toujours discrète.
+        target_w = 18
+        target_h = max(34, int(height))
+        key = (target_w, target_h, round(opacity, 2))
+        photo = cache.get(key)
+        if photo is not None:
+            return photo
+
+        proto_h = max(122, int(base.height * (target_w / base.width)))
+        proto = base.resize((target_w, proto_h), Image.Resampling.LANCZOS)
+
+        proto_rgb = ImageEnhance.Brightness(proto.convert("RGB")).enhance(1.16)
+        proto_rgb = ImageEnhance.Contrast(proto_rgb).enhance(1.06)
+        proto = proto_rgb.convert("RGBA")
+        proto.putalpha(
+            base.resize((target_w, proto_h), Image.Resampling.LANCZOS).getchannel("A")
+        )
+
+        head_h = 10
+        loop_y1 = max(18, proto_h // 3 - 7)
+        loop_y2 = min(proto_h - 18, loop_y1 + 14)
+        loop = proto.crop((0, loop_y1, target_w, loop_y2))
+        if loop.height < 8:
+            loop = proto.crop((0, 20, target_w, 34))
+
+        top = proto.crop((0, 0, target_w, head_h))
+        bottom = proto.crop((0, proto_h - head_h, target_w, proto_h))
+
+        final = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        final.paste(top, (0, 0), top)
+
+        pitch = 16
+        y = head_h - 1
+        while y < target_h - head_h:
+            paste_h = min(loop.height, target_h - head_h - y)
+            if paste_h <= 0:
+                break
+            tile = loop if paste_h == loop.height else loop.crop((0, 0, target_w, paste_h))
+            final.paste(tile, (0, y), tile)
+            y += pitch
+
+        final.paste(bottom, (0, target_h - head_h), bottom)
+
+        # Couleur TomeLinea douce, inspirée de la plume / fond général.
+        plume_rgb = (124, 150, 151)
+
+        alpha = final.getchannel("A")
+        tint = Image.new("RGBA", final.size, plume_rgb + (0,))
+        tint_alpha = alpha.point(lambda v: int(v * 0.22))
+        tint.putalpha(tint_alpha)
+        final = Image.alpha_composite(final, tint)
+
+        final_alpha = final.getchannel("A").point(lambda v: int(v * min(255, opacity * 1.04)))
+        final.putalpha(final_alpha)
+
+        draw = ImageDraw.Draw(final, "RGBA")
+        hole_x1 = target_w - 6
+        hole_x2 = target_w - 1
+        hole_y = 9
+        while hole_y < target_h - 6:
+            draw.ellipse(
+                (hole_x1 - 1, hole_y - 2, hole_x2 + 1, hole_y + 3),
+                fill=(0, 0, 0, 56),
+            )
+            draw.ellipse(
+                (hole_x1, hole_y - 1, hole_x2, hole_y + 2),
+                fill=(8, 9, 12, 182),
+            )
+            hole_y += pitch
+
+        photo = ImageTk.PhotoImage(final)
+        cache[key] = photo
+        return photo
+
+
+
+
+    def _draw_notebook_spiral_canvas(
+        self,
+        canvas,
+        x,
+        y_top,
+        y_bottom,
+        accent=None,
+        tags=(),
+        step=18,
+        zone_bg=None,
+    ):
+        """
+        Rendu commun des pages Canvas.
+        """
+        target_height = max(45, int(y_bottom - y_top))
+        image = self._get_tomelinea_spiral_image(target_height)
+
+        border_axis = 12
+        border_x = int(round(x - 3))
+        x_draw = border_x - border_axis
+        y_draw = int(round(y_top))
+
+        item = canvas.create_image(
+            x_draw,
+            y_draw,
+            image=image,
+            anchor="nw",
+            tags=tuple(tags) if tags else (),
+        )
+
+        if not hasattr(canvas, "_tl_spiral_refs_v16"):
+            canvas._tl_spiral_refs_v16 = []
+        canvas._tl_spiral_refs_v16.append(image)
+        return item
+
+    def _attach_notebook_spiral_frame(self, frame, accent=None):
+        """
+        Rendu commun des cartes Tkinter utilisées par Atelier,
+        Conception, Assemblage, Vérification et Finalisation.
+        """
+        if getattr(frame, "_tl_spiral_bound_v16", False):
+            return
+
+        immediate_parent = frame.master
+
+        overlay_parent = immediate_parent
+        current = immediate_parent
+        while current is not None:
+            parent = getattr(current, "master", None)
+            if parent in (
+                getattr(self, "project_host", None),
+                getattr(self, "accueil_host", None),
+                getattr(self, "visualisation_host", None),
+            ):
+                overlay_parent = current
+                break
+            if current is self:
+                break
+            current = parent
+
+        overlay = tk.Canvas(
+            overlay_parent,
+            width=24,
+            height=60,
+            bd=0,
+            highlightthickness=0,
+            takefocus=0,
+        )
+        frame._tl_spiral_overlay_v16 = overlay
+
+        def _widget_bg(widget, fallback):
+            try:
+                value = widget.cget("bg")
+                if isinstance(value, str) and value:
+                    return value
+            except Exception:
+                pass
+            return fallback
+
+        def refresh(_event=None):
+            try:
+                if not frame.winfo_exists() or not frame.winfo_ismapped():
+                    overlay.place_forget()
+                    return
+            except Exception:
+                return
+
+            frame.update_idletasks()
+
+            h = max(45, int(frame.winfo_height()) - 16)
+            image = self._get_tomelinea_spiral_image(h)
+
+            strip_w = 24
+            border_axis = 12
+
+            try:
+                x = frame.winfo_rootx() - overlay_parent.winfo_rootx()
+                y = frame.winfo_rooty() - overlay_parent.winfo_rooty()
+            except Exception:
+                return
+
+            left_bg = _widget_bg(immediate_parent, theme.WINDOW)
+            right_bg = _widget_bg(frame, theme.PANEL)
+
+            overlay.configure(
+                width=strip_w,
+                height=h,
+                bg=left_bg,
+            )
+            overlay.delete("all")
+
+            overlay.create_rectangle(
+                0, 0,
+                border_axis, h,
+                fill=left_bg,
+                outline="",
+            )
+            overlay.create_rectangle(
+                border_axis, 0,
+                strip_w, h,
+                fill=right_bg,
+                outline="",
+            )
+            overlay.create_image(
+                0, 0,
+                image=image,
+                anchor="nw",
+            )
+            overlay._tl_spiral_image_v16 = image
+
+            overlay.place(
+                x=int(x - border_axis),
+                y=int(y + 8),
+                width=strip_w,
+                height=h,
+            )
+            overlay.tk.call("raise", overlay._w)
+
+        frame.bind("<Configure>", refresh, add="+")
+        immediate_parent.bind("<Configure>", refresh, add="+")
+        overlay_parent.bind("<Configure>", refresh, add="+")
+        frame.after_idle(refresh)
+
+        frame._tl_spiral_bound_v16 = True
+
+    def _get_tomelinea_spiral_image(self, target_height, zone_bg=None):
+        """
+        Construit une bande de spirales TomeLinea.
+
+        Règles :
+        - largeur identique partout ;
+        - taille d'une spire identique partout ;
+        - pas vertical identique partout ;
+        - seule la longueur totale varie avec la hauteur de la zone ;
+        - aucun fond intégré : PNG réellement transparent.
+        """
+        from PIL import ImageOps
+
+        if not hasattr(self, "_tl_spiral_cache_v16"):
+            self._tl_spiral_cache_v16 = {}
+
+        try:
+            target_height = max(45, int(target_height))
+        except Exception:
+            target_height = 90
+
+        cached = self._tl_spiral_cache_v16.get(target_height)
+        if cached is not None:
+            return cached
+
+        strip_w = 24
+        loop_w = 22
+        loop_h = 11
+        pitch = 16
+        top_margin = 3
+
+        source = Image.open(TOMELINEA_SPIRAL_LOOP_V16).convert("RGBA")
+        source = source.resize(
+            (loop_w, loop_h),
+            Image.Resampling.LANCZOS,
+        )
+
+        palette = (
+            (128, 194, 202),
+            (158, 200, 180),
+            (198, 182, 217),
+            (217, 154, 140),
+            (150, 174, 218),
+            (202, 166, 126),
+        )
+
+        alpha = source.getchannel("A")
+        gray = ImageOps.grayscale(source.convert("RGB"))
+
+        variants = []
+        for color in palette:
+            colored = ImageOps.colorize(
+                gray,
+                black=(3, 5, 7),
+                white=color,
+            ).convert("RGBA")
+            colored = Image.blend(colored, source, 0.24)
+            colored.putalpha(alpha)
+            variants.append(colored)
+
+        strip = Image.new(
+            "RGBA",
+            (strip_w, target_height),
+            (0, 0, 0, 0),
+        )
+
+        y = top_margin
+        index = 0
+        while y + loop_h <= target_height - 2:
+            strip.alpha_composite(
+                variants[index % len(variants)],
+                (0, y),
+            )
+            y += pitch
+            index += 1
+
+        photo = ImageTk.PhotoImage(strip)
+        self._tl_spiral_cache_v16[target_height] = photo
+        return photo
 
     def _card(
         self,
@@ -3982,7 +6393,75 @@ class PageMaitreV2(tk.Tk):
                 wraplength=width - 28,
             ).pack(fill="both", expand=True, padx=14, pady=(0, 10))
 
+        self._attach_notebook_spiral_frame(card, accent)
         return card
+
+    def _ensure_editorial_bg_source(self):
+        if hasattr(self, '_editorial_bg_source_shared'):
+            return self._editorial_bg_source_shared
+        self._editorial_bg_source_shared = None
+        if ACCUEIL_BG.exists():
+            try:
+                self._editorial_bg_source_shared = Image.open(
+                    ACCUEIL_BG
+                ).convert('RGB')
+            except Exception:
+                self._editorial_bg_source_shared = None
+        return self._editorial_bg_source_shared
+
+    def _cover_image(self, source, width: int, height: int):
+        sw, sh = source.size
+        scale = max(width / max(1, sw), height / max(1, sh))
+        nw = max(1, int(sw * scale))
+        nh = max(1, int(sh * scale))
+        image = source.resize((nw, nh), Image.Resampling.LANCZOS)
+        left = max(0, (nw - width) // 2)
+        top = max(0, (nh - height) // 2)
+        return image.crop((left, top, left + width, top + height))
+
+    def _apply_editorial_background_to_frame(
+        self,
+        parent,
+        key: str,
+        *,
+        min_width: int = 1180,
+        min_height: int = 680,
+    ) -> None:
+        parent.configure(bg=theme.WINDOW)
+        cache = getattr(self, '_editorial_page_bg_photos', None)
+        if cache is None:
+            cache = {}
+            self._editorial_page_bg_photos = cache
+        label = getattr(parent, '_tomelinea_page_bg_label', None)
+        if label is None or not label.winfo_exists():
+            label = tk.Label(
+                parent,
+                bd=0,
+                highlightthickness=0,
+                bg=theme.WINDOW,
+            )
+            label.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+            label.lower()
+            parent._tomelinea_page_bg_label = label
+        def redraw(_event=None):
+            width = max(parent.winfo_width(), min_width)
+            height = max(parent.winfo_height(), min_height)
+            source = self._ensure_editorial_bg_source()
+            if source is None:
+                label.configure(image='', bg=theme.WINDOW)
+                label.image = None
+                return
+            cache_key = (key, width, height)
+            photo = cache.get(cache_key)
+            if photo is None:
+                image = self._cover_image(source, width, height)
+                photo = ImageTk.PhotoImage(image)
+                cache[cache_key] = photo
+            label.configure(image=photo, bg=theme.WINDOW)
+            label.image = photo
+            label.lower()
+        parent.bind('<Configure>', redraw, add='+')
+        redraw()
 
     def _placeholder_columns(
         self,
@@ -4020,12 +6499,27 @@ class PageMaitreV2(tk.Tk):
         canvas.pack(fill="both", expand=True)
         self._centre_canvas = canvas
 
-        visual_tag = "centre_visualisation"
-
         def render(_event=None):
             w = max(canvas.winfo_width(), 1180)
             h = max(canvas.winfo_height(), 680)
             canvas.delete("all")
+
+            source = self._ensure_editorial_bg_source()
+            if source is not None:
+                image = self._cover_image(source, w, h)
+                self._centre_bg_photo = ImageTk.PhotoImage(image)
+                canvas.create_image(
+                    0,
+                    0,
+                    image=self._centre_bg_photo,
+                    anchor="nw",
+                )
+            else:
+                canvas.create_rectangle(
+                    0, 0, w, h,
+                    fill=theme.WINDOW,
+                    outline="",
+                )
 
             # En-tête
             canvas.create_rectangle(
@@ -4046,40 +6540,6 @@ class PageMaitreV2(tk.Tk):
                 fill=theme.MUTED,
                 font=("Segoe UI", 10),
                 anchor="nw",
-            )
-
-            # Visualisation
-            bx2 = w - 22
-            bx1 = bx2 - 176
-            by1, by2 = 22, 62
-            canvas.create_rectangle(
-                bx1 + 2, by1 + 3, bx2 + 2, by2 + 3,
-                fill="#D7D3CC",
-                outline="",
-                tags=(visual_tag,),
-            )
-            canvas.create_rectangle(
-                bx1, by1, bx2, by2,
-                fill=theme.PANEL,
-                outline=theme.BORDER,
-                width=1,
-                tags=(visual_tag,),
-            )
-            canvas.create_text(
-                bx1 + 18, (by1 + by2) / 2,
-                text="◫  Visualisation",
-                fill=theme.INK,
-                font=("Segoe UI", 9, "bold"),
-                anchor="w",
-                tags=(visual_tag,),
-            )
-            canvas.create_text(
-                bx2 - 18, (by1 + by2) / 2,
-                text="›",
-                fill="#56708A",
-                font=("Segoe UI", 16),
-                anchor="center",
-                tags=(visual_tag,),
             )
 
             # Cartes statistiques
@@ -4114,6 +6574,14 @@ class PageMaitreV2(tk.Tk):
                     fill=accent,
                     outline="",
                 )
+                self._draw_notebook_spiral_canvas(
+                    canvas,
+                    x1 + 3,
+                    y1 + 9,
+                    y2 - 8,
+                    accent,
+                    step=17,
+                )
                 canvas.create_text(
                     x1 + 14, y1 + 22,
                     text=title,
@@ -4142,6 +6610,14 @@ class PageMaitreV2(tk.Tk):
                 left, book_y1, right, book_y1 + 5,
                 fill=theme.INK,
                 outline="",
+            )
+            self._draw_notebook_spiral_canvas(
+                canvas,
+                left + 3,
+                book_y1 + 10,
+                book_y2 - 10,
+                theme.INK,
+                step=18,
             )
             canvas.create_text(
                 left + 14, book_y1 + 20,
@@ -4202,21 +6678,6 @@ class PageMaitreV2(tk.Tk):
                     font=("Segoe UI", 9, "bold"),
                     anchor="n",
                 )
-
-        def on_visualisation(_event=None):
-            self.open_visualisation_window()
-
-        canvas.tag_bind(visual_tag, "<Button-1>", on_visualisation)
-        canvas.tag_bind(
-            visual_tag,
-            "<Enter>",
-            lambda _e: canvas.configure(cursor="hand2"),
-        )
-        canvas.tag_bind(
-            visual_tag,
-            "<Leave>",
-            lambda _e: canvas.configure(cursor="arrow"),
-        )
 
         canvas.bind("<Configure>", render)
         self._centre_render = render
@@ -4387,308 +6848,2597 @@ class PageMaitreV2(tk.Tk):
         y = max(0, int((screen_h - height) / 2))
         window.geometry(f"{int(width)}x{int(height)}+{x}+{y}")
 
-    def _tomelinea_open_global_view(self):
+    # VUE_GLOBALE_PANORAMIQUE_BORNES_V3_FOND_ET_FERMETURE
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V1
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V2_FLUIDE_ET_FEUILLETAGE
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V3_GLISSER_ET_DECO_UNIFIEE
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V13_ARCHITECTURE_SEPAREE
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V14_PANNEAUX_INTERNES_FIXES
+    # VUE_DU_LIVRE_DEUX_ONGLETS_DYNAMIQUES_V14_PANNEAUX_INTERNES_FIXES
+    def _tomelinea_open_book_views(self, initial_tab="global"):
+        """Visionneuse Maquettage : structure globale + feuilletage.
+
+        Cette fenêtre est volontairement sans fonction de travail.
+        Dans Maquettage, une page est représentée par la vignette de son type.
+        Le futur bureau Visualisation pourra utiliser une représentation
+        différente selon l'état réel d'avancement de la page.
+        """
         pages = self._tomelinea_collect_book_pages()
-        if not pages:
-            return
+        model = getattr(self, "_maquettage_structure_model", None) or [
+            {"name": "Début", "pages": 3, "color": "#75B89E"},
+            {"name": "Partie 1", "pages": 12, "color": "#8D70C7"},
+            {"name": "Partie 2", "pages": None, "color": "#72AFCB"},
+            {"name": "Partie 3", "pages": None, "color": "#E28A6D"},
+            {"name": "Fin", "pages": 3, "color": "#75B89E"},
+        ]
 
         win = tk.Toplevel(self)
-        win.title("TomeLinea — Vue globale")
-        win.configure(bg="#C8BDB1")
+        win.title("TomeLinea — Vue du livre")
+
+        if hasattr(self, "_prepare_accueil_dialog"):
+            self._prepare_accueil_dialog(win)
+        else:
+            try:
+                win.attributes("-alpha", 0.0)
+            except tk.TclError:
+                win.withdraw()
+
+        screen_w = max(1180, self.winfo_screenwidth())
+        screen_h = max(720, self.winfo_screenheight())
+
+        # Architecture V14 : la Toplevel ne change JAMAIS de taille.
+        # Les deux dimensions historiques deviennent des dimensions VISUELLES
+        # de panneau interne. Le cadre natif reste fixe au maximum requis.
+        global_size = (
+            max(1120, screen_w - 36),
+            min(620, max(500, int(screen_h * 0.63))),
+        )
+        book_size = (
+            min(1050, max(850, int(screen_w * 0.60))),
+            min(720, max(590, int(screen_h * 0.72))),
+        )
+        fixed_size = (
+            max(global_size[0], book_size[0]),
+            max(global_size[1], book_size[1]),
+        )
+        initial_size = fixed_size
+
+        if hasattr(self, "_accueil_center_base_window"):
+            self._accueil_center_base_window(
+                win,
+                initial_size[0],
+                initial_size[1],
+            )
+        else:
+            self._tomelinea_center_toplevel(
+                win,
+                initial_size[0],
+                initial_size[1],
+            )
+
+        win.configure(bg="#F6F2EA")
         win.transient(self)
+        # Les relations WM sont fixées avant de retirer les décorations.
+        # La croix TomeLinea interne devient l'unique fermeture visible.
+        try:
+            win.overrideredirect(True)
+        except tk.TclError:
+            pass
 
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        width = max(980, screen_w - 30)
-        height = max(640, screen_h - 130)
-        self._tomelinea_center_toplevel(win, width, height)
+        PANEL = "#FFFEFC"
+        PANEL_ALT = "#F7F4ED"
+        INK = "#111111"
+        MUTED = "#626B73"
+        NAVY = "#173E70"
+        VIOLET = "#8D70C7"
+        BORDER = "#D5D1CA"
+        MOUNT = "#F1EFE9"
+        GRID = "#E5E1DA"
 
-        header = tk.Frame(win, bg="#FBFAF6", height=56)
+        # ----------------------------------------------------------
+        # Ressources partagées.
+        # ----------------------------------------------------------
+        bg_path = (
+            PROJECT_ROOT
+            / "assets"
+            / "gui_v2"
+            / "maquettage_backgrounds"
+            / "maquettage_studio_pro.png"
+        )
+
+        page_thumb_root = PROJECT_ROOT / "assets" / "page_thumbnails"
+        structure_icon_dir = (
+            PROJECT_ROOT / "assets" / "gui_v2" / "structure_line_icons"
+        )
+        ribbon_flag_path = (
+            PROJECT_ROOT
+            / "assets"
+            / "gui_v2"
+            / "navigation_icons_photorealistes"
+            / "10_finalisation"
+            / "10_finalisation_64px.png"
+        )
+        fallback_flag_path = structure_icon_dir / "debut_final.png"
+
+        book_icon_paths = [
+            structure_icon_dir / "partie_1.png",
+            structure_icon_dir / "partie_2.png",
+            structure_icon_dir / "partie_3.png",
+        ]
+
+        win._book_views_bg_source = None
+        win._book_views_bg_photo = None
+        win._book_views_photo_cache = {}
+        win._book_views_structure_cache = {}
+        win._book_views_close_cache = {}
+        win._book_views_source_cache = {}
+        win._book_views_turn_frames = []
+
+        try:
+            if bg_path.exists():
+                win._book_views_bg_source = Image.open(
+                    bg_path
+                ).convert("RGB")
+        except Exception:
+            win._book_views_bg_source = None
+
+        def mix_hex(color_a, color_b, ratio):
+            ratio = max(0.0, min(1.0, float(ratio)))
+
+            def rgb(value):
+                value = str(value).lstrip("#")
+                if len(value) != 6:
+                    return (128, 128, 128)
+                try:
+                    return tuple(
+                        int(value[index:index + 2], 16)
+                        for index in (0, 2, 4)
+                    )
+                except Exception:
+                    return (128, 128, 128)
+
+            a = rgb(color_a)
+            b = rgb(color_b)
+            mixed = tuple(
+                int(round(
+                    a[index] * (1.0 - ratio)
+                    + b[index] * ratio
+                ))
+                for index in range(3)
+            )
+            return "#{:02X}{:02X}{:02X}".format(*mixed)
+
+        def polygon_points(x1, y1, x2, y2, cut=16, dx=0, dy=0):
+            return [
+                x1 + dx, y1 + dy,
+                x2 - cut + dx, y1 + dy,
+                x2 + dx, y1 + cut + dy,
+                x2 + dx, y2 + dy,
+                x1 + cut + dx, y2 + dy,
+                x1 + dx, y2 - cut + dy,
+            ]
+
+        def rounded(canvas, x1, y1, x2, y2, radius, **kwargs):
+            r = max(
+                1,
+                min(
+                    radius,
+                    (x2 - x1) / 2,
+                    (y2 - y1) / 2,
+                ),
+            )
+            pts = [
+                x1 + r, y1,
+                x2 - r, y1,
+                x2, y1,
+                x2, y1 + r,
+                x2, y2 - r,
+                x2, y2,
+                x2 - r, y2,
+                x1 + r, y2,
+                x1, y2,
+                x1, y2 - r,
+                x1, y1 + r,
+                x1, y1,
+            ]
+            return canvas.create_polygon(
+                pts,
+                smooth=True,
+                splinesteps=24,
+                **kwargs,
+            )
+
+        def normalized_type_name(page):
+            # Préparation au futur vrai système d'affectation des types :
+            # s'il existe déjà une information plus précise, elle est prioritaire.
+            for key in (
+                "type_name",
+                "page_type",
+                "type",
+                "kind",
+            ):
+                value = page.get(key)
+                if value:
+                    return str(value).strip()
+            return "Page courante"
+
+        def thumbnail_path_for_type(type_name):
+            low = str(type_name).strip().lower()
+
+            aliases = {
+                "couverture": "type_page_couverture.png",
+                "2e de couverture": "type_page_deuxieme_couverture.png",
+                "deuxième de couverture": "type_page_deuxieme_couverture.png",
+                "deuxieme de couverture": "type_page_deuxieme_couverture.png",
+                "page de titre": "type_page_titre.png",
+                "titre": "type_page_titre.png",
+                "avant-propos": "type_page_avant_propos.png",
+                "avant propos": "type_page_avant_propos.png",
+                "sommaire": "type_page_sommaire.png",
+                "chapitre": "type_page_chapitre.png",
+                "tête de chapitre": "type_page_chapitre.png",
+                "tete de chapitre": "type_page_chapitre.png",
+                "tête de partie": "type_page_chapitre.png",
+                "tete de partie": "type_page_chapitre.png",
+                "texte": "type_page_texte.png",
+                "page courante": "type_page_texte.png",
+                "page commune": "type_page_texte.png",
+                "fiche": "type_page_fiche.png",
+                "illustration": "type_page_illustration.png",
+                "transition": "type_page_transition.png",
+                "conclusion": "type_page_conclusion.png",
+                "page blanche": "type_page_blanche.png",
+                "3e de couverture": "type_page_troisieme_couverture.png",
+                "troisième de couverture": "type_page_troisieme_couverture.png",
+                "troisieme de couverture": "type_page_troisieme_couverture.png",
+                "4e de couverture": "type_page_quatrieme_couverture.png",
+                "quatrième de couverture": "type_page_quatrieme_couverture.png",
+                "quatrieme de couverture": "type_page_quatrieme_couverture.png",
+                "personnalisée": "type_page_personnalisee.png",
+                "personnalisee": "type_page_personnalisee.png",
+                # Tant que les vraies affectations de type ne sont pas
+                # enregistrées page par page, Page auto utilise la vignette
+                # Sommaire comme identité visuelle provisoire.
+                "page auto": "type_page_sommaire.png",
+            }
+
+            filename = aliases.get(low)
+            if filename:
+                candidate = page_thumb_root / filename
+                if candidate.exists():
+                    return candidate
+
+            # Types personnalisés déjà créés dans la session.
+            for item in getattr(
+                self,
+                "_maquettage_custom_page_types",
+                [],
+            ):
+                if not isinstance(item, dict):
+                    continue
+                if (
+                    str(item.get("name", "")).strip().lower()
+                    == low
+                ):
+                    image_value = str(
+                        item.get("image", "") or ""
+                    ).strip()
+                    if image_value:
+                        candidate = Path(image_value)
+                        if candidate.exists():
+                            return candidate
+
+            fallback = page_thumb_root / "type_page_texte.png"
+            return fallback if fallback.exists() else None
+
+        def page_photo(page, width, height):
+            type_name = normalized_type_name(page)
+            path = thumbnail_path_for_type(type_name)
+            key = (
+                str(path) if path else "",
+                int(width),
+                int(height),
+            )
+
+            if key in win._book_views_photo_cache:
+                return win._book_views_photo_cache[key]
+
+            photo = None
+            if path is not None:
+                try:
+                    image = Image.open(path).convert("RGBA")
+                    image = image.resize(
+                        (
+                            max(1, int(width)),
+                            max(1, int(height)),
+                        ),
+                        Image.Resampling.LANCZOS,
+                    )
+                    photo = ImageTk.PhotoImage(image)
+                except Exception:
+                    photo = None
+
+            win._book_views_photo_cache[key] = photo
+            return photo
+
+        def page_source_image(page):
+            """Image source du type de page, conservée pour les animations."""
+            if page is None:
+                return None
+
+            type_name = normalized_type_name(page)
+            path = thumbnail_path_for_type(type_name)
+            key = str(path) if path is not None else ""
+
+            if key in win._book_views_source_cache:
+                return win._book_views_source_cache[key]
+
+            image = None
+            if path is not None:
+                try:
+                    image = Image.open(path).convert("RGBA")
+                except Exception:
+                    image = None
+
+            win._book_views_source_cache[key] = image
+            return image
+
+        def animated_page_photo(
+            page,
+            width,
+            height,
+            *,
+            shade=0.0,
+        ):
+            """Image temporaire légère pour simuler une feuille en rotation."""
+            width = max(2, int(width))
+            height = max(2, int(height))
+
+            source = page_source_image(page)
+
+            if source is None:
+                image = Image.new(
+                    "RGBA",
+                    (width, height),
+                    (245, 242, 235, 255),
+                )
+            else:
+                image = source.resize(
+                    (width, height),
+                    Image.Resampling.BILINEAR,
+                )
+
+            shade = max(0.0, min(0.38, float(shade)))
+            if shade > 0:
+                veil = Image.new(
+                    "RGBA",
+                    image.size,
+                    (92, 84, 76, 255),
+                )
+                image = Image.blend(
+                    image,
+                    veil,
+                    shade,
+                )
+
+            photo = ImageTk.PhotoImage(image)
+            win._book_views_turn_frames = [photo]
+            return photo
+
+        def structure_photo(
+            path,
+            max_w,
+            max_h,
+            *,
+            green_flag=False,
+        ):
+            key = (
+                str(path),
+                int(max_w),
+                int(max_h),
+                bool(green_flag),
+            )
+            cached = win._book_views_structure_cache.get(key)
+            if cached is not None:
+                return cached
+
+            if not path.exists():
+                return None
+
+            try:
+                image = Image.open(path).convert("RGBA")
+                alpha = image.getchannel("A")
+                bbox = alpha.getbbox()
+                if bbox:
+                    image = image.crop(bbox)
+
+                if green_flag:
+                    pixels = image.load()
+                    for yy in range(image.height):
+                        for xx in range(image.width):
+                            r, g, b, a = pixels[xx, yy]
+                            if (
+                                a > 0
+                                and r > 95
+                                and r > g * 1.22
+                                and r > b * 1.18
+                            ):
+                                luminosity = max(
+                                    0.52,
+                                    min(1.18, r / 205.0),
+                                )
+                                pixels[xx, yy] = (
+                                    int(max(
+                                        0,
+                                        min(
+                                            255,
+                                            83 * luminosity,
+                                        ),
+                                    )),
+                                    int(max(
+                                        0,
+                                        min(
+                                            255,
+                                            151 * luminosity,
+                                        ),
+                                    )),
+                                    int(max(
+                                        0,
+                                        min(
+                                            255,
+                                            105 * luminosity,
+                                        ),
+                                    )),
+                                    a,
+                                )
+
+                image.thumbnail(
+                    (max_w, max_h),
+                    Image.Resampling.LANCZOS,
+                )
+                photo = ImageTk.PhotoImage(image)
+                win._book_views_structure_cache[key] = photo
+                return photo
+            except Exception:
+                return None
+
+        # ----------------------------------------------------------
+        # Shell de la fenêtre.
+        # ----------------------------------------------------------
+        outer = tk.Canvas(
+            win,
+            bg="#F6F2EA",
+            highlightthickness=0,
+            bd=0,
+        )
+        outer.pack(fill="both", expand=True)
+
+        viewport = tk.Frame(
+            outer,
+            bg=PANEL,
+            bd=0,
+            highlightthickness=0,
+        )
+        viewport_id = outer.create_window(
+            46,
+            36,
+            window=viewport,
+            anchor="nw",
+        )
+
+        resize_fx = {
+            "active": False,
+        }
+
+        visual_state = {
+            "mode": (
+                "feuilleter"
+                if str(initial_tab).lower().startswith("feuil")
+                else "global"
+            ),
+        }
+
+        def redraw_shell(_event=None):
+            """Dessine le panneau visuel sans toucher à la Toplevel.
+
+            Vue globale et Feuilleter gardent leurs dimensions historiques,
+            mais uniquement à l'intérieur de la fenêtre native fixe.
+            """
+            w = max(outer.winfo_width(), 780)
+            h = max(outer.winfo_height(), 460)
+
+            outer.delete("bookviews_bg")
+            outer.delete("bookviews_panel")
+
+            if win._book_views_bg_source is not None:
+                try:
+                    cache_key = (w, h)
+                    cached = getattr(
+                        win,
+                        "_book_views_fixed_bg_cache",
+                        {},
+                    ).get(cache_key)
+                    if cached is None:
+                        image = win._book_views_bg_source.resize(
+                            (w, h),
+                            Image.Resampling.LANCZOS,
+                        )
+                        image = Image.blend(
+                            image.convert("RGB"),
+                            Image.new(
+                                "RGB",
+                                image.size,
+                                "#D6D7D6",
+                            ),
+                            0.08,
+                        )
+                        cached = ImageTk.PhotoImage(image)
+                        if not hasattr(
+                            win,
+                            "_book_views_fixed_bg_cache",
+                        ):
+                            win._book_views_fixed_bg_cache = {}
+                        win._book_views_fixed_bg_cache[cache_key] = cached
+                    win._book_views_bg_photo = cached
+                    outer.create_image(
+                        0,
+                        0,
+                        image=cached,
+                        anchor="nw",
+                        tags=("bookviews_bg",),
+                    )
+                except Exception:
+                    outer.create_rectangle(
+                        0,
+                        0,
+                        w,
+                        h,
+                        fill="#EEEDEA",
+                        outline="",
+                        tags=("bookviews_bg",),
+                    )
+            else:
+                outer.create_rectangle(
+                    0,
+                    0,
+                    w,
+                    h,
+                    fill="#EEEDEA",
+                    outline="",
+                    tags=("bookviews_bg",),
+                )
+
+            visual_w, visual_h = (
+                global_size
+                if visual_state["mode"] == "global"
+                else book_size
+            )
+            visual_w = min(w, int(visual_w))
+            visual_h = min(h, int(visual_h))
+
+            origin_x = int((w - visual_w) / 2)
+            origin_y = int((h - visual_h) / 2)
+
+            x1 = origin_x + 22
+            y1 = origin_y + 18
+            x2 = origin_x + visual_w - 22
+            y2 = origin_y + visual_h - 18
+
+            outer.create_polygon(
+                polygon_points(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    dx=2,
+                    dy=4,
+                ),
+                fill="#D1CCC4",
+                outline="",
+                tags=("bookviews_panel",),
+            )
+            outer.create_polygon(
+                polygon_points(x1, y1, x2, y2),
+                fill=PANEL,
+                outline=BORDER,
+                width=1,
+                tags=("bookviews_panel",),
+            )
+            outer.create_line(
+                x1 + 4,
+                y1 + 18,
+                x1 + 4,
+                y2 - 18,
+                fill=VIOLET,
+                width=4,
+                tags=("bookviews_panel",),
+            )
+
+            outer.coords(
+                viewport_id,
+                x1 + 25,
+                y1 + 18,
+            )
+            outer.itemconfigure(
+                viewport_id,
+                width=max(720, x2 - x1 - 50),
+                height=max(390, y2 - y1 - 36),
+            )
+
+            outer.tag_lower("bookviews_panel")
+            outer.tag_lower("bookviews_bg")
+
+        outer.bind("<Configure>", redraw_shell)
+
+        # ----------------------------------------------------------
+        # En-tête TomeLinea.
+        # ----------------------------------------------------------
+        header = tk.Frame(
+            viewport,
+            bg=PANEL,
+            height=111,
+        )
         header.pack(fill="x")
         header.pack_propagate(False)
 
-        title = tk.Label(
+        title_row = tk.Frame(
             header,
-            text="Vue globale · toutes les pages",
-            bg="#FBFAF6",
-            fg="#111111",
-            font=("Georgia", 14, "bold"),
+            bg=PANEL,
+            height=32,
         )
-        title.pack(side="left", padx=22, pady=15)
-
-        info_var = tk.StringVar()
-        info = tk.Label(
-            header,
-            textvariable=info_var,
-            bg="#FBFAF6",
-            fg="#55514C",
-            font=("Segoe UI", 9),
+        title_row.place(
+            x=8,
+            y=4,
+            relwidth=1.0,
+            width=-70,
+            height=32,
         )
-        info.pack(side="left", padx=18)
 
-        tk.Button(
-            header,
-            text="Fermer",
-            command=win.destroy,
-            relief="flat",
+        title_label = tk.Label(
+            title_row,
+            text="Vue du livre",
+            bg=PANEL,
+            fg=theme.INK,
+            font=("Georgia", 15, "bold"),
+        )
+        title_label.pack(
+            side="left",
+            anchor="center",
+        )
+
+        title_line = tk.Canvas(
+            title_row,
+            bg=PANEL,
+            highlightthickness=0,
             bd=0,
-            bg="#173E70",
-            fg="#FFFFFF",
-            activebackground="#24558A",
-            activeforeground="#FFFFFF",
-            font=("Segoe UI", 9, "bold"),
-            padx=18,
-            pady=7,
-            cursor="hand2",
-        ).pack(side="right", padx=18, pady=10)
+            height=26,
+        )
+        title_line.pack(
+            side="left",
+            fill="x",
+            expand=True,
+            padx=(20, 0),
+        )
 
-        body = tk.Canvas(win, bg="#C8BDB1", highlightthickness=0)
-        body.pack(fill="both", expand=True)
+        def draw_title_line(_event=None):
+            title_line.delete("all")
+            line_w = max(60, title_line.winfo_width())
+            yy = 13
+            end_x = max(24, line_w - 18)
 
-        index = [0]
-
-        def render_reader(_event=None):
-            body.delete("all")
-            w = max(body.winfo_width(), 900)
-            h = max(body.winfo_height(), 520)
-            current = pages[index[0]]
-
-            page_h = min(h - 76, 680)
-            page_w = page_h / 1.40
-            x1 = (w - page_w) / 2
-            y1 = (h - page_h) / 2
-            self._tomelinea_draw_reader_page(
-                body,
-                current,
-                x1,
-                y1,
-                x1 + page_w,
-                y1 + page_h,
+            title_line.create_line(
+                0,
+                yy,
+                end_x - 5,
+                yy,
+                fill="#202020",
+                width=1,
             )
-            info_var.set(
-                f'{index[0] + 1} / {len(pages)}  ·  '
-                f'{current["group"]} · page {current["position"]}'
+            title_line.create_oval(
+                end_x - 5,
+                yy - 4,
+                end_x + 3,
+                yy + 4,
+                fill=PANEL,
+                outline="#202020",
+                width=1,
             )
 
-            body.create_text(
-                34,
-                h / 2,
-                text="‹",
-                fill="#625950" if index[0] > 0 else "#AFA79F",
-                font=("Segoe UI", 42),
-                anchor="w",
-            )
-            body.create_text(
-                w - 34,
-                h / 2,
-                text="›",
-                fill="#625950" if index[0] < len(pages) - 1 else "#AFA79F",
-                font=("Segoe UI", 42),
-                anchor="e",
-            )
+        title_line.bind("<Configure>", draw_title_line)
 
-        def move(step):
-            new_index = max(0, min(len(pages) - 1, index[0] + step))
-            if new_index != index[0]:
-                index[0] = new_index
-                render_reader()
-
-        def wheel(event):
-            move(1 if event.delta < 0 else -1)
-            return "break"
-
-        body.bind("<Configure>", render_reader)
-        win.bind("<MouseWheel>", wheel)
-        win.bind("<Right>", lambda _e: move(1))
-        win.bind("<Down>", lambda _e: move(1))
-        win.bind("<Left>", lambda _e: move(-1))
-        win.bind("<Up>", lambda _e: move(-1))
-        win.bind("<Next>", lambda _e: move(1))
-        win.bind("<Prior>", lambda _e: move(-1))
-        win.bind("<Escape>", lambda _e: win.destroy())
-        win.after_idle(render_reader)
-        win.focus_force()
-
-    def _tomelinea_open_book_view(self):
-        pages = self._tomelinea_collect_book_pages()
-        if not pages:
-            return
-
-        win = tk.Toplevel(self)
-        win.title("TomeLinea — Vue livre")
-        win.configure(bg="#BDB1A5")
-        win.transient(self)
-
-        screen_w = self.winfo_screenwidth()
-        screen_h = self.winfo_screenheight()
-        width = min(1180, max(940, int(screen_w * 0.78)))
-        height = min(760, max(620, int(screen_h * 0.78)))
-        self._tomelinea_center_toplevel(win, width, height)
-
-        header = tk.Frame(win, bg="#FBFAF6", height=56)
-        header.pack(fill="x")
-        header.pack_propagate(False)
-
-        tk.Label(
+        subtitle_label = tk.Label(
             header,
-            text="Vue livre · feuilletage",
-            bg="#FBFAF6",
-            fg="#111111",
-            font=("Georgia", 14, "bold"),
-        ).pack(side="left", padx=22, pady=15)
+            text=(
+                "Deux façons de contrôler la construction "
+                "du livre sans la modifier."
+            ),
+            bg=PANEL,
+            fg=MUTED,
+            font=("Segoe UI", 8),
+        )
+        subtitle_label.place(x=10, y=39)
 
-        info_var = tk.StringVar()
-        tk.Label(
+        # Fermer = icône du ruban.
+        close = tk.Canvas(
             header,
-            textvariable=info_var,
-            bg="#FBFAF6",
-            fg="#55514C",
-            font=("Segoe UI", 9),
-        ).pack(side="left", padx=18)
-
-        tk.Button(
-            header,
-            text="Fermer",
-            command=win.destroy,
-            relief="flat",
+            width=44,
+            height=42,
+            bg=PANEL,
+            highlightthickness=0,
             bd=0,
-            bg="#173E70",
-            fg="#FFFFFF",
-            activebackground="#24558A",
-            activeforeground="#FFFFFF",
-            font=("Segoe UI", 9, "bold"),
-            padx=18,
-            pady=7,
             cursor="hand2",
-        ).pack(side="right", padx=18, pady=10)
+        )
+        close.place(
+            relx=1.0,
+            x=-8,
+            y=0,
+            anchor="ne",
+        )
 
-        body = tk.Canvas(win, bg="#BDB1A5", highlightthickness=0)
-        body.pack(fill="both", expand=True)
+        close_state = {
+            "hover": False,
+            "pressed": False,
+        }
 
-        spread_left = [-1]
+        def get_close_photo(state):
+            cached = win._book_views_close_cache.get(state)
+            if cached is not None:
+                return cached
 
-        def render_book(_event=None):
-            body.delete("all")
-            w = max(body.winfo_width(), 860)
-            h = max(body.winfo_height(), 520)
+            photo = None
+            try:
+                photo = self._get_nav_photo(
+                    "fermer",
+                    state,
+                    32,
+                )
+            except Exception:
+                photo = None
 
-            page_h = min(h - 84, 610)
-            page_w = page_h / 1.40
-            gap = 18
-            total_w = page_w * 2 + gap
-            left_x = (w - total_w) / 2
-            y1 = (h - page_h) / 2
+            win._book_views_close_cache[state] = photo
+            return photo
 
-            body.create_rectangle(
-                left_x - 18,
-                y1 - 18,
-                left_x + total_w + 18,
-                y1 + page_h + 18,
-                fill="#8E8277",
+        def draw_close():
+            close.delete("all")
+
+            if close_state["pressed"]:
+                state = "actif"
+            elif close_state["hover"]:
+                state = "survol"
+            else:
+                state = "normal"
+
+            photo = get_close_photo(state)
+            if photo is not None:
+                close.create_image(
+                    22,
+                    20,
+                    image=photo,
+                    anchor="center",
+                )
+            else:
+                close.create_oval(
+                    8,
+                    6,
+                    36,
+                    34,
+                    fill="#D94A43",
+                    outline="#B53B36",
+                )
+                close.create_text(
+                    22,
+                    20,
+                    text="×",
+                    fill="#FFFFFF",
+                    font=("Segoe UI", 14, "bold"),
+                )
+
+        close.bind(
+            "<Enter>",
+            lambda _e: (
+                close_state.update(hover=True),
+                draw_close(),
+            ),
+        )
+        close.bind(
+            "<Leave>",
+            lambda _e: (
+                close_state.update(
+                    hover=False,
+                    pressed=False,
+                ),
+                draw_close(),
+            ),
+        )
+        close.bind(
+            "<ButtonPress-1>",
+            lambda _e: (
+                close_state.update(pressed=True),
+                draw_close(),
+            ),
+        )
+        close.bind(
+            "<ButtonRelease-1>",
+            lambda _e: win.destroy(),
+        )
+        draw_close()
+
+        # ----------------------------------------------------------
+        # Onglets.
+        # ----------------------------------------------------------
+        tabs = tk.Canvas(
+            header,
+            bg=PANEL,
+            highlightthickness=0,
+            bd=0,
+            height=40,
+        )
+        tabs.place(
+            x=8,
+            y=67,
+            width=310,
+            height=38,
+        )
+
+        state = {
+            "tab": (
+                "feuilleter"
+                if str(initial_tab).lower().startswith("feuil")
+                else "global"
+            ),
+            "tab_hover": None,
+        }
+
+        tab_regions = {
+            "global": (0, 2, 145, 35),
+            "feuilleter": (153, 2, 298, 35),
+        }
+
+        def draw_tabs():
+            tabs.delete("all")
+
+            for key, text in (
+                ("global", "Vue globale"),
+                ("feuilleter", "Feuilleter"),
+            ):
+                x1, y1, x2, y2 = tab_regions[key]
+                selected = state["tab"] == key
+                hovered = state["tab_hover"] == key
+
+                if selected:
+                    fill = "#F1EDF8"
+                    border = "#B9AAD0"
+                elif hovered:
+                    fill = "#F5F7F8"
+                    border = "#CAD2D9"
+                else:
+                    fill = "#FFFDFC"
+                    border = "#D6D1CA"
+
+                rounded(
+                    tabs,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    8,
+                    fill=fill,
+                    outline=border,
+                    width=1,
+                )
+
+                tabs.create_text(
+                    (x1 + x2) / 2,
+                    (y1 + y2) / 2 - (1 if selected else 0),
+                    text=text,
+                    fill=(
+                        "#173E70"
+                        if selected
+                        else "#4F5962"
+                    ),
+                    font=(
+                        "Segoe UI",
+                        9,
+                        "bold" if selected else "normal",
+                    ),
+                    anchor="center",
+                )
+
+                if selected:
+                    tabs.create_line(
+                        x1 + 18,
+                        y2 - 3,
+                        x2 - 18,
+                        y2 - 3,
+                        fill=VIOLET,
+                        width=2,
+                    )
+
+        def tab_at(x, y):
+            for key, box in tab_regions.items():
+                x1, y1, x2, y2 = box
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    return key
+            return None
+
+        # ----------------------------------------------------------
+        # Conteneurs des deux vues.
+        # ----------------------------------------------------------
+        content_stack = tk.Frame(
+            viewport,
+            bg=PANEL,
+        )
+        content_stack.pack(
+            fill="both",
+            expand=True,
+            padx=(4, 4),
+            pady=(0, 4),
+        )
+
+        global_host = tk.Frame(
+            content_stack,
+            bg=PANEL,
+        )
+        book_host = tk.Frame(
+            content_stack,
+            bg=PANEL,
+        )
+
+        global_host.place(
+            x=0,
+            y=0,
+            relwidth=1.0,
+            relheight=1.0,
+        )
+        book_host.place(
+            x=0,
+            y=0,
+            relwidth=1.0,
+            relheight=1.0,
+        )
+
+        # ----------------------------------------------------------
+        # VUE GLOBALE.
+        # ----------------------------------------------------------
+        panorama = tk.Canvas(
+            global_host,
+            bg=PANEL,
+            highlightthickness=0,
+            bd=0,
+            xscrollincrement=18,
+        )
+        # VUE_GLOBALE_SANS_BARRE_NI_CONSIGNE_V16
+        panorama.pack(
+            fill="both",
+            expand=True,
+        )
+
+        pan_state = {
+            "active": False,
+            "moved": False,
+            "press_x": 0,
+        }
+
+        pages_by_group = {}
+        for page in pages:
+            pages_by_group.setdefault(
+                str(page.get("group", "Partie")),
+                [],
+            ).append(page)
+
+        def page_visual_size(page):
+            low = normalized_type_name(page).lower()
+
+            if low in (
+                "couverture",
+                "4e de couverture",
+                "tête de partie",
+                "tete de partie",
+                "tête de chapitre",
+                "tete de chapitre",
+                "chapitre",
+            ):
+                return 84, int(84 * 1.40), "large"
+
+            if low == "page auto":
+                return 58, int(58 * 1.40), "auto"
+
+            return 68, int(68 * 1.40), "normal"
+
+        def draw_structure_tile(
+            canvas,
+            cx,
+            icon_anchor_y,
+            *,
+            book=False,
+            accent=VIOLET,
+        ):
+            tile_w = 98 if book else 86
+            tile_h = 62 if book else 58
+            x1 = cx - tile_w / 2
+            x2 = cx + tile_w / 2
+            y2 = icon_anchor_y + 7
+            y1 = y2 - tile_h
+            cut = 8
+
+            def points(dx=0, dy=0):
+                return [
+                    x1 + dx, y1 + dy,
+                    x2 - cut + dx, y1 + dy,
+                    x2 + dx, y1 + cut + dy,
+                    x2 + dx, y2 + dy,
+                    x1 + cut + dx, y2 + dy,
+                    x1 + dx, y2 - cut + dy,
+                ]
+
+            canvas.create_polygon(
+                points(2, 3),
+                fill="#D8D4CD",
                 outline="",
             )
 
-            li = spread_left[0]
-            ri = li + 1
-
-            if 0 <= li < len(pages):
-                self._tomelinea_draw_reader_page(
-                    body,
-                    pages[li],
-                    left_x,
-                    y1,
-                    left_x + page_w,
-                    y1 + page_h,
+            if book:
+                fill = mix_hex(
+                    accent,
+                    "#FFFFFF",
+                    0.86,
+                )
+                outline = mix_hex(
+                    accent,
+                    "#BDB8B0",
+                    0.62,
+                )
+                grid = mix_hex(
+                    accent,
+                    "#FFFFFF",
+                    0.91,
                 )
             else:
-                body.create_rectangle(
-                    left_x,
-                    y1,
-                    left_x + page_w,
-                    y1 + page_h,
-                    fill="#E9E3DB",
-                    outline="#CFC8BF",
+                fill = "#F4F1E9"
+                outline = "#D3CEC5"
+                grid = "#E0E4E0"
+
+            canvas.create_polygon(
+                points(),
+                fill=fill,
+                outline=outline,
+                width=1,
+            )
+
+            canvas.create_line(
+                x1 + tile_w * 0.34,
+                y1 + 8,
+                x1 + tile_w * 0.34,
+                y2 - 8,
+                fill=grid,
+                width=1,
+            )
+            canvas.create_line(
+                x1 + tile_w * 0.67,
+                y1 + 8,
+                x1 + tile_w * 0.67,
+                y2 - 8,
+                fill=grid,
+                width=1,
+            )
+            canvas.create_line(
+                x1 + 8,
+                y1 + tile_h * 0.5,
+                x2 - 8,
+                y1 + tile_h * 0.5,
+                fill=grid,
+                width=1,
+            )
+
+        def draw_global(_event=None):
+            if resize_fx["active"]:
+                return
+            panorama.delete("all")
+
+            view_w = max(900, panorama.winfo_width())
+            view_h = max(350, panorama.winfo_height())
+
+            page_gap = 24
+            group_gap = 70
+            left_pad = 72
+            right_pad = 72
+
+            marker_y = int(view_h * 0.22)
+            guide_y = int(view_h * 0.34)
+            page_baseline = int(view_h * 0.68)
+
+            groups_layout = []
+            cursor_x = left_pad
+
+            for group_index, group in enumerate(model):
+                group_name = str(group.get("name", "Partie"))
+                group_pages = pages_by_group.get(group_name, [])
+                start_x = cursor_x
+                layouts = []
+
+                for page_index, page in enumerate(group_pages):
+                    pw, ph, size_kind = page_visual_size(page)
+                    layouts.append({
+                        "page": page,
+                        "x": cursor_x,
+                        "w": pw,
+                        "h": ph,
+                        "size_kind": size_kind,
+                    })
+                    cursor_x += pw
+                    if page_index < len(group_pages) - 1:
+                        cursor_x += page_gap
+
+                end_x = (
+                    cursor_x
+                    if layouts
+                    else start_x + 44
+                )
+                if not layouts:
+                    cursor_x = end_x
+
+                groups_layout.append({
+                    "index": group_index,
+                    "group": group,
+                    "name": group_name,
+                    "layouts": layouts,
+                    "start_x": start_x,
+                    "end_x": end_x,
+                })
+
+                if group_index < len(model) - 1:
+                    cursor_x += group_gap
+
+            natural_total = cursor_x + right_pad
+            content_offset = (
+                (view_w - natural_total) / 2
+                if natural_total < view_w
+                else 0
+            )
+
+            if content_offset > 0:
+                for group_data in groups_layout:
+                    group_data["start_x"] += content_offset
+                    group_data["end_x"] += content_offset
+                    for layout in group_data["layouts"]:
+                        layout["x"] += content_offset
+                natural_total = view_w
+
+            # Table de montage continue derrière les livres ET les pages.
+            band_x1 = 18
+            band_x2 = max(
+                view_w - 18,
+                natural_total - 18,
+            )
+            band_y1 = max(12, marker_y - 75)
+            band_y2 = min(
+                view_h - 20,
+                page_baseline + 95,
+            )
+
+            panorama.create_polygon(
+                polygon_points(
+                    band_x1,
+                    band_y1,
+                    band_x2,
+                    band_y2,
+                    cut=14,
+                    dx=2,
+                    dy=4,
+                ),
+                fill="#D7D2CA",
+                outline="",
+            )
+            panorama.create_polygon(
+                polygon_points(
+                    band_x1,
+                    band_y1,
+                    band_x2,
+                    band_y2,
+                    cut=14,
+                ),
+                fill=MOUNT,
+                outline="#D8D3CB",
+                width=1,
+            )
+
+            gx = band_x1 + 38
+            while gx < band_x2 - 20:
+                panorama.create_line(
+                    gx,
+                    band_y1 + 14,
+                    gx,
+                    band_y2 - 14,
+                    fill=GRID,
+                    width=1,
+                )
+                gx += 96
+
+            gy = band_y1 + 28
+            while gy < band_y2 - 16:
+                panorama.create_line(
+                    band_x1 + 14,
+                    gy,
+                    band_x2 - 14,
+                    gy,
+                    fill=GRID,
+                    width=1,
+                )
+                gy += 44
+
+            previous_box = None
+
+            for group_data in groups_layout:
+                index = group_data["index"]
+                group = group_data["group"]
+                layouts = group_data["layouts"]
+                accent = str(
+                    group.get("color", VIOLET) or VIOLET
                 )
 
+                if layouts:
+                    marker_x = layouts[0]["x"]
+                else:
+                    marker_x = (
+                        group_data["start_x"]
+                        + group_data["end_x"]
+                    ) / 2
+
+                is_start = index == 0
+                is_end = index == len(groups_layout) - 1
+
+                if is_start:
+                    marker_center = marker_x + 10
+                    icon_path = (
+                        ribbon_flag_path
+                        if ribbon_flag_path.exists()
+                        else fallback_flag_path
+                    )
+                    photo = structure_photo(
+                        icon_path,
+                        56,
+                        48,
+                        green_flag=True,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=False,
+                        accent=accent,
+                    )
+                elif is_end:
+                    marker_center = (
+                        group_data["end_x"] - 10
+                        if layouts
+                        else marker_x
+                    )
+                    icon_path = (
+                        ribbon_flag_path
+                        if ribbon_flag_path.exists()
+                        else fallback_flag_path
+                    )
+                    photo = structure_photo(
+                        icon_path,
+                        56,
+                        48,
+                        green_flag=False,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=False,
+                        accent=accent,
+                    )
+                else:
+                    marker_center = marker_x
+                    icon_path = book_icon_paths[
+                        (index - 1) % len(book_icon_paths)
+                    ]
+                    photo = structure_photo(
+                        icon_path,
+                        70,
+                        50,
+                    )
+                    draw_structure_tile(
+                        panorama,
+                        marker_center,
+                        marker_y + 4,
+                        book=True,
+                        accent=accent,
+                    )
+
+                if photo is not None:
+                    panorama.create_image(
+                        marker_center,
+                        marker_y,
+                        image=photo,
+                        anchor="s",
+                    )
+
+                diamond_r = 4
+                panorama.create_polygon(
+                    marker_center,
+                    guide_y - diamond_r,
+                    marker_center + diamond_r,
+                    guide_y,
+                    marker_center,
+                    guide_y + diamond_r,
+                    marker_center - diamond_r,
+                    guide_y,
+                    fill="#FFFFFF",
+                    outline="#111111",
+                    width=1,
+                )
+                panorama.create_text(
+                    marker_center,
+                    guide_y + 21,
+                    text=group_data["name"],
+                    fill=INK,
+                    font=("Georgia", 9, "bold"),
+                    anchor="center",
+                )
+
+                panorama.create_line(
+                    marker_center,
+                    guide_y + 33,
+                    marker_center,
+                    page_baseline - 72,
+                    fill="#D8D2CA",
+                    width=1,
+                    dash=(2, 3),
+                )
+
+                for layout in layouts:
+                    page = layout["page"]
+                    px = layout["x"]
+                    pw = layout["w"]
+                    ph = layout["h"]
+                    py = page_baseline - ph / 2
+
+                    rounded(
+                        panorama,
+                        px + 2,
+                        py + 4,
+                        px + pw + 2,
+                        py + ph + 4,
+                        7,
+                        fill="#D0CBC3",
+                        outline="",
+                    )
+                    rounded(
+                        panorama,
+                        px,
+                        py,
+                        px + pw,
+                        py + ph,
+                        7,
+                        fill="#FFFEFB",
+                        outline="#CDC8C0",
+                        width=1,
+                    )
+
+                    photo_page = page_photo(
+                        page,
+                        pw - 4,
+                        ph - 4,
+                    )
+                    if photo_page is not None:
+                        panorama.create_image(
+                            px + pw / 2,
+                            py + ph / 2,
+                            image=photo_page,
+                            anchor="center",
+                        )
+                    else:
+                        panorama.create_text(
+                            px + pw / 2,
+                            py + ph / 2,
+                            text=normalized_type_name(page),
+                            fill="#5E666D",
+                            font=("Segoe UI", 6),
+                            justify="center",
+                        )
+
+                    box = {
+                        "x1": px,
+                        "x2": px + pw,
+                        "y1": py,
+                        "y2": py + ph,
+                    }
+
+                    if previous_box is not None:
+                        x1 = previous_box["x2"] + 5
+                        x2 = box["x1"] - 5
+                        if x2 > x1:
+                            yy = page_baseline
+                            panorama.create_line(
+                                x1,
+                                yy,
+                                x2,
+                                yy,
+                                fill="#B7B1A8",
+                                width=1,
+                            )
+                            dot = (x1 + x2) / 2
+                            panorama.create_oval(
+                                dot - 3,
+                                yy - 3,
+                                dot + 3,
+                                yy + 3,
+                                fill=MOUNT,
+                                outline="#9F988F",
+                                width=1,
+                            )
+
+                    previous_box = box
+
+            panorama.configure(
+                scrollregion=(
+                    0,
+                    0,
+                    max(view_w, natural_total),
+                    view_h,
+                )
+            )
+
+        def global_wheel(event):
+            if state["tab"] != "global":
+                return None
+            if getattr(event, "delta", 0):
+                panorama.xview_scroll(
+                    -3 if event.delta > 0 else 3,
+                    "units",
+                )
+                return "break"
+            return None
+
+        # VUE_GLOBALE_PAN_HORIZONTAL_SEUL_V15
+        def panorama_pan_press(event):
+            if state["tab"] != "global" or resize_fx["active"]:
+                return
+            pan_state["active"] = True
+            pan_state["moved"] = False
+            pan_state["press_x"] = event.x
+            pan_state["press_y"] = event.y
+
+            try:
+                pan_state["y_origin"] = float(
+                    panorama.yview()[0]
+                )
+            except Exception:
+                pan_state["y_origin"] = 0.0
+
+            panorama.scan_mark(
+                event.x,
+                event.y,
+            )
+            panorama.configure(cursor="hand2")
+
+        def panorama_pan_drag(event):
+            if not pan_state["active"] or state["tab"] != "global":
+                return
+
+            if abs(event.x - pan_state["press_x"]) >= 3:
+                pan_state["moved"] = True
+
+            # Verrou horizontal : le Y reste celui du clic initial.
+            panorama.scan_dragto(
+                event.x,
+                pan_state["press_y"],
+                gain=1,
+            )
+
+            # Sécurité contre les arrondis internes de Tk.
+            try:
+                panorama.yview_moveto(
+                    pan_state["y_origin"]
+                )
+            except Exception:
+                pass
+
+            return "break"
+
+        def panorama_pan_release(_event=None):
+            if not pan_state["active"]:
+                return
+            pan_state["active"] = False
+            panorama.configure(cursor="arrow")
+
+        panorama.bind(
+            "<Configure>",
+            lambda event: (
+                draw_global(event)
+                if state["tab"] == "global"
+                else None
+            ),
+        )
+        panorama.bind("<ButtonPress-1>", panorama_pan_press)
+        panorama.bind("<B1-Motion>", panorama_pan_drag)
+        panorama.bind("<ButtonRelease-1>", panorama_pan_release)
+        panorama.bind(
+            "<Leave>",
+            lambda _e: (
+                panorama_pan_release()
+                if pan_state["active"]
+                else None
+            ),
+        )
+
+        # ----------------------------------------------------------
+        # FEUILLETAGE.
+        # ----------------------------------------------------------
+        book_canvas = tk.Canvas(
+            book_host,
+            bg=PANEL,
+            highlightthickness=0,
+            bd=0,
+        )
+        book_canvas.pack(fill="both", expand=True)
+
+        spread_left = [-1]
+
+        flip_state = {
+            "active": False,
+            "after": None,
+            "direction": 0,
+        }
+
+        def draw_large_page(
+            canvas,
+            page,
+            x1,
+            y1,
+            x2,
+            y2,
+            *,
+            blank=False,
+        ):
+            if blank or page is None:
+                canvas.create_rectangle(
+                    x1 + 3,
+                    y1 + 5,
+                    x2 + 3,
+                    y2 + 5,
+                    fill="#B9B1A8",
+                    outline="",
+                )
+                canvas.create_rectangle(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    fill="#EEEAE3",
+                    outline="#CFC8BF",
+                    width=1,
+                )
+                return
+
+            canvas.create_rectangle(
+                x1 + 4,
+                y1 + 6,
+                x2 + 4,
+                y2 + 6,
+                fill="#A69D93",
+                outline="",
+            )
+            canvas.create_rectangle(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill="#FFFEFB",
+                outline="#C9C2BA",
+                width=1,
+            )
+
+            photo = page_photo(
+                page,
+                max(1, int(x2 - x1 - 8)),
+                max(1, int(y2 - y1 - 8)),
+            )
+            if photo is not None:
+                canvas.create_image(
+                    (x1 + x2) / 2,
+                    (y1 + y2) / 2,
+                    image=photo,
+                    anchor="center",
+                )
+            else:
+                canvas.create_text(
+                    (x1 + x2) / 2,
+                    (y1 + y2) / 2,
+                    text=normalized_type_name(page),
+                    fill="#4E565D",
+                    font=("Georgia", 13, "bold"),
+                    justify="center",
+                )
+
+        def book_geometry():
+            w = max(740, book_canvas.winfo_width())
+            h = max(420, book_canvas.winfo_height())
+
+            page_h = max(
+                280,
+                min(
+                    h - 110,
+                    520,
+                ),
+            )
+            page_w = page_h / 1.40
+            gap = 15
+            total_w = page_w * 2 + gap
+
+            left_x = (w - total_w) / 2
             right_x = left_x + page_w + gap
-            if 0 <= ri < len(pages):
-                self._tomelinea_draw_reader_page(
-                    body,
-                    pages[ri],
-                    right_x,
-                    y1,
-                    right_x + page_w,
-                    y1 + page_h,
-                )
-            else:
-                body.create_rectangle(
-                    right_x,
-                    y1,
-                    right_x + page_w,
-                    y1 + page_h,
-                    fill="#E9E3DB",
-                    outline="#CFC8BF",
+            y1 = (h - page_h) / 2 + 2
+            gutter_x = left_x + page_w + gap / 2
+
+            return {
+                "w": w,
+                "h": h,
+                "page_w": page_w,
+                "page_h": page_h,
+                "gap": gap,
+                "total_w": total_w,
+                "left_x": left_x,
+                "right_x": right_x,
+                "y1": y1,
+                "gutter_x": gutter_x,
+            }
+
+        def support_photo(width, height):
+            """Crée un présentoir rasterisé, vu du dessus.
+
+            Le rendu est volontairement plus proche d'un objet photographié
+            que d'une forme Tk : ombre floue, matière légèrement texturée,
+            chanfrein clair et lèvres de maintien.
+            """
+            from PIL import ImageFilter as _ImageFilter
+
+            width = max(220, int(width))
+            height = max(180, int(height))
+            key = (width, height)
+
+            cached = getattr(
+                win,
+                "_book_views_support_cache",
+                {},
+            ).get(key)
+            if cached is not None:
+                return cached
+
+            if not hasattr(win, "_book_views_support_cache"):
+                win._book_views_support_cache = {}
+
+            scale = 2
+            sw = width * scale
+            sh = height * scale
+
+            image = Image.new(
+                "RGBA",
+                (sw, sh),
+                (0, 0, 0, 0),
+            )
+
+            # Ombre très douce sous le socle.
+            shadow = Image.new(
+                "RGBA",
+                (sw, sh),
+                (0, 0, 0, 0),
+            )
+            sd = ImageDraw.Draw(shadow)
+            pad = 22 * scale
+            sd.rounded_rectangle(
+                (
+                    pad,
+                    pad + 8 * scale,
+                    sw - pad,
+                    sh - pad + 5 * scale,
+                ),
+                radius=18 * scale,
+                fill=(95, 82, 68, 70),
+            )
+            shadow = shadow.filter(
+                _ImageFilter.GaussianBlur(12 * scale)
+            )
+            image.alpha_composite(shadow)
+
+            # Corps du socle : ivoire chaud / bois laqué clair.
+            plate = Image.new(
+                "RGBA",
+                (sw, sh),
+                (0, 0, 0, 0),
+            )
+            pd = ImageDraw.Draw(plate)
+
+            outer = (
+                20 * scale,
+                16 * scale,
+                sw - 20 * scale,
+                sh - 25 * scale,
+            )
+            pd.rounded_rectangle(
+                outer,
+                radius=17 * scale,
+                fill=(223, 214, 202, 255),
+                outline=(194, 183, 169, 255),
+                width=1 * scale,
+            )
+
+            # Chanfrein progressif.
+            bevel_colors = (
+                (226, 217, 205, 255),
+                (232, 224, 213, 255),
+                (238, 231, 221, 255),
+                (244, 239, 232, 255),
+            )
+            for i, color in enumerate(bevel_colors, start=1):
+                inset = (20 + i * 3) * scale
+                pd.rounded_rectangle(
+                    (
+                        inset,
+                        (16 + i * 3) * scale,
+                        sw - inset,
+                        sh - (25 + i * 3) * scale,
+                    ),
+                    radius=max(5, (17 - i * 2) * scale),
+                    fill=color,
                 )
 
-            gutter_x = left_x + page_w + gap / 2
-            body.create_line(
+            # Texture très fine : irrégularités de matière, non décoratives.
+            texture = Image.effect_noise(
+                (sw, sh),
+                10.0,
+            ).convert("L")
+            texture = texture.point(
+                lambda value: int(232 + (value - 128) * 0.08)
+            )
+            texture_rgba = Image.merge(
+                "RGBA",
+                (
+                    texture,
+                    texture,
+                    texture,
+                    Image.new("L", (sw, sh), 30),
+                ),
+            )
+
+            mask = Image.new("L", (sw, sh), 0)
+            md = ImageDraw.Draw(mask)
+            md.rounded_rectangle(
+                (
+                    30 * scale,
+                    26 * scale,
+                    sw - 30 * scale,
+                    sh - 35 * scale,
+                ),
+                radius=12 * scale,
+                fill=255,
+            )
+            texture_rgba.putalpha(
+                Image.eval(
+                    mask,
+                    lambda a: int(a * 0.12)
+                )
+            )
+            plate.alpha_composite(texture_rgba)
+
+            pd = ImageDraw.Draw(plate)
+
+            # Zone centrale légèrement satinée où repose le livre.
+            pd.rounded_rectangle(
+                (
+                    38 * scale,
+                    34 * scale,
+                    sw - 38 * scale,
+                    sh - 48 * scale,
+                ),
+                radius=10 * scale,
+                fill=(248, 245, 239, 236),
+                outline=(236, 230, 221, 255),
+                width=1 * scale,
+            )
+
+            # Reflet supérieur doux.
+            pd.line(
+                (
+                    52 * scale,
+                    42 * scale,
+                    sw - 52 * scale,
+                    42 * scale,
+                ),
+                fill=(255, 255, 255, 210),
+                width=1 * scale,
+            )
+
+            # Lèvre frontale du présentoir vue du dessus.
+            lip_y = sh - 52 * scale
+            pd.rounded_rectangle(
+                (
+                    48 * scale,
+                    lip_y,
+                    sw - 48 * scale,
+                    lip_y + 16 * scale,
+                ),
+                radius=5 * scale,
+                fill=(211, 200, 186, 255),
+                outline=(190, 178, 163, 255),
+                width=1 * scale,
+            )
+            pd.line(
+                (
+                    58 * scale,
+                    lip_y + 2 * scale,
+                    sw - 58 * scale,
+                    lip_y + 2 * scale,
+                ),
+                fill=(252, 249, 244, 220),
+                width=1 * scale,
+            )
+
+            # Deux petites retenues, comme sur un présentoir de librairie.
+            stop_y = sh - 78 * scale
+            stop_w = 55 * scale
+            stop_h = 13 * scale
+            for center_x in (
+                int(sw * 0.29),
+                int(sw * 0.71),
+            ):
+                pd.rounded_rectangle(
+                    (
+                        center_x - stop_w // 2,
+                        stop_y,
+                        center_x + stop_w // 2,
+                        stop_y + stop_h,
+                    ),
+                    radius=4 * scale,
+                    fill=(218, 208, 195, 255),
+                    outline=(195, 183, 168, 255),
+                    width=1 * scale,
+                )
+                pd.line(
+                    (
+                        center_x - stop_w // 2 + 8 * scale,
+                        stop_y + 2 * scale,
+                        center_x + stop_w // 2 - 8 * scale,
+                        stop_y + 2 * scale,
+                    ),
+                    fill=(252, 250, 246, 235),
+                    width=1 * scale,
+                )
+
+            # Relief central sous la reliure.
+            center_x = sw // 2
+            pd.rounded_rectangle(
+                (
+                    center_x - 9 * scale,
+                    47 * scale,
+                    center_x + 9 * scale,
+                    sh - 72 * scale,
+                ),
+                radius=5 * scale,
+                fill=(226, 218, 207, 180),
+                outline=(205, 195, 182, 190),
+                width=1 * scale,
+            )
+
+            image.alpha_composite(plate)
+
+            image = image.resize(
+                (width, height),
+                Image.Resampling.LANCZOS,
+            )
+
+            photo = ImageTk.PhotoImage(image)
+            win._book_views_support_cache[key] = photo
+            return photo
+
+        def draw_book_background(geometry):
+            """Table de montage TomeLinea + socle de librairie vu du dessus."""
+            w = geometry["w"]
+            h = geometry["h"]
+            left_x = geometry["left_x"]
+            right_x = geometry["right_x"]
+            y1 = geometry["y1"]
+            page_w = geometry["page_w"]
+            page_h = geometry["page_h"]
+
+            margin = 34
+            x1 = margin
+            y_top = 18
+            x2 = w - margin
+            y2 = h - 24
+
+            # Même table de montage que l'onglet Vue globale.
+            book_canvas.create_polygon(
+                polygon_points(
+                    x1,
+                    y_top,
+                    x2,
+                    y2,
+                    cut=14,
+                    dx=2,
+                    dy=4,
+                ),
+                fill="#D7D2CA",
+                outline="",
+            )
+            book_canvas.create_polygon(
+                polygon_points(
+                    x1,
+                    y_top,
+                    x2,
+                    y2,
+                    cut=14,
+                ),
+                fill=MOUNT,
+                outline="#D8D3CB",
+                width=1,
+            )
+
+            gx = x1 + 38
+            while gx < x2 - 20:
+                book_canvas.create_line(
+                    gx,
+                    y_top + 14,
+                    gx,
+                    y2 - 14,
+                    fill=GRID,
+                    width=1,
+                )
+                gx += 96
+
+            gy = y_top + 28
+            while gy < y2 - 16:
+                book_canvas.create_line(
+                    x1 + 14,
+                    gy,
+                    x2 - 14,
+                    gy,
+                    fill=GRID,
+                    width=1,
+                )
+                gy += 44
+
+            # Le socle est une vraie image raster texturée, et non plus
+            # un assemblage de polygones Tk.
+            stand_x = left_x - 42
+            stand_y = y1 - 28
+            stand_w = int((right_x + page_w + 42) - stand_x)
+            stand_h = int(page_h + 70)
+
+            photo = support_photo(
+                stand_w,
+                stand_h,
+            )
+            book_canvas.create_image(
+                stand_x,
+                stand_y,
+                image=photo,
+                anchor="nw",
+            )
+
+            # Ombre très locale du livre sur le plateau.
+            book_canvas.create_oval(
+                left_x + 24,
+                y1 + page_h - 7,
+                right_x + page_w - 24,
+                y1 + page_h + 13,
+                fill="#D9D1C6",
+                outline="",
+            )
+
+        def draw_gutter(geometry):
+            gutter_x = geometry["gutter_x"]
+            y1 = geometry["y1"]
+            page_h = geometry["page_h"]
+
+            book_canvas.create_line(
                 gutter_x,
                 y1 + 4,
                 gutter_x,
                 y1 + page_h - 4,
-                fill="#70665D",
+                fill="#6F655C",
                 width=3,
             )
-
-            visible = []
-            if 0 <= li < len(pages):
-                visible.append(str(pages[li]["global"]))
-            if 0 <= ri < len(pages):
-                visible.append(str(pages[ri]["global"]))
-            info_var.set("Pages " + " – ".join(visible) if visible else "Couverture")
-
-            body.create_text(
-                30,
-                h / 2,
-                text="‹",
-                fill="#625950" if li > -1 else "#A59C94",
-                font=("Segoe UI", 42),
-                anchor="w",
+            book_canvas.create_line(
+                gutter_x - 5,
+                y1 + 8,
+                gutter_x - 2,
+                y1 + page_h - 8,
+                fill="#B7AEA5",
+                width=1,
             )
-            body.create_text(
-                w - 30,
-                h / 2,
-                text="›",
-                fill="#625950" if ri < len(pages) - 1 else "#A59C94",
-                font=("Segoe UI", 42),
-                anchor="e",
+            book_canvas.create_line(
+                gutter_x + 2,
+                y1 + 8,
+                gutter_x + 5,
+                y1 + page_h - 8,
+                fill="#B7AEA5",
+                width=1,
             )
+
+        def page_at(index):
+            if 0 <= index < len(pages):
+                return pages[index]
+            return None
+
+        def draw_spread(
+            left_page,
+            right_page,
+            *,
+            show_controls=True,
+        ):
+            geometry = book_geometry()
+            draw_book_background(geometry)
+
+            left_x = geometry["left_x"]
+            right_x = geometry["right_x"]
+            y1 = geometry["y1"]
+            page_w = geometry["page_w"]
+            page_h = geometry["page_h"]
+            h = geometry["h"]
+            w = geometry["w"]
+
+            draw_large_page(
+                book_canvas,
+                left_page,
+                left_x,
+                y1,
+                left_x + page_w,
+                y1 + page_h,
+                blank=left_page is None,
+            )
+            draw_large_page(
+                book_canvas,
+                right_page,
+                right_x,
+                y1,
+                right_x + page_w,
+                y1 + page_h,
+                blank=right_page is None,
+            )
+
+            draw_gutter(geometry)
+
+            return geometry
+
+        # FEUILLETER_PAGINATION_RETIRÉE_SOURCE_V18
+        # Maquettage : aucune pagination affichée dans Feuilleter.
+        # Elle sera gérée plus tard par le bureau Visualisation.
+        def render_book(_event=None):
+            if resize_fx["active"] or flip_state["active"]:
+                return
+
+            book_canvas.delete("all")
+
+            li = spread_left[0]
+            ri = li + 1
+            left_page = page_at(li)
+            right_page = page_at(ri)
+
+            draw_spread(
+                left_page,
+                right_page,
+                show_controls=True,
+            )
+
+        def draw_turning_page(
+            page,
+            x1,
+            y1,
+            x2,
+            y2,
+            *,
+            shade=0.0,
+            edge_x=None,
+        ):
+            width = max(1.0, x2 - x1)
+            height = max(1.0, y2 - y1)
+
+            if width <= 3:
+                xx = (
+                    edge_x
+                    if edge_x is not None
+                    else (x1 + x2) / 2
+                )
+                book_canvas.create_line(
+                    xx,
+                    y1 + 2,
+                    xx,
+                    y2 - 2,
+                    fill="#6B6259",
+                    width=3,
+                )
+                return
+
+            book_canvas.create_rectangle(
+                x1 + 3,
+                y1 + 5,
+                x2 + 3,
+                y2 + 5,
+                fill="#81786F",
+                outline="",
+            )
+            book_canvas.create_rectangle(
+                x1,
+                y1,
+                x2,
+                y2,
+                fill="#FFFEFB",
+                outline="#AFA79F",
+                width=1,
+            )
+
+            photo = animated_page_photo(
+                page,
+                max(2, int(width - 4)),
+                max(2, int(height - 4)),
+                shade=shade,
+            )
+            book_canvas.create_image(
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
+                image=photo,
+                anchor="center",
+            )
+
+            # Bord mobile plus sombre : donne l'impression d'épaisseur.
+            if edge_x is not None:
+                for offset, color in (
+                    (0, "#625A52"),
+                    (2, "#8A8178"),
+                    (4, "#B0A79D"),
+                ):
+                    book_canvas.create_line(
+                        edge_x + offset,
+                        y1 + 2,
+                        edge_x + offset,
+                        y2 - 2,
+                        fill=color,
+                        width=1,
+                    )
+
+        def animate_page_turn(direction):
+            if (
+                flip_state["active"]
+                or resize_fx["active"]
+                or state["tab"] != "feuilleter"
+            ):
+                return
+
+            current = spread_left[0]
+
+            if direction > 0:
+                target = current + 2
+                if target > len(pages) - 1:
+                    return
+            else:
+                target = current - 2
+                if target < -1:
+                    return
+
+            current_left = page_at(current)
+            current_right = page_at(current + 1)
+            target_left = page_at(target)
+            target_right = page_at(target + 1)
+
+            flip_state["active"] = True
+            flip_state["direction"] = 1 if direction > 0 else -1
+
+            if flip_state["after"] is not None:
+                try:
+                    win.after_cancel(flip_state["after"])
+                except Exception:
+                    pass
+                flip_state["after"] = None
+
+            frames = 22
+            frame_ms = 15
+
+            def frame(index):
+                if not win.winfo_exists():
+                    return
+
+                t = index / frames
+                # Accélération/décélération douce du geste.
+                eased = (
+                    t * t * t
+                    * (
+                        t * (t * 6.0 - 15.0)
+                        + 10.0
+                    )
+                )
+
+                book_canvas.delete("all")
+                geometry = book_geometry()
+
+                left_x = geometry["left_x"]
+                right_x = geometry["right_x"]
+                y1 = geometry["y1"]
+                page_w = geometry["page_w"]
+                page_h = geometry["page_h"]
+                gutter_left = left_x + page_w
+                gutter_right = right_x
+
+                if direction > 0:
+                    if eased < 0.5:
+                        phase = eased / 0.5
+
+                        # La page droite actuelle se referme vers la reliure.
+                        draw_spread(
+                            current_left,
+                            target_right,
+                            show_controls=False,
+                        )
+
+                        fraction = max(0.0, 1.0 - phase)
+                        moving_w = page_w * fraction
+                        bend = int(
+                            13 * (1.0 - fraction)
+                        )
+
+                        x1 = gutter_right
+                        x2 = gutter_right + moving_w
+
+                        draw_turning_page(
+                            current_right,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x2,
+                        )
+                    else:
+                        phase = (eased - 0.5) / 0.5
+
+                        # Le verso devient la nouvelle page gauche.
+                        draw_spread(
+                            current_left,
+                            target_right,
+                            show_controls=False,
+                        )
+
+                        fraction = max(0.0, min(1.0, phase))
+                        moving_w = page_w * fraction
+                        bend = int(
+                            13 * (1.0 - fraction)
+                        )
+
+                        x2 = gutter_left
+                        x1 = gutter_left - moving_w
+
+                        draw_turning_page(
+                            target_left,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x1,
+                        )
+
+                else:
+                    if eased < 0.5:
+                        phase = eased / 0.5
+
+                        # La page gauche actuelle revient vers la reliure.
+                        draw_spread(
+                            target_left,
+                            current_right,
+                            show_controls=False,
+                        )
+
+                        fraction = max(0.0, 1.0 - phase)
+                        moving_w = page_w * fraction
+                        bend = int(
+                            13 * (1.0 - fraction)
+                        )
+
+                        x2 = gutter_left
+                        x1 = gutter_left - moving_w
+
+                        draw_turning_page(
+                            current_left,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x1,
+                        )
+                    else:
+                        phase = (eased - 0.5) / 0.5
+
+                        # Le verso redevient la page droite précédente.
+                        draw_spread(
+                            target_left,
+                            current_right,
+                            show_controls=False,
+                        )
+
+                        fraction = max(0.0, min(1.0, phase))
+                        moving_w = page_w * fraction
+                        bend = int(
+                            13 * (1.0 - fraction)
+                        )
+
+                        x1 = gutter_right
+                        x2 = gutter_right + moving_w
+
+                        draw_turning_page(
+                            target_right,
+                            x1,
+                            y1 + bend,
+                            x2,
+                            y1 + page_h - bend,
+                            shade=0.20 * (1.0 - fraction),
+                            edge_x=x2,
+                        )
+
+                # Ombre dynamique dans la reliure.
+                shadow_strength = 1.0 - abs(eased - 0.5) * 2.0
+                shadow_strength = max(
+                    0.0,
+                    min(1.0, shadow_strength),
+                )
+                gutter = geometry["gutter_x"]
+
+                for offset, color in (
+                    (0, "#5F564E"),
+                    (3, "#7A7067"),
+                    (6, "#A59B92"),
+                ):
+                    book_canvas.create_line(
+                        gutter + (
+                            offset
+                            if direction > 0
+                            else -offset
+                        ),
+                        y1 + 8,
+                        gutter + (
+                            offset
+                            if direction > 0
+                            else -offset
+                        ),
+                        y1 + page_h - 8,
+                        fill=color,
+                        width=(
+                            2
+                            if shadow_strength > 0.45
+                            else 1
+                        ),
+                    )
+
+                if index < frames:
+                    flip_state["after"] = win.after(
+                        frame_ms,
+                        lambda: frame(index + 1),
+                    )
+                else:
+                    spread_left[0] = target
+                    flip_state["active"] = False
+                    flip_state["direction"] = 0
+                    flip_state["after"] = None
+                    win._book_views_turn_frames = []
+                    render_book()
+
+            frame(0)
 
         def turn(step):
-            current = spread_left[0]
-            if step > 0:
-                candidate = current + 2
-                if candidate <= len(pages) - 1:
-                    spread_left[0] = candidate
+            animate_page_turn(
+                1 if step > 0 else -1
+            )
+
+        def book_click(event):
+            if flip_state["active"] or resize_fx["active"]:
+                return
+
+            w = max(740, book_canvas.winfo_width())
+
+            # Toute la moitié droite avance, toute la moitié gauche recule.
+            if event.x >= w / 2:
+                turn(1)
             else:
-                candidate = current - 2
-                if candidate >= -1:
-                    spread_left[0] = candidate
-            render_book()
+                turn(-1)
 
-        def wheel(event):
-            turn(1 if event.delta < 0 else -1)
-            return "break"
+        def book_wheel(event):
+            if state["tab"] != "feuilleter":
+                return None
+            if getattr(event, "delta", 0):
+                turn(
+                    1
+                    if event.delta < 0
+                    else -1
+                )
+                return "break"
+            return None
 
-        body.bind("<Configure>", render_book)
-        win.bind("<MouseWheel>", wheel)
-        win.bind("<Right>", lambda _e: turn(1))
-        win.bind("<Left>", lambda _e: turn(-1))
-        win.bind("<Next>", lambda _e: turn(1))
-        win.bind("<Prior>", lambda _e: turn(-1))
+        book_canvas.bind(
+            "<Configure>",
+            lambda event: (
+                render_book(event)
+                if state["tab"] == "feuilleter"
+                else None
+            ),
+        )
+        book_canvas.bind("<Button-1>", book_click)
+
+        # ----------------------------------------------------------
+        # Changement de vue V14 : responsabilités réellement séparées.
+        #
+        # - set_visual_panel() ne modifie QUE le panneau interne.
+        # - show_book_view() ne modifie QUE l'onglet et l'empilement.
+        # - la Toplevel native ne reçoit AUCUNE geometry() au clic.
+        # ----------------------------------------------------------
+        switch_state = {
+            "active": False,
+        }
+
+        def set_visual_panel(key):
+            """Responsabilité unique : taille visuelle interne."""
+            visual_state["mode"] = key
+            redraw_shell()
+
+        def show_book_view(key):
+            """Responsabilité unique : sélection de l'onglet."""
+            state["tab"] = key
+
+            if key == "global":
+                subtitle_label.configure(
+                    text=(
+                        "Vue panoramique de l’ordre des pages et des parties. "
+                        "Cliquez-glissez pour parcourir le livre."
+                    )
+                )
+                global_host.tkraise()
+            else:
+                subtitle_label.configure(
+                    text=(
+                        "Cliquez à gauche ou à droite sur le livre "
+                        "pour tourner les pages."
+                    )
+                )
+                book_host.tkraise()
+
+            draw_tabs()
+
+        def render_active_view():
+            """Rend uniquement la vue visible, après layout interne."""
+            draw_title_line()
+            if state["tab"] == "global":
+                draw_global()
+            else:
+                render_book()
+
+        def change_book_mode(key):
+            if key not in ("global", "feuilleter"):
+                return
+            if (
+                switch_state["active"]
+                or flip_state["active"]
+                or key == state["tab"]
+            ):
+                return
+
+            switch_state["active"] = True
+            try:
+                # 1. changement d'onglet ; 2. layout interne ;
+                # jamais de redimensionnement de la fenêtre Windows.
+                show_book_view(key)
+                set_visual_panel(key)
+                win.update_idletasks()
+                render_active_view()
+            finally:
+                switch_state["active"] = False
+
+        def show_tab(key, *, animate=True):
+            change_book_mode(key)
+
+        def tabs_motion(event):
+            key = tab_at(event.x, event.y)
+            if key != state["tab_hover"]:
+                state["tab_hover"] = key
+                tabs.configure(
+                    cursor="hand2" if key else "arrow"
+                )
+                draw_tabs()
+
+        def tabs_leave(_event=None):
+            state["tab_hover"] = None
+            tabs.configure(cursor="arrow")
+            draw_tabs()
+
+        def tabs_click(event):
+            key = tab_at(event.x, event.y)
+            if key is not None and key != state["tab"]:
+                show_tab(key, animate=True)
+
+        tabs.bind("<Motion>", tabs_motion)
+        tabs.bind("<Leave>", tabs_leave)
+        tabs.bind("<Button-1>", tabs_click)
+
+        win.bind("<MouseWheel>", global_wheel, add="+")
+        win.bind("<MouseWheel>", book_wheel, add="+")
+        win.bind(
+            "<Right>",
+            lambda _e: (
+                turn(1)
+                if state["tab"] == "feuilleter"
+                else panorama.xview_scroll(5, "units")
+            ),
+        )
+        win.bind(
+            "<Left>",
+            lambda _e: (
+                turn(-1)
+                if state["tab"] == "feuilleter"
+                else panorama.xview_scroll(-5, "units")
+            ),
+        )
+        win.bind(
+            "<Next>",
+            lambda _e: (
+                turn(1)
+                if state["tab"] == "feuilleter"
+                else None
+            ),
+        )
+        win.bind(
+            "<Prior>",
+            lambda _e: (
+                turn(-1)
+                if state["tab"] == "feuilleter"
+                else None
+            ),
+        )
         win.bind("<Escape>", lambda _e: win.destroy())
-        win.after_idle(render_book)
+
+        # ----------------------------------------------------------
+        # Première apparition : préchauffage des DEUX layouts internes.
+        # La Toplevel reste fixe pendant toute cette phase invisible.
+        # ----------------------------------------------------------
+        initial_key = state["tab"]
+
+        # Prépare Vue globale.
+        show_book_view("global")
+        set_visual_panel("global")
+        win.update_idletasks()
+        draw_global()
+
+        # Prépare Feuilleter.
+        show_book_view("feuilleter")
+        set_visual_panel("feuilleter")
+        win.update_idletasks()
+        render_book()
+
+        # Restaure l'onglet demandé avant révélation.
+        show_book_view(initial_key)
+        set_visual_panel(initial_key)
+        win.update_idletasks()
+        render_active_view()
+
+        if hasattr(self, "_reveal_accueil_dialog"):
+            self._reveal_accueil_dialog(win)
+        else:
+            win.deiconify()
+            try:
+                win.attributes("-alpha", 1.0)
+            except tk.TclError:
+                pass
+
         win.focus_force()
+        return win
+    def _tomelinea_open_global_view(self):
+        """Compatibilité : ouvre la fenêtre unifiée sur Vue globale."""
+        return self._tomelinea_open_book_views("global")
+
+    def _tomelinea_open_book_view(self):
+        """Compatibilité : ouvre la fenêtre unifiée sur Feuilleter."""
+        return self._tomelinea_open_book_views("feuilleter")
 
 
     # FENETRES_BASE_PARTIE_TYPE_V1
@@ -6380,7 +11130,7 @@ class PageMaitreV2(tk.Tk):
 
         canvas = tk.Canvas(
             parent,
-            bg="#F6F2EA",
+            bg=theme.WINDOW,
             highlightthickness=0,
             bd=0,
         )
@@ -6408,13 +11158,7 @@ class PageMaitreV2(tk.Tk):
         self._maquettage_bg_source = None
         self._maquettage_bg_photo = None
 
-        maquettage_bg_path = (
-            PROJECT_ROOT
-            / "assets"
-            / "gui_v2"
-            / "maquettage_backgrounds"
-            / "maquettage_studio_pro.png"
-        )
+        maquettage_bg_path = ACCUEIL_BG
 
         if maquettage_bg_path.exists():
             try:
@@ -6481,27 +11225,27 @@ class PageMaitreV2(tk.Tk):
 
             canvas.create_polygon(
                 panel_points(2, 4),
-                fill="#D3CEC5",
+                fill="#22262D",
                 outline="",
                 tags="maquettage_ui",
             )
 
             canvas.create_polygon(
                 panel_points(),
-                fill="#FFFEFC",
-                outline="#D5D1CA",
+                fill=theme.PANEL,
+                outline=theme.BORDER,
                 width=1,
                 tags="maquettage_ui",
             )
 
-            canvas.create_line(
+            self._draw_notebook_spiral_canvas(
+                canvas,
                 x1 + 3,
                 y1 + 17,
-                x1 + 3,
                 y2 - 18,
-                fill=accent,
-                width=4,
-                tags="maquettage_ui",
+                accent,
+                tags=("maquettage_ui",),
+                step=18,
             )
 
 
@@ -6520,7 +11264,7 @@ class PageMaitreV2(tk.Tk):
                     x1 + 20,
                     y1 + 51,
                     text=subtitle,
-                    fill="#505A64",
+                    fill=theme.MUTED,
                     font=("Segoe UI", 8),
                     anchor="nw",
                     tags="maquettage_ui",
@@ -6983,14 +11727,6 @@ class PageMaitreV2(tk.Tk):
                     Image.Resampling.LANCZOS,
                 )
 
-                # FOND_MAQUETTAGE_GRIS_DOUX_V1
-                # Léger voile gris TomeLinea pour mieux détacher les plages
-                # de travail blanches, sans assombrir réellement l'interface.
-                image = Image.blend(
-                    image.convert("RGB"),
-                    Image.new("RGB", image.size, "#D7D9DC"),
-                    0.10,
-                )
                 self._maquettage_bg_photo = ImageTk.PhotoImage(image)
                 canvas.create_image(
                     0,
@@ -7014,126 +11750,8 @@ class PageMaitreV2(tk.Tk):
             # PÔLE 1 — STRUCTURE DU LIVRE
             # Fusion de l'ancienne barre des groupes et de la vue globale.
             # ------------------------------------------------------
-            # FOND_MAQUETTAGE_BRUN_FUME_V3
-            # Brun chaud dérivé de l'ivoire de l'Accueil, mais plus soutenu.
-            # Volutes plus visibles que dans la version grise précédente.
-            from PIL import ImageDraw, ImageFilter
-
-            bg_size = (width, height)
-            if getattr(self, "_maquettage_smoke_v3_size", None) != bg_size:
-                # Base brun-taupe : contraste proche du gris validé,
-                # mais raccordée à la palette chaude de l'Accueil.
-                smoke_bg = Image.new("RGBA", bg_size, "#C2B6A8")
-
-                smoke_layer = Image.new(
-                    "RGBA",
-                    bg_size,
-                    (0, 0, 0, 0),
-                )
-                smoke_draw = ImageDraw.Draw(smoke_layer, "RGBA")
-
-                # Grandes volutes ivoire chaudes.
-                light_clouds = (
-                    (
-                        -int(width * 0.10),
-                        -int(height * 0.05),
-                        int(width * 0.46),
-                        int(height * 0.33),
-                        (248, 242, 232, 82),
-                    ),
-                    (
-                        int(width * 0.12),
-                        int(height * 0.16),
-                        int(width * 0.63),
-                        int(height * 0.48),
-                        (243, 236, 226, 66),
-                    ),
-                    (
-                        int(width * 0.54),
-                        -int(height * 0.03),
-                        int(width * 1.05),
-                        int(height * 0.36),
-                        (250, 244, 235, 76),
-                    ),
-                    (
-                        -int(width * 0.08),
-                        int(height * 0.57),
-                        int(width * 0.46),
-                        int(height * 0.97),
-                        (242, 235, 224, 62),
-                    ),
-                    (
-                        int(width * 0.48),
-                        int(height * 0.53),
-                        int(width * 1.07),
-                        int(height * 1.03),
-                        (247, 240, 230, 70),
-                    ),
-                )
-                for cloud in light_clouds:
-                    smoke_draw.ellipse(cloud[:4], fill=cloud[4])
-
-                # Volutes brunes plus profondes pour créer le relief.
-                dark_clouds = (
-                    (
-                        int(width * 0.02),
-                        int(height * 0.27),
-                        int(width * 0.39),
-                        int(height * 0.70),
-                        (105, 88, 72, 40),
-                    ),
-                    (
-                        int(width * 0.31),
-                        -int(height * 0.09),
-                        int(width * 0.75),
-                        int(height * 0.27),
-                        (111, 94, 78, 34),
-                    ),
-                    (
-                        int(width * 0.67),
-                        int(height * 0.25),
-                        int(width * 1.08),
-                        int(height * 0.76),
-                        (101, 84, 70, 39),
-                    ),
-                    (
-                        int(width * 0.28),
-                        int(height * 0.58),
-                        int(width * 0.70),
-                        int(height * 1.05),
-                        (116, 99, 83, 30),
-                    ),
-                )
-                for cloud in dark_clouds:
-                    smoke_draw.ellipse(cloud[:4], fill=cloud[4])
-
-                # Flou moins fort que dans la V2 : les volutes restent perceptibles
-                # tout en gardant l'effet de fumée diffuse.
-                blur_radius = max(
-                    24,
-                    int(min(width, height) * 0.028),
-                )
-                smoke_layer = smoke_layer.filter(
-                    ImageFilter.GaussianBlur(blur_radius)
-                )
-
-                smoke_bg = Image.alpha_composite(
-                    smoke_bg,
-                    smoke_layer,
-                ).convert("RGB")
-
-                self._maquettage_smoke_v3_photo = ImageTk.PhotoImage(
-                    smoke_bg
-                )
-                self._maquettage_smoke_v3_size = bg_size
-
-            canvas.create_image(
-                0,
-                0,
-                image=self._maquettage_smoke_v3_photo,
-                anchor="nw",
-                tags="maquettage_smoke_v3",
-            )
+            # Plus aucun fond spécifique Maquettage.
+            # Le décor général de page reste seul visible derrière les zones.
 
             margin = 44
             top_y1 = 14
@@ -7494,28 +12112,18 @@ class PageMaitreV2(tk.Tk):
                 muted=True,
             )
 
-            # Troisième ligne : deux modes de visualisation du livre.
+            # Troisième ligne : une seule visionneuse, deux onglets internes.
             view_y1 = top_y1 + 138
             view_y2 = top_y1 + 171
             secondary_button(
                 tool_x1,
                 view_y1,
-                tool_x1 + tool_half,
-                view_y2,
-                "Vue globale",
-                "#8D70C7",
-                muted=True,
-                command=self._tomelinea_open_global_view,
-            )
-            secondary_button(
-                tool_x1 + tool_half + tool_gap,
-                view_y1,
                 tool_x2,
                 view_y2,
-                "Vue livre",
+                "Vue du livre",
                 "#8D70C7",
                 muted=True,
-                command=self._tomelinea_open_book_view,
+                command=self._tomelinea_open_book_views,
             )
 
             # ------------------------------------------------------
@@ -8688,6 +13296,7 @@ class PageMaitreV2(tk.Tk):
         canvas.after_idle(render)
 
     def _build_atelier(self, parent: tk.Frame) -> None:
+        self._apply_editorial_background_to_frame(parent, "atelier")
         self._screen_header(
             parent,
             "Atelier",
@@ -8738,6 +13347,7 @@ class PageMaitreV2(tk.Tk):
             )
 
     def _build_conception(self, parent: tk.Frame) -> None:
+        self._apply_editorial_background_to_frame(parent, "conception")
         self._screen_header(
             parent,
             "Conception",
@@ -8806,6 +13416,7 @@ class PageMaitreV2(tk.Tk):
             )
 
     def _build_assemblage(self, parent: tk.Frame) -> None:
+        self._apply_editorial_background_to_frame(parent, "assemblage")
         self._screen_header(
             parent,
             "Assemblage",
@@ -8869,6 +13480,7 @@ class PageMaitreV2(tk.Tk):
             x += 26
 
     def _build_verification(self, parent: tk.Frame) -> None:
+        self._apply_editorial_background_to_frame(parent, "verification")
         self._screen_header(
             parent,
             "Vérification",
@@ -8925,6 +13537,7 @@ class PageMaitreV2(tk.Tk):
         page.pack_propagate(False)
 
     def _build_finalisation(self, parent: tk.Frame) -> None:
+        self._apply_editorial_background_to_frame(parent, "finalisation")
         self._screen_header(
             parent,
             "Finalisation & Export",
