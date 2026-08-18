@@ -1,15 +1,33 @@
 [
   {
+    "name": "TEST STRUCTURE — RÉFÉRENCE",
+    "type": "livre_textuel",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST STRUCTURE — RÉFÉRENCE",
+    "last_opened": "2026-08-18T20:54"
+  },
+  {
+    "name": "test",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\test",
+    "last_opened": "2026-08-18T19:08"
+  },
+  {
+    "name": "TEST PAGES AUTO",
+    "type": "livre_textuel",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST PAGES AUTO",
+    "last_opened": "2026-08-18T19:08"
+  },
+  {
     "name": "les pieds nickeles",
     "type": "bande_dessinee",
     "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\les pieds nickeles",
-    "last_opened": "2026-08-17T21:36"
+    "last_opened": "2026-08-18T14:38"
   },
   {
     "name": "projet x",
     "type": "ouvrage_structure",
     "path": "C:\\Users\\PC\\Desktop\\livre lapin\\version 2\\projet x",
-    "last_opened": "2026-08-17T14:18"
+    "last_opened": "2026-08-18T14:34"
   },
   {
     "name": "Nouveau projet",

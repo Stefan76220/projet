@@ -1,0 +1,100 @@
+{
+  "groups": [
+    {
+      "id": "debut_livre",
+      "title": "Début du livre",
+      "protected": true
+    },
+    {
+      "id": "partie_1",
+      "title": "Partie 1",
+      "part_title": "Origines"
+    },
+    {
+      "id": "partie_2",
+      "title": "Partie 2",
+      "part_title": "Traversées"
+    },
+    {
+      "id": "partie_3",
+      "title": "Partie 3",
+      "part_title": "Retours"
+    },
+    {
+      "id": "fin_livre",
+      "title": "Fin du livre",
+      "protected": true
+    }
+  ],
+  "items": [
+    {
+      "id": "cover",
+      "type": "couverture",
+      "plan_group": "debut_livre"
+    },
+    {
+      "id": "title",
+      "type": "page_titre",
+      "plan_group": "debut_livre"
+    },
+    {
+      "id": "p1-head",
+      "type": "tete_partie",
+      "plan_group": "partie_1"
+    },
+    {
+      "id": "ch1",
+      "type": "chapitre",
+      "plan_group": "partie_1"
+    },
+    {
+      "id": "ch1-auto-before",
+      "type": "citation",
+      "plan_group": "partie_1",
+      "automatic": true,
+      "automatic_kind": "page_auto_before",
+      "parent_id": "ch1"
+    },
+    {
+      "id": "ch1-auto-after",
+      "type": "page_blanche",
+      "plan_group": "partie_1",
+      "automatic": true,
+      "automatic_kind": "page_auto_after",
+      "parent_id": "ch1"
+    },
+    {
+      "id": "ch2",
+      "type": "chapitre",
+      "plan_group": "partie_2",
+      "page_auto_after_override": "__none__"
+    },
+    {
+      "id": "map",
+      "type": "carte",
+      "plan_group": "partie_2"
+    },
+    {
+      "id": "ch3",
+      "type": "chapitre",
+      "plan_group": "partie_3"
+    },
+    {
+      "id": "thanks",
+      "type": "remerciements",
+      "plan_group": "fin_livre"
+    },
+    {
+      "id": "back",
+      "type": "quatrieme",
+      "plan_group": "fin_livre"
+    }
+  ],
+  "page_auto_type_rules": {
+    "chapitre": {
+      "before": "citation",
+      "after": "page_blanche"
+    }
+  },
+  "recto_verso_rules": []
+}

@@ -1,0 +1,8 @@
+{
+  "src/gui_v3/book_canvas.py": true,
+  "src/gui_v3/page_visual_catalog.py": true,
+  "src/gui_v3/structure_catalog.py": false,
+  "src/gui_v3/structure_core.py": false,
+  "tests/test_structure_stage1.py": false,
+  "tests/fixtures/structure_reference_book.json": false
+}

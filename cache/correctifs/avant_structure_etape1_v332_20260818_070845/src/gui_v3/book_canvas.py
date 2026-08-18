@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import tkinter as tk
-import tkinter.font as tkfont
 from copy import deepcopy
 import shutil
 from pathlib import Path
@@ -9,9 +8,7 @@ from typing import Callable
 from uuid import uuid4
 
 from src.gui_v3 import theme
-from src.gui_v3.page_visual_catalog import canonical_page_type, page_visual_definition, structure_builtin_catalog
-from src.gui_v3.structure_core import migrate_structure_data
-# STRUCTURE_ETAPE1_V332 : socle nettoyé, moteur Page auto unique, catalogue canonique.
+from src.gui_v3.page_visual_catalog import canonical_page_type, page_visual_definition
 
 try:
     from PIL import Image, ImageTk
@@ -438,17 +435,12 @@ class BookCanvas(tk.Frame):
     AUTO_SCROLL_MAX_SPEED = 3
 
     # Quatre niveaux visuels indépendants de la partie active.
-    PAGE_SIZE_AUTO = 0.26
-    PAGE_AUTO_REST_W = 0.12
-    PAGE_AUTO_REST_H = 0.50
-    # Déployée, la page auto redevient une vraie miniature : même ratio que la page source.
-    PAGE_AUTO_DEPLOY_W = 0.56
-    PAGE_AUTO_DEPLOY_H = 0.56
+    PAGE_SIZE_AUTO = 0.58
     PAGE_SIZE_NORMAL = 0.82
     PAGE_SIZE_PART_HEAD = 0.98
     PAGE_SIZE_SELECTED = 1.16
-    PAGE_LABEL_H = 20
-    PAGE_NAME_H = 0
+    PAGE_LABEL_H = 28
+    PAGE_NAME_H = 24
 
     def __init__(
         self,
@@ -457,13 +449,11 @@ class BookCanvas(tk.Frame):
         on_open_item: Callable[[dict, int], None],
         on_change: Callable[[], None] | None = None,
         on_focus_change: Callable[[bool], None] | None = None,
-        on_history_change: Callable[[bool, bool], None] | None = None,
     ):
         super().__init__(parent, bg=theme.PANEL)
         self.on_open_item = on_open_item
         self.on_change = on_change
         self.on_focus_change = on_focus_change
-        self.on_history_change = on_history_change
         self.project = None
         self.items: list[dict] = []
         self.groups: list[dict] = [dict(group) for group in self.DEFAULT_GROUPS]
@@ -549,22 +539,6 @@ class BookCanvas(tk.Frame):
         self._structure_action_target_kind = None
         self._structure_action_target_id = None
         self._structure_action_target_ids: list[str] = []
-        # Recto/Verso : la sélection d’une page arme le choix en deux clics.
-        self._structure_recto_verso_armed = False
-        # Règle actuellement ciblée par la zone d’actions commune du bandeau.
-        # Valeurs : AV, AP, R, V, 2P.
-        self._structure_rule_target: str = ""
-        # Règles structurelles : la synchronisation est globale afin qu'une seule
-        # page automatique puisse satisfaire plusieurs contraintes compatibles.
-        self._structure_rule_sync_in_progress = False
-
-        # Historique Structure : un état correspond à une décision utilisateur complète.
-        # Les recalculs automatiques AV/AP/R/V/2P restent intégrés à cette même étape.
-        self._history_undo: list[dict] = []
-        self._history_redo: list[dict] = []
-        self._history_current: dict | None = None
-        self._history_replaying = False
-        self._history_limit = 100
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -575,133 +549,6 @@ class BookCanvas(tk.Frame):
             self.winfo_toplevel().bind("<Button-1>", self._structure_global_click, add="+")
         except Exception:
             pass
-
-    # ------------------------------------------------------------------
-    # Historique Structure — Annuler / Rétablir
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _history_compare_data(data: dict | None) -> dict:
-        comparable = deepcopy(data) if isinstance(data, dict) else {}
-        # updated_at change à chaque écriture et ne constitue pas une action.
-        comparable.pop("updated_at", None)
-        return comparable
-
-    def _history_notify(self) -> None:
-        callback = getattr(self, "on_history_change", None)
-        if callback is not None:
-            try:
-                callback(bool(self._history_undo), bool(self._history_redo))
-            except Exception:
-                pass
-
-    def _history_reset(self, data: dict | None) -> None:
-        self._history_undo.clear()
-        self._history_redo.clear()
-        self._history_current = deepcopy(data) if isinstance(data, dict) else {}
-        self._history_notify()
-
-    def _history_record_saved(self, data: dict | None) -> None:
-        snapshot = deepcopy(data) if isinstance(data, dict) else {}
-        if self._history_replaying:
-            self._history_current = snapshot
-            self._history_notify()
-            return
-        if self._history_current is None:
-            self._history_current = snapshot
-            self._history_notify()
-            return
-        if self._history_compare_data(snapshot) == self._history_compare_data(self._history_current):
-            self._history_current = snapshot
-            self._history_notify()
-            return
-        self._history_undo.append(deepcopy(self._history_current))
-        if len(self._history_undo) > self._history_limit:
-            del self._history_undo[:-self._history_limit]
-        self._history_redo.clear()
-        self._history_current = snapshot
-        self._history_notify()
-
-    def can_undo(self) -> bool:
-        return bool(self._history_undo)
-
-    def can_redo(self) -> bool:
-        return bool(self._history_redo)
-
-    def _history_restore(self, data: dict, *, status: str) -> bool:
-        if self.project is None or not isinstance(data, dict):
-            return False
-
-        # Ferme proprement les éventuels éditeurs avant de restaurer le modèle.
-        if getattr(self, "_title_editor", None) is not None:
-            self._close_title_editor(commit=False)
-        if getattr(self, "_page_name_editor", None) is not None:
-            self._close_page_name_editor(commit=False)
-
-        self._history_replaying = True
-        try:
-            saved = self.project.save_mockup(deepcopy(data))
-            if not isinstance(saved, dict):
-                saved = deepcopy(data)
-            saved, _changed = self._ensure_minimum_structure(saved)
-            self._data = deepcopy(saved)
-            self.groups = [dict(group) for group in saved.get("groups", []) if isinstance(group, dict)]
-            self.items = [dict(item) for item in saved.get("items", []) if isinstance(item, dict)]
-
-            # L'état historique contient déjà les pages automatiques calculées.
-            # On le restaure tel quel : Undo reste une seule décision, jamais une
-            # série de micro-actions dues aux automatismes.
-            self._history_current = deepcopy(saved)
-
-            valid_ids = {str(item.get("id") or "") for item in self.items}
-            self._selected_page_ids = {pid for pid in self._selected_page_ids if pid in valid_ids}
-            if self._selected_index is not None and not (0 <= self._selected_index < len(self.items)):
-                self._selected_index = None
-            if self._selected_group_id and not any(
-                str(group.get("id") or "") == str(self._selected_group_id) for group in self.groups
-            ):
-                self._selected_group_id = None
-
-            self.render()
-            self.status_var.set(status)
-            if self.on_change is not None:
-                self.on_change()
-            return True
-        finally:
-            self._history_replaying = False
-            self._history_notify()
-
-    def structure_undo(self) -> bool:
-        if not self._history_undo:
-            self.status_var.set("Rien à annuler.")
-            self._history_notify()
-            return False
-        current = deepcopy(self._history_current) if isinstance(self._history_current, dict) else {}
-        target = self._history_undo.pop()
-        self._history_redo.append(current)
-        if not self._history_restore(target, status="Action annulée."):
-            self._history_undo.append(target)
-            self._history_redo.pop()
-            self._history_notify()
-            return False
-        return True
-
-    def structure_redo(self) -> bool:
-        if not self._history_redo:
-            self.status_var.set("Rien à rétablir.")
-            self._history_notify()
-            return False
-        current = deepcopy(self._history_current) if isinstance(self._history_current, dict) else {}
-        target = self._history_redo.pop()
-        self._history_undo.append(current)
-        if len(self._history_undo) > self._history_limit:
-            del self._history_undo[:-self._history_limit]
-        if not self._history_restore(target, status="Action rétablie."):
-            self._history_redo.append(target)
-            self._history_undo.pop()
-            self._history_notify()
-            return False
-        return True
 
     # ------------------------------------------------------------------
     # Construction
@@ -751,129 +598,61 @@ class BookCanvas(tk.Frame):
         )
 
     def _structure_bar_button(self, parent, text, command, *, danger=False):
-        """Commande Structure : même mécanisme de survol que les tk.Button de TomeLinea."""
-        return tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg="#162A38",
-            fg="#F2F3F1",
-            activebackground="#203B4B",
-            activeforeground="#F2F3F1",
-            relief="flat",
-            bd=0,
-            padx=10,
-            pady=3,
-            font=(theme.FONT_UI, 9, "bold"),
+        """Outil Structure V11 : petite commande d'atelier, distincte des boutons/onglets."""
+        base = "#162A38"
+        hover = "#203B4B"
+        pressed = "#10232E"
+        edge = "#C39A4A"
+        fg = "#F2F3F1"
+        label = tk.Label(
+            parent, text=text, bg=base, fg=fg,
+            font=(theme.FONT_UI, 9, "bold"), padx=10, pady=3,
+            highlightthickness=0,
             cursor="hand2",
         )
-
-    def _structure_page_auto_visual_step(self) -> int:
-        """État visuel dérivé de l'état fonctionnel réel."""
-        mode = getattr(self, "_structure_page_auto_mode", None)
-        if isinstance(mode, dict):
-            return 2
-        indices = self._selected_source_indices()
-        if len(indices) == 1:
-            try:
-                if self.structure_auto_source_allowed(self.items[indices[0]]):
-                    return 1
-            except Exception:
-                pass
-        return 0
-
-    def _structure_update_page_auto_visuals(self) -> None:
-        """Guide visuellement les 3 clics sans modifier le moteur Page auto."""
-        step = self._structure_page_auto_visual_step()
-        panel = getattr(self, "structure_auto_panel", None)
-        before = getattr(self, "structure_auto_before_btn", None)
-        after = getattr(self, "structure_auto_after_btn", None)
-
-        if panel is not None:
-            try:
-                panel.configure(
-                    highlightthickness=2 if step == 1 else 1,
-                    highlightbackground="#E7C37A" if step == 1 else "#385264",
-                )
-            except Exception:
-                pass
-
-        normal = {
-            "bg": "#162A38",
-            "fg": "#F2F3F1",
-            "activebackground": "#203B4B",
-            "activeforeground": "#F2F3F1",
-            "relief": "flat",
-            "bd": 0,
-        }
-        for button in (before, after):
-            if button is not None:
-                try:
-                    button.configure(**normal)
-                except Exception:
-                    pass
-
-        mode = getattr(self, "_structure_page_auto_mode", None)
-        if step == 2 and isinstance(mode, dict):
-            chosen = before if str(mode.get("position") or "") == "before" else after
-            if chosen is not None:
-                try:
-                    chosen.configure(
-                        bg="#C39A4A",
-                        fg="#102633",
-                        activebackground="#D8B66B",
-                        activeforeground="#102633",
-                        relief="sunken",
-                        bd=1,
-                    )
-                except Exception:
-                    pass
-        try:
-            self._structure_refresh_page_auto_buttons()
-        except Exception:
-            pass
+        def enter(_e=None): label.configure(bg=hover)
+        def leave(_e=None): label.configure(bg=base)
+        def press(_e=None): label.configure(bg=pressed)
+        def release(_e=None):
+            label.configure(bg=hover)
+            command()
+            return "break"
+        label.bind("<Enter>", enter)
+        label.bind("<Leave>", leave)
+        label.bind("<ButtonPress-1>", press)
+        label.bind("<ButtonRelease-1>", release)
+        return label
 
     def _source_index_for_index(self, index: int | None) -> int | None:
+        """Ramène une page automatique à sa page principale."""
         if index is None or not 0 <= int(index) < len(self.items):
             return None
         index = int(index)
         item = self.items[index]
         if not self._is_automatic_page(item):
             return index
-        source_ids = self._automatic_source_ids(item)
-        if not source_ids:
+        parent_id = self._automatic_parent_id(item)
+        if not parent_id:
             return index
-        # Une auto partagée n'appartient visuellement à aucune source : choisit
-        # la source la plus proche uniquement pour permettre une sélection utile.
-        candidates = [
-            (abs(i-index), i) for i, candidate in enumerate(self.items)
-            if str(candidate.get("id") or "") in source_ids
-        ]
-        return min(candidates)[1] if candidates else index
+        return next(
+            (i for i, candidate in enumerate(self.items) if str(candidate.get("id") or "") == parent_id),
+            index,
+        )
 
     def _set_single_page_selection(self, index: int | None) -> None:
         source_index = self._source_index_for_index(index)
         if source_index is None:
             self._selected_index = None
             self._selected_page_ids.clear()
-            self._structure_rule_target = ""
             return
-        previous_id = ""
-        if self._selected_index is not None and 0 <= int(self._selected_index) < len(self.items):
-            previous_id = str(self.items[int(self._selected_index)].get("id") or "")
-        new_id = str(self.items[source_index].get("id") or "")
-        if previous_id and new_id != previous_id:
-            self._structure_rule_target = ""
         self._selected_index = source_index
         source = self.items[source_index]
         source_id = str(source.get("id") or "").strip()
         self._selected_page_ids = {source_id} if source_id else set()
         self._selected_group_id = self._item_group_id(source)
         self._structure_selection_kind = "page"
-        self._structure_recto_verso_armed = self.structure_recto_verso_source_allowed(source)
 
     def _set_multi_page_selection(self, indices) -> None:
-        self._structure_rule_target = ""
         ordered: list[int] = []
         seen: set[int] = set()
         for raw in indices or []:
@@ -888,7 +667,6 @@ class BookCanvas(tk.Frame):
             self._selected_page_ids.clear()
             self._selected_group_id = None
             self._structure_selection_kind = "page"
-            self._structure_recto_verso_armed = False
             return
         ids = {
             str(self.items[index].get("id") or "").strip()
@@ -899,9 +677,6 @@ class BookCanvas(tk.Frame):
         self._selected_index = ordered[0]
         self._selected_group_id = self._item_group_id(self.items[ordered[0]])
         self._structure_selection_kind = "page"
-        self._structure_recto_verso_armed = (
-            len(ordered) == 1 and self.structure_recto_verso_source_allowed(self.items[ordered[0]])
-        )
 
     def _selected_source_indices(self) -> list[int]:
         """Pages principales actuellement sélectionnées, dans l'ordre du livre."""
@@ -951,24 +726,6 @@ class BookCanvas(tk.Frame):
         self.structure_cancel_page_auto_mode(silent=True)
         self._structure_reset_action()
         self.structure_arm_tool("group", {"type": "partie", "label": "Nouvelle partie"})
-
-    def _structure_duplicate_count(self) -> int:
-        var = getattr(self, "structure_duplicate_count_var", None)
-        try:
-            value = int(str(var.get()).strip()) if var is not None else 1
-        except (TypeError, ValueError, tk.TclError):
-            value = 1
-        return max(1, min(50, value))
-
-    def _structure_duplicate_count_changed(self):
-        value = self._structure_duplicate_count()
-        var = getattr(self, "structure_duplicate_count_var", None)
-        if var is not None:
-            try:
-                var.set(str(value))
-            except tk.TclError:
-                pass
-        return value
 
     def _structure_action_button(self, mode: str):
         # V24 — sélection → commande → Confirmer, y compris pour plusieurs pages.
@@ -1130,7 +887,7 @@ class BookCanvas(tk.Frame):
             return
         ok = False
         if mode == "duplicate":
-            ok = self.structure_duplicate_selected(self._structure_duplicate_count())
+            ok = self.structure_duplicate_selected()
         elif mode == "delete":
             ok = self.structure_delete_selected()
         self._structure_reset_action()
@@ -1201,170 +958,51 @@ class BookCanvas(tk.Frame):
         self.page_overlay.bind("<Escape>", lambda _e: self.close_page_overlay())
         self.page_overlay_frame.place_forget()
 
-        # Dock inférieur de B : navigation au-dessus, bandeau de commandes en dessous.
-        # Le bandeau reste proche du bas avec une petite respiration.
-        self.structure_bottom_controls = tk.Frame(viewer, bg=theme.WINDOW_DEEP)
-        self.structure_bottom_controls.grid(row=1, column=0, sticky="ew", pady=(0, 6))
-        self.structure_bottom_controls.grid_columnconfigure(0, weight=1)
-
         # V23 : un seul ruban Structure centré. Page auto est lié directement
         # à la page sélectionnée ; les commandes d'édition restent à droite.
         self.structure_command_bar = tk.Frame(
-            self.structure_bottom_controls, bg="#102633",
+            viewer, bg="#102633",
             highlightthickness=1, highlightbackground="#C39A4A",
             padx=8, pady=4,
         )
-        # Le bandeau est la dernière ligne du dock inférieur.
         self.structure_command_bar.grid(row=1, column=0, pady=(2, 2))
 
-        # Groupe édition à gauche : Partie / Dupliquer / quantité / Supprimer.
-        self.structure_new_part_btn = self._structure_bar_button(
-            self.structure_command_bar, "+ Partie", self._structure_new_part_command
-        )
-        self.structure_new_part_btn.pack(side="left", padx=3, pady=1)
-
-        self.structure_duplicate_btn = self._structure_bar_button(
-            self.structure_command_bar, "Dupliquer", lambda: self._structure_action_button("duplicate")
-        )
-        self.structure_duplicate_btn.pack(side="left", padx=(3, 1), pady=1)
-
         tk.Label(
-            self.structure_command_bar, text="×",
-            bg="#102633", fg="#B7C2C8",
-            font=(theme.FONT_UI, 9, "bold"),
-        ).pack(side="left", padx=(2, 1))
-        self.structure_duplicate_count_var = tk.StringVar(value="1")
-        self.structure_duplicate_count_spin = tk.Spinbox(
-            self.structure_command_bar,
-            from_=1, to=50, increment=1,
-            textvariable=self.structure_duplicate_count_var,
-            width=3, justify="center",
-            bg="#162A38", fg="#F2F3F1",
-            buttonbackground="#244354",
-            insertbackground="#F2F3F1",
-            relief="groove", bd=1,
-            highlightthickness=0,
+            self.structure_command_bar, text="Page auto :",
+            bg="#102633", fg="#D7C08A",
             font=(theme.FONT_UI, 8, "bold"),
-            command=self._structure_duplicate_count_changed,
-        )
-        self.structure_duplicate_count_spin.pack(side="left", padx=(0, 4), pady=1)
-        self.structure_duplicate_count_spin.bind("<FocusOut>", lambda _e: self._structure_duplicate_count_changed(), add="+")
-        self.structure_duplicate_count_spin.bind("<Return>", lambda _e: self._structure_duplicate_count_changed(), add="+")
+        ).pack(side="left", padx=(3, 5))
 
-        self.structure_delete_btn = self._structure_bar_button(
-            self.structure_command_bar, "Supprimer", lambda: self._structure_action_button("delete"), danger=True
+        self.structure_auto_before_btn = self._structure_bar_button(
+            self.structure_command_bar, "Avant",
+            lambda: self.structure_begin_page_auto_rule("before"),
         )
-        self.structure_delete_btn.pack(side="left", padx=3, pady=1)
+        self.structure_auto_before_btn.pack(side="left", padx=3, pady=1)
+        self.structure_auto_after_btn = self._structure_bar_button(
+            self.structure_command_bar, "Après",
+            lambda: self.structure_begin_page_auto_rule("after"),
+        )
+        self.structure_auto_after_btn.pack(side="left", padx=3, pady=1)
 
         separator = tk.Frame(self.structure_command_bar, bg="#5D6D76", width=1, height=22)
         separator.pack(side="left", padx=10, pady=3)
         separator.pack_propagate(False)
 
-        # Page auto.
-        self.structure_auto_panel = tk.Frame(
-            self.structure_command_bar,
-            bg="#102633",
-            highlightthickness=1,
-            highlightbackground="#385264",
-            padx=3,
-            pady=1,
+        self.structure_new_part_btn = self._structure_bar_button(
+            self.structure_command_bar, "+ Partie", self._structure_new_part_command
         )
-        self.structure_auto_panel.pack(side="left", padx=(0, 2), pady=0)
-        tk.Label(
-            self.structure_auto_panel, text="Page auto :",
-            bg="#102633", fg="#D7C08A",
-            font=(theme.FONT_UI, 8, "bold"),
-        ).pack(side="left", padx=(3, 5))
-        self.structure_auto_before_btn = self._structure_bar_button(
-            self.structure_auto_panel, "AV",
-            lambda: self.structure_select_page_auto_rule("before"),
+        self.structure_new_part_btn.pack(side="left", padx=3, pady=1)
+        self.structure_duplicate_btn = self._structure_bar_button(
+            self.structure_command_bar, "Dupliquer", lambda: self._structure_action_button("duplicate")
         )
-        self.structure_auto_before_btn.configure(width=4)
-        self.structure_auto_before_btn.pack(side="left", padx=2, pady=1)
-        self.structure_auto_after_btn = self._structure_bar_button(
-            self.structure_auto_panel, "AP",
-            lambda: self.structure_select_page_auto_rule("after"),
+        self.structure_duplicate_btn.pack(side="left", padx=3, pady=1)
+        self.structure_delete_btn = self._structure_bar_button(
+            self.structure_command_bar, "Supprimer", lambda: self._structure_action_button("delete"), danger=True
         )
-        self.structure_auto_after_btn.configure(width=4)
-        self.structure_auto_after_btn.pack(side="left", padx=2, pady=1)
+        self.structure_delete_btn.pack(side="left", padx=3, pady=1)
 
-        action_separator = tk.Frame(self.structure_command_bar, bg="#5D6D76", width=1, height=22)
-        action_separator.pack(side="left", padx=10, pady=3)
-        action_separator.pack_propagate(False)
-
-        # Actions communes à la règle ciblée.
-        self.structure_rule_action_panel = tk.Frame(
-            self.structure_command_bar,
-            bg="#102633",
-            highlightthickness=1,
-            highlightbackground="#385264",
-            padx=3,
-            pady=1,
-        )
-        self.structure_rule_action_panel.pack(side="left", padx=(0, 8), pady=0)
-        tk.Label(
-            self.structure_rule_action_panel, text="Règle :",
-            bg="#102633", fg="#B7C2C8",
-            font=(theme.FONT_UI, 8, "bold"),
-        ).pack(side="left", padx=(3, 4))
-        self.structure_rule_target_badge = tk.Label(
-            self.structure_rule_action_panel,
-            text="—", width=3,
-            bg="#162A38", fg="#D7C08A",
-            relief="groove", bd=1,
-            font=(theme.FONT_UI, 8, "bold"),
-        )
-        self.structure_rule_target_badge.pack(side="left", padx=(0, 5), pady=1)
-        self.structure_rule_exception_btn = self._structure_bar_button(
-            self.structure_rule_action_panel, "Exception", self.structure_toggle_target_rule_exception,
-        )
-        self.structure_rule_exception_btn.configure(width=10, state="disabled")
-        self.structure_rule_exception_btn.pack(side="left", padx=2, pady=1)
-        self.structure_rule_remove_btn = self._structure_bar_button(
-            self.structure_rule_action_panel, "Retirer règle", self.structure_remove_target_rule,
-        )
-        self.structure_rule_remove_btn.configure(width=12, state="disabled")
-        self.structure_rule_remove_btn.pack(side="left", padx=2, pady=1)
-
-        side_separator = tk.Frame(self.structure_command_bar, bg="#5D6D76", width=1, height=22)
-        side_separator.pack(side="left", padx=10, pady=3)
-        side_separator.pack_propagate(False)
-
-        # Position : Recto / Verso / Double page.
-        self.structure_recto_verso_panel = tk.Frame(
-            self.structure_command_bar,
-            bg="#102633",
-            highlightthickness=1,
-            highlightbackground="#385264",
-            padx=3,
-            pady=1,
-        )
-        self.structure_recto_verso_panel.pack(side="left", padx=(2, 0), pady=0)
-        tk.Label(
-            self.structure_recto_verso_panel, text="Position :",
-            bg="#102633", fg="#D7C08A",
-            font=(theme.FONT_UI, 8, "bold"),
-        ).pack(side="left", padx=(3, 5))
-        self.structure_recto_btn = self._structure_bar_button(
-            self.structure_recto_verso_panel, "R",
-            lambda: self.structure_select_recto_verso_rule("recto"),
-        )
-        self.structure_recto_btn.configure(width=4)
-        self.structure_recto_btn.pack(side="left", padx=2, pady=1)
-        self.structure_verso_btn = self._structure_bar_button(
-            self.structure_recto_verso_panel, "V",
-            lambda: self.structure_select_recto_verso_rule("verso"),
-        )
-        self.structure_verso_btn.configure(width=4)
-        self.structure_verso_btn.pack(side="left", padx=2, pady=1)
-        self.structure_double_page_btn = self._structure_bar_button(
-            self.structure_recto_verso_panel, "2P", self.structure_select_double_page_rule,
-        )
-        self.structure_double_page_btn.configure(width=5)
-        self.structure_double_page_btn.pack(side="left", padx=2, pady=1)
-
-        nav_row = tk.Frame(self.structure_bottom_controls, bg=theme.WINDOW_DEEP, height=46)
-        nav_row.grid(row=0, column=0, sticky="ew")
+        nav_row = tk.Frame(viewer, bg=theme.WINDOW_DEEP, height=46)
+        nav_row.grid(row=2, column=0, sticky="ew")
         nav_row.grid_propagate(False)
 
         # Dans B, on ne garde plus de commande de zoom générale.
@@ -1374,18 +1012,6 @@ class BookCanvas(tk.Frame):
 
         self.h_nav = TLBookNavigator(nav_dock, command=self._navigate_horizontal)
         self.h_nav.pack(side="left")
-
-        self.structure_auto_counter = tk.Label(
-            nav_row, text="Auto : 0 / 0 pages  •  blanches : 0",
-            width=42, anchor="e",
-            bg=theme.WINDOW_DEEP, fg="#AEB8B5",
-            font=(theme.FONT_UI, 8, "bold"),
-            cursor="hand2",
-        )
-        self.structure_auto_counter.place(relx=0.985, rely=0.5, anchor="e")
-        self.structure_auto_counter._tl_local_hover = True
-        self.structure_auto_counter.bind("<Enter>", self._structure_auto_counter_enter)
-        self.structure_auto_counter.bind("<Leave>", self._structure_auto_counter_leave)
 
         self.canvas.configure(xscrollcommand=self._on_canvas_xview, yscrollcommand=self._on_canvas_yview)
 
@@ -1438,8 +1064,8 @@ class BookCanvas(tk.Frame):
 
 
     def structure_builtin_page_type_catalog(self) -> list[dict]:
-        """Bibliothèque intégrée issue du catalogue canonique TomeLinea."""
-        return structure_builtin_catalog()
+        """Bibliothèque intégrée des types de pages TomeLinea."""
+        return [{'type': 'couverture', 'label': 'Couverture', 'short_label': 'Couverture', 'preview_image': 'assets/page_thumbnails/type_page_couverture.png', 'visual': 'cover', 'custom': False, 'duplicable': False}, {'type': 'deuxieme_couverture', 'label': '2e de couverture', 'short_label': '2e couv.', 'preview_image': 'assets/page_thumbnails/type_page_deuxieme_couverture.png', 'visual': 'cover', 'custom': False, 'duplicable': False}, {'type': 'troisieme_couverture', 'label': '3e de couverture', 'short_label': '3e couv.', 'preview_image': 'assets/page_thumbnails/type_page_troisieme_couverture.png', 'visual': 'cover', 'custom': False, 'duplicable': False}, {'type': 'quatrieme_couverture', 'label': '4e de couverture', 'short_label': '4e couv.', 'preview_image': 'assets/page_thumbnails/type_page_quatrieme_couverture.png', 'visual': 'cover', 'custom': False, 'duplicable': False}, {'type': 'page_blanche', 'label': 'Page blanche', 'short_label': 'Blanche', 'preview_image': 'assets/page_thumbnails/type_page_blanche.png', 'visual': 'blank', 'custom': False, 'duplicable': True}, {'type': 'page_titre', 'label': 'Page de titre', 'short_label': 'Titre', 'preview_image': 'assets/page_thumbnails/type_page_titre.png', 'visual': 'frontmatter', 'custom': False, 'duplicable': True}, {'type': 'sommaire', 'label': 'Sommaire', 'short_label': 'Sommaire', 'preview_image': 'assets/page_thumbnails/type_page_sommaire.png', 'visual': 'frontmatter', 'custom': False, 'duplicable': True}, {'type': 'avant_propos', 'label': 'Avant-propos', 'short_label': 'Avant-propos', 'preview_image': 'assets/page_thumbnails/type_page_avant_propos.png', 'visual': 'frontmatter', 'custom': False, 'duplicable': True}, {'type': 'dedicace', 'label': 'Dédicace', 'short_label': 'Dédicace', 'preview_image': 'assets/page_thumbnails/type_page_dedicace.png', 'visual': 'frontmatter', 'custom': False, 'duplicable': True}, {'type': 'preface', 'label': 'Préface', 'short_label': 'Préface', 'preview_image': 'assets/page_thumbnails/type_page_preface.png', 'visual': 'frontmatter', 'custom': False, 'duplicable': True}, {'type': 'page_titre_partie', 'label': 'Page de partie', 'short_label': 'Page partie', 'preview_image': 'assets/page_thumbnails/type_page_page_titre_partie.png', 'visual': 'section', 'custom': False, 'duplicable': True}, {'type': 'tete_partie', 'label': 'Tête de partie', 'short_label': 'Tête partie', 'preview_image': 'assets/page_thumbnails/type_page_tete_partie.png', 'visual': 'section', 'custom': False, 'duplicable': True}, {'type': 'chapitre', 'label': 'Chapitre', 'short_label': 'Chapitre', 'preview_image': 'assets/page_thumbnails/type_page_chapitre.png', 'visual': 'section', 'custom': False, 'duplicable': True}, {'type': 'texte', 'label': 'Texte', 'short_label': 'Texte', 'preview_image': 'assets/page_thumbnails/type_page_texte.png', 'visual': 'text', 'custom': False, 'duplicable': True}, {'type': 'citation', 'label': 'Citation', 'short_label': 'Citation', 'preview_image': 'assets/page_thumbnails/type_page_citation.png', 'visual': 'text', 'custom': False, 'duplicable': True}, {'type': 'encadre', 'label': 'Encadré', 'short_label': 'Encadré', 'preview_image': 'assets/page_thumbnails/type_page_encadre.png', 'visual': 'text', 'custom': False, 'duplicable': True}, {'type': 'illustration', 'label': 'Illustration', 'short_label': 'Illustration', 'preview_image': 'assets/page_thumbnails/type_page_illustration.png', 'visual': 'media', 'custom': False, 'duplicable': True}, {'type': 'portrait', 'label': 'Portrait', 'short_label': 'Portrait', 'preview_image': 'assets/page_thumbnails/type_page_portrait.png', 'visual': 'media', 'custom': False, 'duplicable': True}, {'type': 'carte', 'label': 'Carte', 'short_label': 'Carte', 'preview_image': 'assets/page_thumbnails/type_page_carte.png', 'visual': 'media', 'custom': False, 'duplicable': True}, {'type': 'tableau', 'label': 'Tableau', 'short_label': 'Tableau', 'preview_image': 'assets/page_thumbnails/type_page_tableau.png', 'visual': 'reference', 'custom': False, 'duplicable': True}, {'type': 'chronologie', 'label': 'Chronologie', 'short_label': 'Chronologie', 'preview_image': 'assets/page_thumbnails/type_page_chronologie.png', 'visual': 'reference', 'custom': False, 'duplicable': True}, {'type': 'fiche', 'label': 'Fiche', 'short_label': 'Fiche', 'preview_image': 'assets/page_thumbnails/type_page_fiche.png', 'visual': 'reference', 'custom': False, 'duplicable': True}, {'type': 'intercalaire', 'label': 'Intercalaire', 'short_label': 'Intercalaire', 'preview_image': 'assets/page_thumbnails/type_page_intercalaire.png', 'visual': 'section', 'custom': False, 'duplicable': True}, {'type': 'transition', 'label': 'Transition', 'short_label': 'Transition', 'preview_image': 'assets/page_thumbnails/type_page_transition.png', 'visual': 'section', 'custom': False, 'duplicable': True}, {'type': 'exercice', 'label': 'Exercice', 'short_label': 'Exercice', 'preview_image': 'assets/page_thumbnails/type_page_exercice.png', 'visual': 'reference', 'custom': False, 'duplicable': True}, {'type': 'glossaire', 'label': 'Glossaire', 'short_label': 'Glossaire', 'preview_image': 'assets/page_thumbnails/type_page_glossaire.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'bibliographie', 'label': 'Bibliographie', 'short_label': 'Bibliographie', 'preview_image': 'assets/page_thumbnails/type_page_bibliographie.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'index', 'label': 'Index', 'short_label': 'Index', 'preview_image': 'assets/page_thumbnails/type_page_index.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'annexe', 'label': 'Annexe', 'short_label': 'Annexe', 'preview_image': 'assets/page_thumbnails/type_page_annexe.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'biographie', 'label': 'Biographie', 'short_label': 'Biographie', 'preview_image': 'assets/page_thumbnails/type_page_biographie.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'a_propos_auteur', 'label': 'À propos de l’auteur', 'short_label': 'À propos auteur', 'preview_image': 'assets/page_thumbnails/type_page_a_propos_auteur.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'conclusion', 'label': 'Conclusion', 'short_label': 'Conclusion', 'preview_image': 'assets/page_thumbnails/type_page_conclusion.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}, {'type': 'remerciements', 'label': 'Remerciements', 'short_label': 'Remerciements', 'preview_image': 'assets/page_thumbnails/type_page_remerciements.png', 'visual': 'backmatter', 'custom': False, 'duplicable': True}]
 
     def structure_available_page_types(self) -> list[tuple[str, str, bool]]:
         protected = self.COVER_TYPES | self.BACK_COVER_TYPES | self.SECOND_COVER_TYPES | self.THIRD_COVER_TYPES
@@ -1583,11 +1209,8 @@ class BookCanvas(tk.Frame):
             "preview_image": preview_image_rel,
         }
         definitions.append(saved)
-        saved = self.project.save_mockup(data)
-        if not isinstance(saved, dict):
-            saved = data
-        self._data = deepcopy(saved)
-        self._history_record_saved(saved)
+        self._data = data
+        self.project.save_mockup(data)
         if self.on_change is not None:
             self.on_change()
         self.status_var.set(f"Nouveau type  •  {short_label}")
@@ -1597,587 +1220,6 @@ class BookCanvas(tk.Frame):
         if not isinstance(item, dict):
             return False
         return not self._is_locked_page(item) and not self._is_automatic_page(item)
-
-    def _structure_clear_rule_target(self) -> None:
-        self._structure_rule_target = ""
-        self._structure_rule_remove_pending = ""
-        self._structure_update_common_rule_actions()
-
-    def _structure_set_rule_target(self, code: str) -> None:
-        code = str(code or "").strip().upper()
-        new_target = code if code in {"AV", "AP", "R", "V", "2P"} else ""
-        if new_target != str(getattr(self, "_structure_rule_target", "") or ""):
-            self._structure_rule_remove_pending = ""
-        self._structure_rule_target = new_target
-        self._structure_update_common_rule_actions()
-
-    def _structure_target_rule_context(self) -> dict:
-        code = str(getattr(self, "_structure_rule_target", "") or "").upper()
-        indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        if source is None or code not in {"AV", "AP", "R", "V", "2P"}:
-            return {"code": code, "source": source, "has_rule": False, "excluded": False}
-        source_type = self._type_of(source)
-        has_rule = False
-        excluded = False
-        if code in {"AV", "AP"}:
-            position = "before" if code == "AV" else "after"
-            has_rule = bool(self.structure_get_page_auto_type_rule(source_type, position))
-            excluded = has_rule and self._page_auto_override_value(source, position) == "__none__"
-        elif code in {"R", "V"}:
-            side = "recto" if code == "R" else "verso"
-            has_rule = self.structure_get_recto_verso_type_rule(source_type) == side
-            excluded = has_rule and self._recto_verso_override_value(source) == "__none__"
-        elif code == "2P":
-            has_rule = bool(self.structure_get_double_page_type_rule(source_type))
-            excluded = has_rule and self._double_page_override_value(source) == "__none__"
-        return {"code": code, "source": source, "source_type": source_type, "has_rule": has_rule, "excluded": excluded}
-
-    def _structure_update_common_rule_actions(self) -> None:
-        panel = getattr(self, "structure_rule_action_panel", None)
-        badge = getattr(self, "structure_rule_target_badge", None)
-        exception_btn = getattr(self, "structure_rule_exception_btn", None)
-        remove_btn = getattr(self, "structure_rule_remove_btn", None)
-        if panel is None or badge is None or exception_btn is None or remove_btn is None:
-            return
-        context = self._structure_target_rule_context()
-        code = str(context.get("code") or "")
-        active = bool(code)
-        has_rule = bool(context.get("has_rule"))
-        excluded = bool(context.get("excluded"))
-        try:
-            panel.configure(
-                highlightthickness=2 if active else 1,
-                highlightbackground="#C39A4A" if active else "#385264",
-            )
-            badge.configure(
-                text=code or "—",
-                bg="#6E5B32" if active else "#162A38",
-                fg="#FFF0C4" if active else "#7F9099",
-            )
-            exception_btn.configure(
-                state="normal" if has_rule else "disabled",
-                text="Réintégrer" if has_rule and excluded else "Exception",
-            )
-            pending_key = str(getattr(self, "_structure_rule_remove_pending", "") or "")
-            current_key = f"{code}:{context.get('source_type', '')}" if has_rule else ""
-            pending = bool(has_rule and pending_key == current_key)
-            remove_btn.configure(
-                state="normal" if has_rule else "disabled",
-                text="Confirmer" if pending else "Retirer règle",
-                bg="#4A2C2A" if pending else "#162A38",
-                fg="#FFF0F0" if pending else "#F2F3F1",
-            )
-            if not has_rule:
-                self._structure_rule_remove_pending = ""
-        except Exception:
-            pass
-
-    def structure_select_page_auto_rule(self, position: str) -> bool:
-        position = str(position or "").strip().lower()
-        code = "AV" if position == "before" else "AP" if position == "after" else ""
-        if not code:
-            return False
-        self._structure_set_rule_target(code)
-        ok = self.structure_begin_page_auto_rule(position)
-        if not ok:
-            self._structure_clear_rule_target()
-        return ok
-
-    def structure_select_recto_verso_rule(self, side: str) -> bool:
-        side = str(side or "").strip().lower()
-        code = "R" if side == "recto" else "V" if side == "verso" else ""
-        if not code:
-            return False
-        indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        if source is None:
-            return False
-        self._structure_set_rule_target(code)
-        current = self.structure_get_recto_verso_type_rule(self._type_of(source))
-        # Si cette règle existe déjà, le clic la cible seulement : il ne doit
-        # surtout pas réintégrer automatiquement une occurrence en exception.
-        if current == side:
-            self.status_var.set(f"Règle {code} ciblée  •  Exception / Annuler disponibles")
-            self._structure_update_recto_verso_visuals()
-            return True
-        return self.structure_toggle_recto_verso_rule(side)
-
-    def structure_select_double_page_rule(self) -> bool:
-        indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        if source is None:
-            return False
-        self._structure_set_rule_target("2P")
-        if self.structure_get_double_page_type_rule(self._type_of(source)):
-            self.status_var.set("Règle 2P ciblée  •  Exception / Annuler disponibles")
-            self._structure_update_double_page_visuals()
-            return True
-        return self.structure_apply_double_page_rule()
-
-    def structure_toggle_target_rule_exception(self) -> bool:
-        self._structure_rule_remove_pending = ""
-        context = self._structure_target_rule_context()
-        if not context.get("has_rule"):
-            return False
-        code = str(context.get("code") or "")
-        if code in {"AV", "AP"}:
-            position = "before" if code == "AV" else "after"
-            if context.get("excluded"):
-                ok = self.structure_reset_selected_page_auto_override(position)
-            else:
-                ok = self.structure_set_selected_page_auto(position, "", scope="local")
-            self.structure_cancel_page_auto_mode(silent=True)
-        elif code in {"R", "V"}:
-            ok = self.structure_toggle_recto_verso_exception()
-        elif code == "2P":
-            ok = self.structure_toggle_double_page_exception()
-        else:
-            return False
-        self._structure_set_rule_target(code)
-        self._structure_update_common_rule_actions()
-        return bool(ok)
-
-    def structure_remove_target_rule(self) -> bool:
-        context = self._structure_target_rule_context()
-        if not context.get("has_rule"):
-            self._structure_rule_remove_pending = ""
-            self._structure_update_common_rule_actions()
-            return False
-
-        code = str(context.get("code") or "")
-        source_type = str(context.get("source_type") or "")
-        definition = self._structure_type_definition(source_type)
-        source_label = str(
-            definition.get("short_label")
-            or definition.get("label")
-            or source_type.replace("_", " ").strip().capitalize()
-            or "ce type"
-        )
-        pending_key = f"{code}:{source_type}"
-
-        # Même principe que Supprimer/Dupliquer :
-        # 1er clic = armement visuel ; 2e clic = exécution.
-        if str(getattr(self, "_structure_rule_remove_pending", "") or "") != pending_key:
-            self._structure_rule_remove_pending = pending_key
-            self._structure_update_common_rule_actions()
-            self.status_var.set(
-                f"Retirer {code} pour tous les {source_label}  •  cliquez une seconde fois pour confirmer"
-            )
-            return False
-
-        self._structure_rule_remove_pending = ""
-
-        if code in {"AV", "AP"}:
-            position = "before" if code == "AV" else "after"
-            ok = self.structure_remove_page_auto_type_rule(source_type, position)
-            self.structure_cancel_page_auto_mode(silent=True)
-        elif code in {"R", "V"}:
-            ok = self.structure_remove_recto_verso_rule()
-        elif code == "2P":
-            ok = self.structure_remove_double_page_rule()
-        else:
-            return False
-
-        if ok:
-            self.status_var.set(f"Règle {code} retirée pour tous les {source_label}.")
-        self._structure_update_common_rule_actions()
-        return bool(ok)
-
-    def structure_double_page_source_allowed(self, item: dict | None) -> bool:
-        if not isinstance(item, dict):
-            return False
-        return not self._is_locked_page(item) and not self._is_automatic_page(item) and bool(self._type_of(item))
-
-    def structure_double_page_type_rules(self) -> dict[str, bool]:
-        """Règles générales Double page par type ; absence = page simple."""
-        data = self._data if isinstance(self._data, dict) else {}
-        raw = data.get("double_page_type_rules", {})
-        result: dict[str, bool] = {}
-        if isinstance(raw, dict):
-            for source_type, enabled in raw.items():
-                source = str(source_type or "").strip().lower()
-                if source and bool(enabled):
-                    result[source] = True
-        return result
-
-    def structure_get_double_page_type_rule(self, source_type: str) -> bool:
-        source = str(source_type or "").strip().lower()
-        return bool(self.structure_double_page_type_rules().get(source, False))
-
-    def _double_page_override_value(self, item: dict | None):
-        if not isinstance(item, dict):
-            return None
-        if "double_page_override" in item:
-            return item.get("double_page_override")
-        return None
-
-    def _effective_double_page_rule(self, item: dict | None) -> bool:
-        if not isinstance(item, dict) or self._is_automatic_page(item) or self._is_locked_page(item):
-            return False
-        if not self.structure_get_double_page_type_rule(self._type_of(item)):
-            return False
-        return self._double_page_override_value(item) != "__none__"
-
-    def structure_apply_double_page_rule(self) -> bool:
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            self.status_var.set("Double page : sélectionnez une seule page dans B.")
-            return False
-        source = self.items[indices[0]]
-        if not self.structure_double_page_source_allowed(source):
-            self.status_var.set("Cette page ne peut pas devenir une double page.")
-            return False
-        source_type = self._type_of(source)
-        if self.structure_get_recto_verso_type_rule(source_type) == "recto":
-            self.status_var.set("Double page incompatible avec une règle Recto : une double page commence à gauche.")
-            return False
-
-        data = deepcopy(self._data) if isinstance(self._data, dict) else {}
-        if self.project is not None:
-            try:
-                loaded = self.project.load_mockup()
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception:
-                pass
-        raw = data.get("double_page_type_rules", {})
-        rules = dict(raw) if isinstance(raw, dict) else {}
-        had_rule = bool(rules.get(source_type, False))
-        rules[source_type] = True
-        data["double_page_type_rules"] = rules
-
-        for item in self.items:
-            if self._is_automatic_page(item) or self._type_of(item) != source_type:
-                continue
-            if not had_rule:
-                item.pop("double_page_override", None)
-            item.pop("double_page_conflict", None)
-        if isinstance(data.get("items"), list):
-            for item in data["items"]:
-                if not isinstance(item, dict) or self._is_automatic_page(item) or self._type_of(item) != source_type:
-                    continue
-                if not had_rule:
-                    item.pop("double_page_override", None)
-                item.pop("double_page_conflict", None)
-
-        source.pop("double_page_override", None)
-        self._data = data
-        if self.project is not None:
-            self.project.save_mockup(data)
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        self._structure_set_rule_target("2P")
-        self.status_var.set("Double page appliquée à ce type.")
-        self.render()
-        return True
-
-    def structure_toggle_double_page_exception(self) -> bool:
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            return False
-        source = self.items[indices[0]]
-        source_type = self._type_of(source)
-        if not self.structure_get_double_page_type_rule(source_type):
-            self.status_var.set("Aucune règle Double page à désolidariser.")
-            return False
-        if self._double_page_override_value(source) == "__none__":
-            source.pop("double_page_override", None)
-            message = "Page réintégrée à la règle Double page."
-        else:
-            source["double_page_override"] = "__none__"
-            message = "Cette page est une exception Double page."
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        self.status_var.set(message)
-        self.render()
-        return True
-
-    def structure_remove_double_page_rule(self) -> bool:
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            return False
-        source = self.items[indices[0]]
-        source_type = self._type_of(source)
-        if not self.structure_get_double_page_type_rule(source_type):
-            return False
-        data = deepcopy(self._data) if isinstance(self._data, dict) else {}
-        if self.project is not None:
-            try:
-                loaded = self.project.load_mockup()
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception:
-                pass
-        raw = data.get("double_page_type_rules", {})
-        rules = dict(raw) if isinstance(raw, dict) else {}
-        rules.pop(source_type, None)
-        data["double_page_type_rules"] = rules
-        for item in self.items:
-            if self._is_automatic_page(item) or self._type_of(item) != source_type:
-                continue
-            item.pop("double_page_override", None)
-            item.pop("double_page_conflict", None)
-        if isinstance(data.get("items"), list):
-            for item in data["items"]:
-                if not isinstance(item, dict) or self._is_automatic_page(item) or self._type_of(item) != source_type:
-                    continue
-                item.pop("double_page_override", None)
-                item.pop("double_page_conflict", None)
-        self._data = data
-        if self.project is not None:
-            self.project.save_mockup(data)
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        self.status_var.set("Règle Double page annulée pour ce type.")
-        self.render()
-        return True
-
-    def _structure_update_double_page_visuals(self) -> None:
-        button = getattr(self, "structure_double_page_btn", None)
-        if button is None:
-            return
-        indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        allowed = self.structure_double_page_source_allowed(source) if source is not None else False
-        current = self.structure_get_double_page_type_rule(self._type_of(source)) if source is not None else False
-        excluded = self._double_page_override_value(source) == "__none__" if source is not None else False
-        try:
-            button.configure(
-                text=("2P —" if current and excluded else "2P ✓" if current else "2P"),
-                state="normal" if allowed else "disabled",
-            )
-        except Exception:
-            pass
-        self._structure_update_common_rule_actions()
-
-    def structure_recto_verso_source_allowed(self, item: dict | None) -> bool:
-        if not isinstance(item, dict):
-            return False
-        return not self._is_locked_page(item) and not self._is_automatic_page(item) and bool(self._type_of(item))
-
-    def structure_recto_verso_type_rules(self) -> dict[str, str]:
-        """Règle générale de côté par type : recto/verso ; absence = libre."""
-        data = self._data if isinstance(self._data, dict) else {}
-        raw = data.get("recto_verso_type_rules", {})
-        result: dict[str, str] = {}
-        if isinstance(raw, dict):
-            for source_type, side in raw.items():
-                source = str(source_type or "").strip().lower()
-                value = str(side or "").strip().lower()
-                if source and value in {"recto", "verso"}:
-                    result[source] = value
-        return result
-
-    def structure_get_recto_verso_type_rule(self, source_type: str) -> str:
-        source = str(source_type or "").strip().lower()
-        return self.structure_recto_verso_type_rules().get(source, "")
-
-    def structure_toggle_recto_verso_rule(self, side: str) -> bool:
-        """Applique Recto/Verso au type sélectionné ; Annuler est une commande séparée."""
-        side = str(side or "").strip().lower()
-        if side not in {"recto", "verso"}:
-            return False
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            self.status_var.set("Recto/Verso : sélectionnez une seule page dans B.")
-            return False
-        source = self.items[indices[0]]
-        if not self.structure_recto_verso_source_allowed(source):
-            self.status_var.set("Cette page ne peut pas recevoir de règle Recto/Verso.")
-            return False
-        source_type = self._type_of(source)
-        if side == "recto" and self.structure_get_double_page_type_rule(source_type):
-            self.status_var.set("Recto incompatible avec Double page : une double page commence sur la page de gauche.")
-            return False
-        definition = self._structure_type_definition(source_type)
-        source_label = str(definition.get("short_label") or definition.get("label") or source_type.replace("_", " ").capitalize())
-
-        data = deepcopy(self._data) if isinstance(self._data, dict) else {}
-        if self.project is not None:
-            try:
-                loaded = self.project.load_mockup()
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception:
-                pass
-        raw = data.get("recto_verso_type_rules", {})
-        rules = dict(raw) if isinstance(raw, dict) else {}
-        had_rule = str(rules.get(source_type) or "").strip().lower() in {"recto", "verso"}
-        rules[source_type] = side
-        data["recto_verso_type_rules"] = rules
-
-        # Une nouvelle règle repart proprement. Un simple changement R↔V garde
-        # les exceptions existantes ; une ancienne exception orpheline ne survit pas.
-        for item in self.items:
-            if self._is_automatic_page(item) or self._type_of(item) != source_type:
-                continue
-            if not had_rule:
-                item.pop("recto_verso_override", None)
-            item["structure_side"] = side if item.get("recto_verso_override") != "__none__" else "libre"
-        if isinstance(data.get("items"), list):
-            for item in data["items"]:
-                if not isinstance(item, dict) or self._is_automatic_page(item) or self._type_of(item) != source_type:
-                    continue
-                if not had_rule:
-                    item.pop("recto_verso_override", None)
-                item["structure_side"] = side if item.get("recto_verso_override") != "__none__" else "libre"
-
-        # Le clic sur R/V réintègre explicitement l'occurrence choisie.
-        source.pop("recto_verso_override", None)
-        self._data = data
-        # Persiste la règle AVANT la synchronisation : _save_order recharge le
-        # fichier projet et ne doit pas pouvoir réintroduire l'ancien état.
-        if self.project is not None:
-            self.project.save_mockup(data)
-        self._sync_structural_automatic_pages()
-        self._structure_recto_verso_armed = False
-        self._save_order()
-        self._structure_set_rule_target("R" if side == "recto" else "V")
-        self.status_var.set(f"{source_label}  •  règle {side.capitalize()}")
-        self.render()
-        return True
-
-    def _recto_verso_override_value(self, item: dict | None):
-        if not isinstance(item, dict):
-            return None
-        if "recto_verso_override" in item:
-            return item.get("recto_verso_override")
-        return None
-
-    def _effective_recto_verso_rule(self, item: dict | None) -> str:
-        if not isinstance(item, dict) or self._is_automatic_page(item):
-            return ""
-        rule = self.structure_get_recto_verso_type_rule(self._type_of(item))
-        if not rule:
-            return ""
-        if self._recto_verso_override_value(item) == "__none__":
-            return ""
-        return rule
-
-    def structure_toggle_recto_verso_exception(self) -> bool:
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            return False
-        source = self.items[indices[0]]
-        source_type = self._type_of(source)
-        rule = self.structure_get_recto_verso_type_rule(source_type)
-        if not rule:
-            self.status_var.set("Aucune règle Recto/Verso à désolidariser.")
-            return False
-        if self._recto_verso_override_value(source) == "__none__":
-            source.pop("recto_verso_override", None)
-            message = "Page réintégrée à la règle Recto/Verso."
-        else:
-            source["recto_verso_override"] = "__none__"
-            source["structure_side"] = "libre"
-            message = "Cette page est une exception Recto/Verso."
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        self.status_var.set(message)
-        self.render()
-        return True
-
-    def structure_remove_recto_verso_rule(self) -> bool:
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            return False
-        source = self.items[indices[0]]
-        source_type = self._type_of(source)
-        current = self.structure_get_recto_verso_type_rule(source_type)
-        if not current:
-            return False
-        data = deepcopy(self._data) if isinstance(self._data, dict) else {}
-        if self.project is not None:
-            try:
-                loaded = self.project.load_mockup()
-                if isinstance(loaded, dict):
-                    data = loaded
-            except Exception:
-                pass
-        rules = dict(data.get("recto_verso_type_rules", {})) if isinstance(data.get("recto_verso_type_rules", {}), dict) else {}
-        rules.pop(source_type, None)
-        data["recto_verso_type_rules"] = rules
-        for item in self.items:
-            if self._is_automatic_page(item) or self._type_of(item) != source_type:
-                continue
-            item.pop("recto_verso_override", None)
-            item.pop("recto_verso_conflict", None)
-            item["structure_side"] = "libre"
-        if isinstance(data.get("items"), list):
-            for item in data["items"]:
-                if not isinstance(item, dict) or self._is_automatic_page(item) or self._type_of(item) != source_type:
-                    continue
-                item.pop("recto_verso_override", None)
-                item.pop("recto_verso_conflict", None)
-                item["structure_side"] = "libre"
-        self._data = data
-        # Même principe pour l'annulation : supprimer la règle sur disque avant
-        # que le recalcul structurel ne recharge le projet.
-        if self.project is not None:
-            self.project.save_mockup(data)
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        self.status_var.set("Règle Recto/Verso annulée pour ce type.")
-        self.render()
-        return True
-
-    def _structure_update_recto_verso_visuals(self) -> None:
-        panel = getattr(self, "structure_recto_verso_panel", None)
-        recto_btn = getattr(self, "structure_recto_btn", None)
-        verso_btn = getattr(self, "structure_verso_btn", None)
-        if panel is None or recto_btn is None or verso_btn is None:
-            return
-        indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        allowed = self.structure_recto_verso_source_allowed(source) if source is not None else False
-        armed = bool(getattr(self, "_structure_recto_verso_armed", False)) and allowed
-        try:
-            panel.configure(highlightthickness=2 if armed else 1, highlightbackground="#E7C37A" if armed else "#385264")
-        except Exception:
-            pass
-        current = self.structure_get_recto_verso_type_rule(self._type_of(source)) if source is not None else ""
-        excluded = self._recto_verso_override_value(source) == "__none__" if source is not None else False
-        try:
-            recto_btn.configure(text=("R —" if current == "recto" and excluded else "R ✓" if current == "recto" else "R"))
-            verso_btn.configure(text=("V —" if current == "verso" and excluded else "V ✓" if current == "verso" else "V"))
-            state = "normal" if allowed else "disabled"
-            recto_btn.configure(state=state)
-            verso_btn.configure(state=state)
-        except Exception:
-            pass
-        self._structure_update_common_rule_actions()
-
-    def _is_recto_verso_correction(self, item: dict | None) -> bool:
-        if not isinstance(item, dict):
-            return False
-        if bool(item.get("automatic_recto_verso", False)):
-            return True
-        return any(role.get("code") in {"R", "V"} for role in self._automatic_roles(item))
-
-    def _recto_verso_target_side(self, item: dict | None) -> str:
-        if not isinstance(item, dict):
-            return ""
-        for role in self._automatic_roles(item):
-            if role.get("code") == "R":
-                return "recto"
-            if role.get("code") == "V":
-                return "verso"
-        value = str(item.get("recto_target_side") or item.get("recto_verso_side") or "").strip().lower()
-        return value if value in {"recto", "verso"} else ""
-
-    def _new_recto_verso_correction(self, source: dict, side: str, existing: dict | None = None) -> dict:
-        """Compatibilité : fabrique une page auto spéciale portant R/V."""
-        code = "R" if str(side).lower() == "recto" else "V"
-        return self._prepare_structural_auto_item(
-            existing,
-            roles=[{"code": code, "source_id": str(source.get("id") or ""), "target_type": "page_blanche"}],
-            group_id=self._item_group_id(source),
-        )
-
-    def _sync_recto_verso_corrections(self) -> bool:
-        """Compatibilité : Recto/Verso est désormais réconcilié avec Page auto en une seule passe."""
-        return self._sync_structural_automatic_pages()
 
     def structure_auto_target_options(self) -> list[tuple[str, str]]:
         """Types autorisés comme page automatique associée."""
@@ -2224,57 +1266,8 @@ class BookCanvas(tk.Frame):
             return ""
         return self.structure_page_auto_type_rules().get(source, {}).get(position, "")
 
-    def _clear_page_auto_position_state(
-        self, source_type: str, position: str, *, data: dict | None = None, keep_exclusions: bool = False
-    ) -> bool:
-        """Nettoie l'ancien état local d'une position Page auto.
-
-        Depuis V25, une association Page auto est une règle générale par type.
-        La seule exception locale encore valable est « désolidarisée » (__none__)
-        et seulement tant que la règle correspondante existe.
-        """
-        source = str(source_type or "").strip().lower()
-        position = str(position or "").strip().lower()
-        if position not in {"before", "after"} or not source:
-            return False
-        keys = (f"page_auto_{position}_override", f"page_auto_{position}_type")
-        changed = False
-
-        for item in getattr(self, "items", []):
-            if self._type_of(item) != source or self._is_automatic_page(item):
-                continue
-            for key in keys:
-                if key not in item:
-                    continue
-                if keep_exclusions and key.endswith("_override") and item.get(key) == "__none__":
-                    continue
-                item.pop(key, None)
-                changed = True
-
-        if isinstance(data, dict) and isinstance(data.get("items"), list):
-            cleaned = []
-            data_changed = False
-            for raw in data.get("items", []):
-                if not isinstance(raw, dict):
-                    cleaned.append(raw)
-                    continue
-                item = dict(raw)
-                if self._type_of(item) == source and not self._is_automatic_page(item):
-                    for key in keys:
-                        if key not in item:
-                            continue
-                        if keep_exclusions and key.endswith("_override") and item.get(key) == "__none__":
-                            continue
-                        item.pop(key, None)
-                        data_changed = True
-                cleaned.append(item)
-            if data_changed:
-                data["items"] = cleaned
-                changed = True
-        return changed
-
     def structure_set_page_auto_type_rule(self, source_type: str, position: str, target_type: str) -> bool:
-        source = str(source_type or "").strip().lower()
+        source = str(source_type or "").strip()
         position = str(position or "").strip().lower()
         target = str(target_type or "").strip()
         if position not in {"before", "after"} or not source:
@@ -2283,7 +1276,7 @@ class BookCanvas(tk.Frame):
         if target not in allowed:
             return False
         protected = self.COVER_TYPES | self.BACK_COVER_TYPES | self.SECOND_COVER_TYPES | self.THIRD_COVER_TYPES
-        if source in protected:
+        if source.lower() in protected:
             return False
 
         data = deepcopy(self._data) if isinstance(self._data, dict) else {}
@@ -2298,15 +1291,6 @@ class BookCanvas(tk.Frame):
         if not isinstance(rules, dict):
             rules = {}
         entry = dict(rules.get(source, {})) if isinstance(rules.get(source, {}), dict) else {}
-        had_rule = bool(str(entry.get(position) or "").strip())
-
-        # Une nouvelle règle repart d'un état propre. Lors d'un remplacement,
-        # seules les vraies exclusions « désolidarisées » sont conservées ; les
-        # anciens overrides locaux de V23/V24 ne peuvent plus prendre le dessus.
-        self._clear_page_auto_position_state(
-            source, position, data=data, keep_exclusions=had_rule
-        )
-
         entry[position] = target
         rules[source] = entry
         data["page_auto_type_rules"] = rules
@@ -2318,7 +1302,7 @@ class BookCanvas(tk.Frame):
         return True
 
     def structure_remove_page_auto_type_rule(self, source_type: str, position: str) -> bool:
-        source = str(source_type or "").strip().lower()
+        source = str(source_type or "").strip()
         position = str(position or "").strip().lower()
         if position not in {"before", "after"} or not source:
             return False
@@ -2335,20 +1319,12 @@ class BookCanvas(tk.Frame):
             return False
         rules = dict(rules)
         entry = dict(rules.get(source, {})) if isinstance(rules.get(source, {}), dict) else {}
-        if not str(entry.get(position) or "").strip():
-            return False
         entry.pop(position, None)
         if entry:
             rules[source] = entry
         else:
             rules.pop(source, None)
         data["page_auto_type_rules"] = rules
-
-        # Une exception appartient à une règle. Quand la règle disparaît, ses
-        # exceptions disparaissent aussi afin qu'une future règle s'applique à
-        # nouveau à toutes les occurrences du type.
-        self._clear_page_auto_position_state(source, position, data=data)
-
         self._data = data
         if self.project is not None:
             self.project.save_mockup(data)
@@ -2382,378 +1358,85 @@ class BookCanvas(tk.Frame):
         return value if value in allowed else ""
 
     def _sync_page_auto_for_source(self, item: dict) -> bool:
-        """Page auto et Recto/Verso sont synchronisés ensemble pour éviter les doublons."""
-        if not isinstance(item, dict) or self._is_automatic_page(item):
+        # Synchronise les pages auto locales Avant / Après d'une page principale.
+        if item not in self.items or not self.structure_auto_source_allowed(item):
             return False
-        return self._sync_structural_automatic_pages()
+        item_id = str(item.get("id") or "").strip()
+        if not item_id:
+            item_id = f"MAQUETTE-{uuid4().hex[:12].upper()}"
+            item["id"] = item_id
 
-    def _prune_orphan_page_auto(self) -> bool:
-        """La passe globale reconstruit les pages automatiques et élimine les orphelines."""
-        return self._sync_structural_automatic_pages()
+        generated_kinds = {"page_auto_before", "page_auto_after"}
+        previous = [
+            candidate for candidate in self.items
+            if str(candidate.get("automatic_kind") or "") in generated_kinds
+            and self._automatic_parent_id(candidate) == item_id
+        ]
+        if previous:
+            previous_ids = {id(candidate) for candidate in previous}
+            self.items = [candidate for candidate in self.items if id(candidate) not in previous_ids]
 
-    def _page_auto_materialized_for_source(self, item: dict, position: str) -> bool:
-        position = str(position or "").strip().lower()
-        expected = self._structure_page_auto_type(item, position)
-        if not expected:
-            return True
-        source_id = str(item.get("id") or "")
-        code = "AV" if position == "before" else "AP"
-        for candidate in self.items:
-            if not self._is_automatic_page(candidate):
-                continue
-            for role in self._automatic_roles(candidate):
-                if role.get("code") == code and role.get("source_id") == source_id:
-                    return True
-        return False
+        before_type = self._structure_page_auto_type(item, "before")
+        after_type = self._structure_page_auto_type(item, "after")
+        changed = bool(previous)
+
+        def make_auto(target_type: str, position: str) -> dict:
+            definition = self._structure_type_definition(target_type)
+            label = str(
+                definition.get("short_label")
+                or definition.get("label")
+                or target_type.replace("_", " ").strip().capitalize()
+            )
+            auto_item = {
+                "id": f"AUTO-{uuid4().hex[:12].upper()}",
+                "count": 1,
+                "done": False,
+                "plan_group": self._item_group_id(item),
+                "automatic": True,
+                "auto_generated": True,
+                "automatic_kind": f"page_auto_{position}",
+                "automatic_position": position,
+                "parent_id": item_id,
+                "source_page_id": item_id,
+                "structure_duplicable": False,
+            }
+            self._structure_apply_type_metadata(auto_item, target_type, label)
+            auto_item["automatic"] = True
+            auto_item["auto_generated"] = True
+            auto_item["automatic_kind"] = f"page_auto_{position}"
+            auto_item["automatic_position"] = position
+            auto_item["parent_id"] = item_id
+            auto_item["source_page_id"] = item_id
+            auto_item["structure_duplicable"] = False
+            return auto_item
+
+        if before_type:
+            source_index = self.items.index(item)
+            self.items.insert(source_index, make_auto(before_type, "before"))
+            changed = True
+        if after_type:
+            source_index = self.items.index(item)
+            self.items.insert(source_index + 1, make_auto(after_type, "after"))
+            changed = True
+        return changed
 
     def _sync_all_page_auto(self, *, source_type: str = "", save: bool = False) -> bool:
-        changed = self._sync_structural_automatic_pages()
+        source_type = str(source_type or "").strip().lower()
+        changed = False
+        sources = [
+            item for item in list(self.items)
+            if self.structure_auto_source_allowed(item)
+            and (not source_type or self._type_of(item) == source_type)
+        ]
+        for item in sources:
+            if item in self.items:
+                changed = self._sync_page_auto_for_source(item) or changed
         if changed and save:
             self._save_order()
             self.render()
         elif changed:
             self.render()
         return changed
-
-    def _automatic_roles(self, item: dict | None) -> list[dict]:
-        """Retourne les fonctions structurelles portées par une page automatique."""
-        if not isinstance(item, dict):
-            return []
-        raw = item.get("automatic_roles")
-        result: list[dict] = []
-        if isinstance(raw, list):
-            seen = set()
-            for entry in raw:
-                if not isinstance(entry, dict):
-                    continue
-                code = str(entry.get("code") or "").strip().upper()
-                source_id = str(entry.get("source_id") or "").strip()
-                target_type = str(entry.get("target_type") or "").strip()
-                if code not in {"AV", "AP", "R", "V", "DP"} or not source_id:
-                    continue
-                key = (code, source_id, target_type)
-                if key in seen:
-                    continue
-                seen.add(key)
-                result.append({"code": code, "source_id": source_id, "target_type": target_type})
-            if result:
-                return result
-        # Migration transparente des pages automatiques historiques.
-        parent = str(item.get("recto_target_id") or item.get("parent_id") or item.get("source_page_id") or "").strip()
-        kind = str(item.get("automatic_kind") or "").strip()
-        if not parent:
-            return []
-        if kind == "page_auto_before":
-            return [{"code": "AV", "source_id": parent, "target_type": self._type_of(item)}]
-        if kind == "page_auto_after":
-            return [{"code": "AP", "source_id": parent, "target_type": self._type_of(item)}]
-        if kind == "recto_verso_before" or bool(item.get("automatic_recto_verso", False)):
-            side = str(item.get("recto_target_side") or "recto").strip().lower()
-            return [{"code": "V" if side == "verso" else "R", "source_id": parent, "target_type": "page_blanche"}]
-        if kind == "double_page_before" or bool(item.get("automatic_double_page", False)):
-            return [{"code": "DP", "source_id": parent, "target_type": "page_blanche"}]
-        return []
-
-    def _automatic_source_ids(self, item: dict | None) -> list[str]:
-        result = []
-        for role in self._automatic_roles(item):
-            source_id = str(role.get("source_id") or "")
-            if source_id and source_id not in result:
-                result.append(source_id)
-        return result
-
-    def _automatic_is_shared(self, item: dict | None) -> bool:
-        return len(self._automatic_source_ids(item)) > 1
-
-    def _prepare_structural_auto_item(self, existing: dict | None, *, roles: list[dict], group_id: str) -> dict:
-        item = existing if isinstance(existing, dict) else {"id": f"AUTO-{uuid4().hex[:12].upper()}", "count": 1, "done": False}
-        normalized = []
-        target_types = []
-        for role in roles:
-            code = str(role.get("code") or "").strip().upper()
-            source_id = str(role.get("source_id") or "").strip()
-            target_type = str(role.get("target_type") or "").strip()
-            if code not in {"AV", "AP", "R", "V", "DP"} or not source_id:
-                continue
-            normalized.append({"code": code, "source_id": source_id, "target_type": target_type})
-            if target_type and code in {"AV", "AP"} and target_type not in target_types:
-                target_types.append(target_type)
-        if not target_types:
-            target_types = ["page_blanche"]
-        chosen_type = target_types[0]
-        definition = self._structure_type_definition(chosen_type)
-        label = str(definition.get("short_label") or definition.get("label") or chosen_type.replace("_", " ").capitalize())
-        self._structure_apply_type_metadata(item, chosen_type, label)
-        source_ids = []
-        for role in normalized:
-            if role["source_id"] not in source_ids:
-                source_ids.append(role["source_id"])
-        item["plan_group"] = group_id
-        item["automatic"] = True
-        item["auto_generated"] = True
-        item["automatic_structure"] = True
-        item["automatic_roles"] = normalized
-        item["automatic_markers"] = [role["code"] for role in normalized]
-        item["automatic_target_types"] = target_types
-        item["automatic_type_conflict"] = len(target_types) > 1
-        item["automatic_shared"] = len(source_ids) > 1
-        if len(normalized) == 1 and normalized[0]["code"] == "AV":
-            item["automatic_kind"] = "page_auto_before"
-            item["automatic_position"] = "before"
-        elif len(normalized) == 1 and normalized[0]["code"] == "AP":
-            item["automatic_kind"] = "page_auto_after"
-            item["automatic_position"] = "after"
-        elif len(normalized) == 1 and normalized[0]["code"] in {"R", "V"}:
-            item["automatic_kind"] = "recto_verso_before"
-            item["automatic_position"] = "before"
-        elif len(normalized) == 1 and normalized[0]["code"] == "DP":
-            item["automatic_kind"] = "double_page_before"
-            item["automatic_position"] = "before"
-        else:
-            item["automatic_kind"] = "structure_auto_shared" if len(source_ids) > 1 else "structure_auto_combined"
-            item["automatic_position"] = "shared" if len(source_ids) > 1 else "before"
-        parent_id = source_ids[0] if len(source_ids) == 1 else ""
-        item["parent_id"] = parent_id
-        item["source_page_id"] = parent_id
-        item["recto_target_id"] = parent_id
-        rv = next((role["code"] for role in normalized if role["code"] in {"R", "V"}), "")
-        item["automatic_recto_verso"] = bool(rv)
-        item["recto_target_side"] = "recto" if rv == "R" else "verso" if rv == "V" else ""
-        item["automatic_double_page"] = any(role["code"] == "DP" for role in normalized)
-        item["structure_side"] = "libre"
-        item["structure_duplicable"] = False
-        return item
-
-    def _sync_structural_automatic_pages(self) -> bool:
-        """Réconcilie AV/AP et R/V en une page automatique maximum par intervalle."""
-        if getattr(self, "_structure_rule_sync_in_progress", False):
-            return False
-        self._structure_rule_sync_in_progress = True
-        try:
-            old_items = list(self.items)
-            old_snapshot = [dict(item) for item in old_items]
-            existing_autos = [item for item in old_items if self._is_automatic_page(item)]
-            base_items = [item for item in old_items if not self._is_automatic_page(item)]
-            if not base_items:
-                if self.items:
-                    self.items = []
-                    return True
-                return False
-
-            # Nettoie les indicateurs transitoires de conflit.
-            for item in base_items:
-                item.pop("recto_verso_conflict", None)
-
-            by_group: dict[str, list[dict]] = {}
-            group_order: list[str] = []
-            for item in base_items:
-                gid = self._item_group_id(item)
-                if gid not in by_group:
-                    by_group[gid] = []
-                    group_order.append(gid)
-                by_group[gid].append(item)
-
-            # Un slot représente l'unique page auto possible entre deux pages.
-            slot_roles: dict[tuple[str, str, str], list[dict]] = {}
-            slot_order: list[tuple[str, str, str]] = []
-            before_slot: dict[str, tuple[str, str, str]] = {}
-            after_slot: dict[str, tuple[str, str, str]] = {}
-
-            def slot(gid: str, left_id: str, right_id: str):
-                key = (gid, left_id or "", right_id or "")
-                if key not in slot_roles:
-                    slot_roles[key] = []
-                    slot_order.append(key)
-                return key
-
-            def add_role(key, code: str, source: dict, target_type: str = ""):
-                source_id = str(source.get("id") or "").strip()
-                if not source_id:
-                    source_id = f"MAQUETTE-{uuid4().hex[:12].upper()}"
-                    source["id"] = source_id
-                role = {"code": code, "source_id": source_id, "target_type": target_type}
-                if role not in slot_roles[key]:
-                    slot_roles[key].append(role)
-
-            for gid in group_order:
-                pages = by_group[gid]
-                for pos, source in enumerate(pages):
-                    sid = str(source.get("id") or "").strip()
-                    if not sid:
-                        sid = f"MAQUETTE-{uuid4().hex[:12].upper()}"
-                        source["id"] = sid
-                    left_id = str(pages[pos - 1].get("id") or "") if pos > 0 else ""
-                    right_id = str(pages[pos + 1].get("id") or "") if pos + 1 < len(pages) else ""
-                    bkey = slot(gid, left_id, sid)
-                    akey = slot(gid, sid, right_id)
-                    before_slot[sid] = bkey
-                    after_slot[sid] = akey
-                    before_type = self._structure_page_auto_type(source, "before") if self.structure_auto_source_allowed(source) else ""
-                    after_type = self._structure_page_auto_type(source, "after") if self.structure_auto_source_allowed(source) else ""
-                    if before_type:
-                        add_role(bkey, "AV", source, before_type)
-                    if after_type:
-                        add_role(akey, "AP", source, after_type)
-
-            # Construit d'abord la séquence imposée par AV/AP.
-            sequence: list[tuple[str, object]] = []
-            emitted_slots: set[tuple[str, str, str]] = set()
-            for gid in group_order:
-                pages = by_group[gid]
-                for source in pages:
-                    sid = str(source.get("id") or "")
-                    bkey = before_slot[sid]
-                    if bkey not in emitted_slots and slot_roles.get(bkey):
-                        sequence.append(("slot", bkey))
-                        emitted_slots.add(bkey)
-                    sequence.append(("page", source))
-                    akey = after_slot[sid]
-                    # Le slot intermédiaire sera émis avant la page suivante ;
-                    # le slot de fin de groupe doit être émis immédiatement.
-                    if not akey[2] and akey not in emitted_slots and slot_roles.get(akey):
-                        sequence.append(("slot", akey))
-                        emitted_slots.add(akey)
-
-            # Deux slots auto voisins (notamment à une frontière de partie)
-            # fusionnent : TomeLinea ne génère jamais deux pages auto successives.
-            slot_group_override: dict[tuple[str, str, str], str] = {}
-            consolidated: list[tuple[str, object]] = []
-            for kind, payload in sequence:
-                if kind == "slot" and consolidated and consolidated[-1][0] == "slot":
-                    previous = consolidated[-1][1]
-                    for role in slot_roles.get(payload, []):
-                        if role not in slot_roles[previous]:
-                            slot_roles[previous].append(role)
-                    # Une auto partagée à la frontière rejoint visuellement la
-                    # partie de la page située à droite, lorsqu'elle existe.
-                    slot_group_override[previous] = payload[0] or previous[0]
-                    slot_roles[payload] = []
-                    continue
-                consolidated.append((kind, payload))
-            sequence = consolidated
-
-            # Recto/Verso et Double page : les couvertures sont hors parité ;
-            # la première page intérieure est Recto. Une double page doit commencer
-            # sur le Verso (gauche) et occupe deux positions physiques.
-            physical_index = 0
-            revised: list[tuple[str, object]] = []
-            for kind, payload in sequence:
-                if kind == "slot":
-                    revised.append((kind, payload))
-                    physical_index += 1
-                    continue
-                source = payload
-                if self._is_locked_page(source):
-                    revised.append((kind, source))
-                    continue
-
-                source.pop("recto_verso_conflict", None)
-                source.pop("double_page_conflict", None)
-                rule = self._effective_recto_verso_rule(source)
-                double_page = self._effective_double_page_rule(source)
-                actual = "recto" if physical_index % 2 == 0 else "verso"
-                previous_slot = revised[-1][1] if revised and revised[-1][0] == "slot" else None
-                bkey = before_slot.get(str(source.get("id") or ""))
-
-                # Une double page et une règle Recto sont incompatibles : la double
-                # page garde sa contrainte physique et Recto est signalé en conflit.
-                if double_page and rule == "recto":
-                    source["recto_verso_conflict"] = True
-                    rule = ""
-
-                needed_roles: list[tuple[str, str]] = []
-                satisfied_roles: list[tuple[str, str]] = []
-
-                if double_page:
-                    if actual == "verso":
-                        satisfied_roles.append(("DP", "page_blanche"))
-                    else:
-                        needed_roles.append(("DP", "page_blanche"))
-
-                if rule:
-                    code = "R" if rule == "recto" else "V"
-                    if actual == rule:
-                        satisfied_roles.append((code, "page_blanche"))
-                    else:
-                        needed_roles.append((code, "page_blanche"))
-
-                if needed_roles:
-                    if previous_slot is not None:
-                        # Une seconde page auto consécutive est interdite. La règle
-                        # reste visible et l'utilisateur peut résoudre le conflit
-                        # par une page manuelle ou une modification de structure.
-                        if any(code == "DP" for code, _target in needed_roles):
-                            source["double_page_conflict"] = True
-                        if any(code in {"R", "V"} for code, _target in needed_roles):
-                            source["recto_verso_conflict"] = True
-                    elif bkey is not None:
-                        for code, target_type in needed_roles:
-                            add_role(bkey, code, source, target_type)
-                        revised.append(("slot", bkey))
-                        previous_slot = bkey
-                        physical_index += 1
-                        actual = "recto" if physical_index % 2 == 0 else "verso"
-
-                # Si une page auto déjà présente est précisément ce qui satisfait
-                # une contrainte, elle porte aussi cette fonction sans créer de doublon.
-                if previous_slot is not None:
-                    for code, target_type in satisfied_roles:
-                        add_role(previous_slot, code, source, target_type)
-
-                revised.append(("page", source))
-                physical_index += 2 if double_page else 1
-
-            # Les slots sans rôle ont disparu ; chaque slot produit au plus une auto.
-            active_slots = []
-            for kind, payload in revised:
-                if kind == "slot" and slot_roles.get(payload) and payload not in active_slots:
-                    active_slots.append(payload)
-
-            # Réutilise les anciennes pages autant que possible, notamment quand
-            # une auto AV/AP devient aussi correctrice R/V.
-            existing_with_roles = [(item, self._automatic_roles(item)) for item in existing_autos]
-            used_existing: set[int] = set()
-            built_for_slot: dict[tuple[str, str, str], dict] = {}
-            for key in active_slots:
-                roles = slot_roles[key]
-                role_pairs = {(r["code"], r["source_id"]) for r in roles}
-                best = None
-                best_score = -1
-                for candidate, croles in existing_with_roles:
-                    if id(candidate) in used_existing:
-                        continue
-                    cpairs = {(r.get("code"), r.get("source_id")) for r in croles}
-                    score = len(role_pairs & cpairs)
-                    if score > best_score:
-                        best, best_score = candidate, score
-                if best_score <= 0:
-                    best = None
-                if best is not None:
-                    used_existing.add(id(best))
-                gid = slot_group_override.get(key, key[0])
-                built_for_slot[key] = self._prepare_structural_auto_item(best, roles=roles, group_id=gid)
-
-            rebuilt: list[dict] = []
-            emitted = set()
-            for kind, payload in revised:
-                if kind == "page":
-                    rebuilt.append(payload)
-                else:
-                    key = payload
-                    auto = built_for_slot.get(key)
-                    if auto is not None and key not in emitted:
-                        rebuilt.append(auto)
-                        emitted.add(key)
-
-            self.items = rebuilt
-            new_snapshot = [dict(item) for item in self.items]
-            if len(old_items) != len(self.items):
-                return True
-            if [str(item.get("id") or "") for item in old_items] != [str(item.get("id") or "") for item in self.items]:
-                return True
-            return old_snapshot != new_snapshot
-        finally:
-            self._structure_rule_sync_in_progress = False
 
     def structure_set_selected_page_auto(self, position: str, target_type: str = "", scope: str = "local") -> bool:
         """Associe Avant/Après aux pages sélectionnées ou à toutes les pages de leur type."""
@@ -2873,7 +1556,7 @@ class BookCanvas(tk.Frame):
     def structure_page_auto_context(self) -> dict:
         mode = getattr(self, "_structure_page_auto_mode", None)
         if not isinstance(mode, dict):
-            return {"active": False, "step": self._structure_page_auto_visual_step()}
+            return {"active": False}
         position = str(mode.get("position") or "")
         source_type = str(mode.get("source_type") or "")
         source_id = str(mode.get("source_id") or "")
@@ -2887,7 +1570,6 @@ class BookCanvas(tk.Frame):
         override = self._page_auto_override_value(source, position) if source is not None else None
         return {
             "active": True,
-            "step": self._structure_page_auto_visual_step(),
             "position": position,
             "side_label": "Avant" if position == "before" else "Après",
             "source_type": source_type,
@@ -2932,7 +1614,6 @@ class BookCanvas(tk.Frame):
             "source_label": source_label,
             "source_id": source_id,
         }
-        self._structure_update_page_auto_visuals()
         side = "avant" if position == "before" else "après"
         current_rule = self.structure_get_page_auto_type_rule(source_type, position)
         if current_rule:
@@ -2952,7 +1633,6 @@ class BookCanvas(tk.Frame):
         if not isinstance(getattr(self, "_structure_page_auto_mode", None), dict):
             return False
         self._structure_page_auto_mode = None
-        self._structure_update_page_auto_visuals()
         if not silent:
             self.status_var.set("Page auto annulée.")
         self._structure_emit_page_auto_mode()
@@ -2969,32 +1649,16 @@ class BookCanvas(tk.Frame):
             self.status_var.set("Page auto : choisissez un type de page utilisable comme page associée.")
             return True
 
+        source_type = str(mode.get("source_type") or "")
         position = str(mode.get("position") or "")
+        source_label = str(mode.get("source_label") or source_type)
         source_id = str(mode.get("source_id") or "")
 
-        # Le troisième clic se rattache à la page réellement sélectionnée, pas à
-        # un type mémorisé au deuxième clic. Cela évite qu'une règle Avant soit
-        # enregistrée sur un ancien type qui n'existe plus dans B.
+        # La page qui a servi à définir la règle doit elle-même suivre la règle générale.
         source = next((item for item in self.items if str(item.get("id") or "") == source_id), None)
-        if source is None or not self.structure_auto_source_allowed(source):
-            self.status_var.set("Page auto : la page source n'est plus disponible.")
-            self.structure_cancel_page_auto_mode(silent=True)
-            return True
-
-        source_type = self._type_of(source)
-        if not source_type:
-            self.status_var.set("Page auto : la page source n'a plus de type.")
-            self.structure_cancel_page_auto_mode(silent=True)
-            return True
-        definition = self._structure_type_definition(source_type)
-        source_label = str(
-            definition.get("short_label")
-            or definition.get("label")
-            or source_type.replace("_", " ").capitalize()
-        )
-
-        source.pop(f"page_auto_{position}_override", None)
-        source.pop(f"page_auto_{position}_type", None)
+        if source is not None:
+            source.pop(f"page_auto_{position}_override", None)
+            source.pop(f"page_auto_{position}_type", None)
 
         if not self.structure_set_page_auto_type_rule(source_type, position, target):
             self.status_var.set("Impossible de créer cette règle Page auto.")
@@ -3015,8 +1679,6 @@ class BookCanvas(tk.Frame):
             self.render()
 
         self._structure_page_auto_mode = None
-        self._structure_set_rule_target("AV" if position == "before" else "AP")
-        self._structure_update_page_auto_visuals()
         self._structure_emit_page_auto_mode()
         self.status_var.set(f"Règle Page auto  •  tous les {source_label}  •  {side} → {target_label}")
         return True
@@ -3051,7 +1713,6 @@ class BookCanvas(tk.Frame):
             self._set_single_page_selection(source_index)
         self.render()
         self._structure_page_auto_mode = None
-        self._structure_update_page_auto_visuals()
         self._structure_emit_page_auto_mode()
         self.status_var.set(message)
         return True
@@ -3068,7 +1729,6 @@ class BookCanvas(tk.Frame):
         if not ok:
             return False
         self._structure_page_auto_mode = None
-        self._structure_update_page_auto_visuals()
         self._structure_emit_page_auto_mode()
         self.status_var.set(f"Règle Page auto retirée  •  {source_label}  •  {side}")
         return True
@@ -3076,6 +1736,225 @@ class BookCanvas(tk.Frame):
     def _structure_open_auto_menu(self, position: str, widget=None) -> None:
         # Compatibilité interne : l'ancien menu est volontairement supprimé.
         self.structure_begin_page_auto_rule(position)
+
+    def structure_general_auto_rules(self) -> dict[str, str]:
+        data = self._data if isinstance(self._data, dict) else {}
+        raw = data.get("automatic_follow_rules", {})
+        if not isinstance(raw, dict):
+            return {}
+        allowed_targets = {key for key, _label in self.structure_auto_target_options()}
+        result: dict[str, str] = {}
+        for source, target in raw.items():
+            source_key = str(source or "").strip()
+            target_key = str(target or "").strip()
+            if source_key and target_key in allowed_targets:
+                result[source_key] = target_key
+        return result
+
+    def structure_get_general_auto_rule(self, source_type: str) -> str:
+        return self.structure_general_auto_rules().get(str(source_type or "").strip(), "")
+
+    def structure_set_general_auto_rule(self, source_type: str, target_type: str) -> bool:
+        source = str(source_type or "").strip()
+        target = str(target_type or "").strip()
+        if not source or target not in {key for key, _label in self.structure_auto_target_options()}:
+            self.status_var.set("Choisissez une page source et une page automatique associée.")
+            return False
+        protected = self.COVER_TYPES | self.BACK_COVER_TYPES | self.SECOND_COVER_TYPES | self.THIRD_COVER_TYPES
+        if source.lower() in protected:
+            self.status_var.set("Les couvertures ne peuvent pas déclencher de page automatique.")
+            return False
+        if self.project is None:
+            return False
+        try:
+            data = self.project.load_mockup()
+        except Exception:
+            data = deepcopy(self._data)
+        if not isinstance(data, dict):
+            data = {}
+        rules = data.get("automatic_follow_rules", {})
+        if not isinstance(rules, dict):
+            rules = {}
+        rules[str(source)] = target
+        data["automatic_follow_rules"] = rules
+        self._data = data
+        self.project.save_mockup(data)
+        self._sync_all_auto_follow(save=True)
+        source_label = self._structure_type_definition(source).get("label") or source.replace("_", " ").strip().capitalize()
+        target_label = self._structure_type_definition(target).get("label") or target.replace("_", " ").strip().capitalize()
+        self.status_var.set(f"Règle générale  •  {source_label} → {target_label}")
+        return True
+
+    def structure_remove_general_auto_rule(self, source_type: str) -> bool:
+        source = str(source_type or "").strip()
+        if not source or self.project is None:
+            return False
+        try:
+            data = self.project.load_mockup()
+        except Exception:
+            data = deepcopy(self._data)
+        if not isinstance(data, dict):
+            data = {}
+        rules = data.get("automatic_follow_rules", {})
+        if not isinstance(rules, dict) or source not in rules:
+            return False
+        rules = dict(rules)
+        rules.pop(source, None)
+        data["automatic_follow_rules"] = rules
+        self._data = data
+        self.project.save_mockup(data)
+        self._sync_all_auto_follow(save=True)
+        self.status_var.set("Règle générale supprimée.")
+        return True
+
+    def _auto_follow_rule_target_for_item(self, item: dict) -> str:
+        if not self.structure_auto_source_allowed(item):
+            return ""
+        override = item.get("auto_follow_override", None)
+        if override is not None:
+            value = str(override or "").strip()
+            return "" if value == "__none__" else value
+        source = self._type_of(item)
+        return self.structure_get_general_auto_rule(source) if source else ""
+
+    def _auto_follow_generated_for_parent(self, parent_id: str) -> list[dict]:
+        parent_id = str(parent_id or "").strip()
+        return [
+            candidate for candidate in self.items
+            if str(candidate.get("automatic_kind") or "") == "follow_rule"
+            and self._automatic_parent_id(candidate) == parent_id
+        ]
+
+    def _sync_auto_follow_for_source(self, item: dict) -> bool:
+        if item not in self.items or not self.structure_auto_source_allowed(item):
+            return False
+        item_id = str(item.get("id") or "").strip()
+        if not item_id:
+            item_id = f"MAQUETTE-{uuid4().hex[:12].upper()}"
+            item["id"] = item_id
+        target_type = self._auto_follow_rule_target_for_item(item)
+        existing = self._auto_follow_generated_for_parent(item_id)
+        changed = False
+        keep = None
+        if target_type:
+            for candidate in existing:
+                if self._type_of(candidate) == target_type.lower() and keep is None:
+                    keep = candidate
+                else:
+                    try:
+                        self.items.remove(candidate)
+                        changed = True
+                    except ValueError:
+                        pass
+        else:
+            for candidate in existing:
+                try:
+                    self.items.remove(candidate)
+                    changed = True
+                except ValueError:
+                    pass
+            return changed
+
+        if keep is None and target_type:
+            definition = self._structure_type_definition(target_type)
+            label = str(definition.get("short_label") or definition.get("label") or target_type.replace("_", " ").strip().capitalize())
+            auto_item = {
+                "id": f"AUTO-{uuid4().hex[:12].upper()}",
+                "count": 1,
+                "done": False,
+                "plan_group": self._item_group_id(item),
+                "automatic": True,
+                "auto_generated": True,
+                "automatic_kind": "follow_rule",
+                "parent_id": item_id,
+                "source_page_id": item_id,
+            }
+            self._structure_apply_type_metadata(auto_item, target_type, label)
+            auto_item["automatic"] = True
+            auto_item["auto_generated"] = True
+            auto_item["automatic_kind"] = "follow_rule"
+            auto_item["parent_id"] = item_id
+            auto_item["source_page_id"] = item_id
+            auto_item["structure_duplicable"] = False
+            try:
+                source_index = self.items.index(item)
+            except ValueError:
+                return changed
+            # Une page automatique est insérée juste derrière sa page source.
+            # Ne pas utiliser _move_page_to_group_position ici : cette méthode
+            # traite volontairement source + autos comme un bloc lors des déplacements.
+            self.items.insert(source_index + 1, auto_item)
+            changed = True
+        return changed
+
+    def _sync_all_auto_follow(self, *, save: bool = False) -> bool:
+        # Reconstruit seulement les pages automatiques créées par ce nouveau système.
+        originals = [item for item in self.items if str(item.get("automatic_kind") or "") != "follow_rule"]
+        changed = len(originals) != len(self.items)
+        self.items = originals
+        for item in list(originals):
+            if self.structure_auto_source_allowed(item):
+                changed = self._sync_auto_follow_for_source(item) or changed
+        if changed and save:
+            self._save_order()
+            self.render()
+        elif changed:
+            self.render()
+        return changed
+
+    def structure_selected_auto_context(self) -> dict:
+        index = self._selected_index
+        if index is None or not (0 <= index < len(self.items)):
+            return {"selected": False}
+        item = self.items[index]
+        if self._is_automatic_page(item):
+            return {
+                "selected": True, "allowed": False, "automatic_page": True,
+                "page_label": self._page_type_label(item, index),
+            }
+        allowed = self.structure_auto_source_allowed(item)
+        source_type = self._type_of(item)
+        general = self.structure_get_general_auto_rule(source_type) if source_type else ""
+        override = item.get("auto_follow_override", None)
+        if override is None:
+            mode = "inherit"
+            local_target = ""
+        else:
+            raw = str(override or "").strip()
+            if raw == "__none__":
+                mode, local_target = "none", ""
+            else:
+                mode, local_target = "local", raw
+        effective = self._auto_follow_rule_target_for_item(item) if allowed else ""
+        return {
+            "selected": True, "allowed": allowed, "automatic_page": False,
+            "index": index, "page_label": self._page_type_label(item, index),
+            "source_type": source_type, "general_target": general,
+            "mode": mode, "local_target": local_target, "effective_target": effective,
+        }
+
+    def structure_set_selected_auto_override(self, mode: str, target_type: str = "") -> bool:
+        index = self._selected_index
+        if index is None or not (0 <= index < len(self.items)):
+            return False
+        item = self.items[index]
+        if not self.structure_auto_source_allowed(item):
+            self.status_var.set("Cette page ne peut pas déclencher de page automatique.")
+            return False
+        mode = str(mode or "inherit")
+        if mode == "inherit":
+            item.pop("auto_follow_override", None)
+        elif mode == "none":
+            item["auto_follow_override"] = "__none__"
+        else:
+            target = str(target_type or "").strip()
+            if target not in {key for key, _label in self.structure_auto_target_options()}:
+                return False
+            item["auto_follow_override"] = target
+        self._sync_auto_follow_for_source(item)
+        self._save_order()
+        self.render()
+        return True
 
     @staticmethod
     def _structure_normalize_page_payload(payload) -> tuple[str, str]:
@@ -3121,22 +2000,12 @@ class BookCanvas(tk.Frame):
         self.render()
 
     def _structure_global_click(self, event):
-        """Valide les éditeurs au clic extérieur puis gère l'annulation des outils."""
-        widget = getattr(event, "widget", None)
-
-        # Le Canvas ne prend pas forcément le focus : un clic extérieur doit
-        # néanmoins valider le nom de partie sans exiger la touche Entrée.
-        title_editor = getattr(self, "_title_editor", None)
-        if title_editor is not None and widget is not title_editor:
-            try:
-                self._close_title_editor(commit=True)
-            except Exception:
-                pass
-
+        """Un clic hors de B/bandeau annule l'outil ou l'action en cours."""
         pending = bool(getattr(self, "_structure_pending_kind", None))
         action = bool(getattr(self, "_structure_action_mode", None))
         if not pending and not action:
             return
+        widget = getattr(event, "widget", None)
         try:
             widget_path = str(widget)
             canvas_path = str(self.canvas)
@@ -3190,7 +2059,7 @@ class BookCanvas(tk.Frame):
         else:
             item.pop("type_preview_image", None)
 
-        item["structure_side"] = self.structure_get_recto_verso_type_rule(page_type) or str(definition.get("side") or "libre")
+        item["structure_side"] = str(definition.get("side") or "libre")
         item["structure_blank_before"] = bool(definition.get("blank_before", False))
         item["structure_blank_after"] = bool(definition.get("blank_after", False))
         item["structure_duplicable"] = bool(definition.get("duplicable", True))
@@ -3226,6 +2095,7 @@ class BookCanvas(tk.Frame):
         self._selected_group_id = group_id
         self._structure_selection_kind = "page"
         if item in self.items:
+            self._sync_auto_follow_for_source(item)
             self._sync_page_auto_for_source(item)
         self._save_order()
         self.render()
@@ -3246,8 +2116,10 @@ class BookCanvas(tk.Frame):
         self._selected_index = int(index)
         self._selected_group_id = self._item_group_id(item)
         self._structure_selection_kind = "page"
+        item.pop("auto_follow_override", None)
         for key in ("page_auto_before_override", "page_auto_after_override", "page_auto_before_type", "page_auto_after_type"):
             item.pop(key, None)
+        self._sync_auto_follow_for_source(item)
         self._sync_page_auto_for_source(item)
         self._save_order()
         self.render()
@@ -3306,9 +2178,6 @@ class BookCanvas(tk.Frame):
         self._structure_selection_kind = "group"
         self._save_order()
         self.render()
-        # La partie nouvellement créée devient le point de travail.
-        # Si elle est déjà confortablement visible, on évite un grand saut horizontal.
-        self.after_idle(self._structure_focus_new_group)
         self.status_var.set(f"Partie créée  •  Partie {actual_number}")
         return group_id
 
@@ -3492,23 +2361,17 @@ class BookCanvas(tk.Frame):
             return None
         target = self._structure_update_hover_target(event)
         success = False
-        created_group_id = None
         if kind == "page" and target and target[0] == "page":
             _kind, group_id, local_pos, _tx = target
             page_type, label = self._structure_normalize_page_payload(payload)
             success = self._structure_insert_page(page_type, label, group_id, local_pos) is not None
         elif kind == "group" and target and target[0] == "group":
             _kind, position, _tx = target
-            created_group_id = self._structure_insert_group_at_position(position)
-            success = created_group_id is not None
-
-        self.structure_cancel_tool()
-
-        # Dès qu'une partie est créée, proposer immédiatement son nommage.
-        if success and created_group_id:
-            self.after_idle(
-                lambda gid=created_group_id: self._begin_group_title_edit(gid)
-            )
+            success = self._structure_insert_group_at_position(position) is not None
+        if success:
+            self.structure_cancel_tool()
+        else:
+            self.structure_cancel_tool()
         return "break"
 
     def structure_drop_from_root(self, kind: str, payload, root_x: int, root_y: int) -> bool:
@@ -3544,8 +2407,7 @@ class BookCanvas(tk.Frame):
         self.status_var.set("Sélectionnez d'abord une page ou une partie dans B.")
         return False
 
-    def structure_duplicate_selected(self, count: int = 1) -> bool:
-        count = max(1, min(50, int(count or 1)))
+    def structure_duplicate_selected(self) -> bool:
         kind = getattr(self, "_structure_selection_kind", "page")
         if kind == "group":
             group_id = str(self._selected_group_id or "")
@@ -3555,52 +2417,42 @@ class BookCanvas(tk.Frame):
             source_group = next((g for g in self.groups if str(g.get("id") or "") == group_id), None)
             if source_group is None:
                 return False
+            new_group = deepcopy(source_group)
+            new_group_id = f"partie_{uuid4().hex[:10]}"
+            new_group["id"] = new_group_id
+            part_title = str(new_group.get("part_title") or "").strip()
+            if part_title:
+                new_group["part_title"] = f"{part_title} copie"
             try:
                 source_pos = next(i for i, g in enumerate(self.groups) if str(g.get("id") or "") == group_id)
             except StopIteration:
                 return False
-
-            originals = [
-                item for item in self.items
-                if self._item_group_id(item) == group_id and not self._is_automatic_page(item)
-            ]
-            created_groups = []
-            all_clones = []
-            for copy_no in range(1, count + 1):
-                new_group = deepcopy(source_group)
-                new_group_id = f"partie_{uuid4().hex[:10]}"
-                new_group["id"] = new_group_id
-                part_title = str(new_group.get("part_title") or "").strip()
-                if part_title:
-                    suffix = "copie" if count == 1 else f"copie {copy_no}"
-                    new_group["part_title"] = f"{part_title} {suffix}"
-                self.groups.insert(source_pos + copy_no, new_group)
-                created_groups.append(new_group_id)
-
-                clones = []
-                for item in originals:
-                    clone = deepcopy(item)
-                    clone["id"] = f"MAQUETTE-{uuid4().hex[:12].upper()}"
-                    clone["plan_group"] = new_group_id
-                    for key in (
-                        "automatic_recto_verso", "automatic", "auto_generated", "automatic_kind",
-                        "recto_target_id", "linked_to", "parent_id", "source_page_id",
-                    ):
-                        clone.pop(key, None)
-                    clones.append(clone)
-                self.items.extend(clones)
-                all_clones.extend(clones)
-
+            self.groups.insert(source_pos + 1, new_group)
             self._structure_renumber_parts()
-            for clone in list(all_clones):
-                self._sync_page_auto_for_source(clone)
-            self._selected_group_id = created_groups[-1]
+
+            originals = [item for item in self.items if self._item_group_id(item) == group_id and not self._is_automatic_page(item)]
+            clones = []
+            for item in originals:
+                clone = deepcopy(item)
+                clone["id"] = f"MAQUETTE-{uuid4().hex[:12].upper()}"
+                clone["plan_group"] = new_group_id
+                for key in (
+                    "automatic_recto_verso", "automatic", "auto_generated", "automatic_kind",
+                    "recto_target_id", "linked_to", "parent_id", "source_page_id",
+                ):
+                    clone.pop(key, None)
+                clones.append(clone)
+            self.items.extend(clones)
+            self._selected_group_id = new_group_id
             self._selected_index = None
             self._selected_page_ids.clear()
             self._structure_selection_kind = "group"
+            self._sync_all_auto_follow(save=False)
+            for clone in list(clones):
+                self._sync_page_auto_for_source(clone)
             self._save_order()
             self.render()
-            self.status_var.set(f"Partie dupliquée ×{count}." if count > 1 else "Partie dupliquée.")
+            self.status_var.set("Partie dupliquée.")
             return True
 
         indices = self._selected_source_indices()
@@ -3616,6 +2468,7 @@ class BookCanvas(tk.Frame):
                 self.status_var.set("La sélection contient un type de page non duplicable.")
                 return False
 
+        # Les copies de chaque partie sont insérées ensemble après le dernier bloc sélectionné.
         source_ids = {id(item) for item in sources}
         clones_by_group: dict[str, list[dict]] = {}
         insertion_after_by_group: dict[str, int] = {}
@@ -3635,21 +2488,19 @@ class BookCanvas(tk.Frame):
                         last_pos = max(last_pos, pos)
 
             clones = []
-            for copy_no in range(1, count + 1):
-                for source in group_sources:
-                    source_index = self.items.index(source)
-                    clone = deepcopy(source)
-                    clone["id"] = f"MAQUETTE-{uuid4().hex[:12].upper()}"
-                    for key in (
-                        "automatic_recto_verso", "automatic", "auto_generated", "automatic_kind",
-                        "recto_target_id", "linked_to", "parent_id", "source_page_id",
-                    ):
-                        clone.pop(key, None)
-                    name = self._page_display_name(source, source_index)
-                    if name:
-                        suffix = "copie" if count == 1 else f"copie {copy_no}"
-                        clone["page_name"] = f"{name} {suffix}"
-                    clones.append(clone)
+            for source in group_sources:
+                source_index = self.items.index(source)
+                clone = deepcopy(source)
+                clone["id"] = f"MAQUETTE-{uuid4().hex[:12].upper()}"
+                for key in (
+                    "automatic_recto_verso", "automatic", "auto_generated", "automatic_kind",
+                    "recto_target_id", "linked_to", "parent_id", "source_page_id",
+                ):
+                    clone.pop(key, None)
+                name = self._page_display_name(source, source_index)
+                if name:
+                    clone["page_name"] = f"{name} copie"
+                clones.append(clone)
             clones_by_group[group_id] = clones
             insertion_after_by_group[group_id] = last_pos
 
@@ -3670,6 +2521,7 @@ class BookCanvas(tk.Frame):
         self.items = rebuilt
         for clone in list(all_clones):
             if clone in self.items:
+                self._sync_auto_follow_for_source(clone)
                 self._sync_page_auto_for_source(clone)
 
         self._save_order()
@@ -3680,15 +2532,11 @@ class BookCanvas(tk.Frame):
         ]
         self._set_multi_page_selection(clone_indices)
         self.render()
-        total = len(all_clones)
-        if count > 1:
-            self.status_var.set(f"Duplication ×{count} terminée  •  {total} page(s) créée(s) avec leurs pages auto.")
-        else:
-            self.status_var.set(
-                "Pages dupliquées avec leurs pages auto."
-                if total > 1 else
-                "Page dupliquée avec ses pages auto."
-            )
+        self.status_var.set(
+            "Pages dupliquées avec leurs pages auto."
+            if len(all_clones) > 1 else
+            "Page dupliquée avec ses pages auto."
+        )
         return True
 
     def structure_delete_selected(self) -> bool:
@@ -3795,40 +2643,12 @@ class BookCanvas(tk.Frame):
             self._data = data
             self.groups = [dict(group) for group in data.get("groups", []) if isinstance(group, dict)]
             self.items = [dict(item) for item in data.get("items", []) if isinstance(item, dict)]
-            # Toutes les règles structurelles sont réconciliées ensemble :
-            # une seule page auto peut satisfaire AV/AP et R/V.
-            auto_changed = self._sync_structural_automatic_pages()
-            if auto_changed:
-                data["groups"] = [dict(group) for group in self.groups]
-                data["items"] = [dict(item) for item in self.items]
-                data, normalized = self._ensure_minimum_structure(data)
-                changed = changed or normalized or auto_changed
-                self._data = data
-                self.groups = [dict(group) for group in data.get("groups", []) if isinstance(group, dict)]
-                self.items = [dict(item) for item in data.get("items", []) if isinstance(item, dict)]
-
             if changed:
                 try:
-                    saved = project.save_mockup(data)
-                    if isinstance(saved, dict):
-                        data = saved
-                        self._data = deepcopy(saved)
-                        self.groups = [dict(group) for group in saved.get("groups", []) if isinstance(group, dict)]
-                        self.items = [dict(item) for item in saved.get("items", []) if isinstance(item, dict)]
-                except Exception:
-                    pass
-            else:
-                # Recharge l'état réellement persisté afin que l'historique parte
-                # exactement de la version visible à l'ouverture.
-                try:
-                    loaded = project.load_mockup()
-                    if isinstance(loaded, dict):
-                        data = loaded
-                        self._data = deepcopy(loaded)
+                    project.save_mockup(data)
                 except Exception:
                     pass
 
-        self._history_reset(self._data if isinstance(self._data, dict) else {})
         self._selected_index = 0 if self.items else None
         self._selected_group_id = None
         self._selected_page_ids.clear()
@@ -3984,35 +2804,13 @@ class BookCanvas(tk.Frame):
         data["items"] = ordered
         data.setdefault("page_types", [])
         data.setdefault("recto_verso_rules", [])
-        data.setdefault("recto_verso_type_rules", {})
+        data.setdefault("automatic_follow_rules", {})
         data.setdefault("page_auto_type_rules", {})
-        raw_side_rules = data.get("recto_verso_type_rules", {})
-        side_rules = {}
-        if isinstance(raw_side_rules, dict):
-            for source_type, side in raw_side_rules.items():
-                source = str(source_type or "").strip().lower()
-                value = str(side or "").strip().lower()
-                if source and value in {"recto", "verso"}:
-                    side_rules[source] = value
-        if raw_side_rules != side_rules:
-            data["recto_verso_type_rules"] = side_rules
-            changed = True
-        for item in data.get("items", []):
-            if not isinstance(item, dict) or self._is_automatic_page(item):
-                continue
-            side = side_rules.get(self._type_of(item))
-            effective_side = side if side and item.get("recto_verso_override") != "__none__" else "libre"
-            if item.get("structure_side") != effective_side:
-                item["structure_side"] = effective_side
-                changed = True
-        data, legacy_changed = migrate_structure_data(data)
-        changed = changed or legacy_changed
         return data, changed
 
     def _save_order(self):
         if self.project is None:
             return
-        self._sync_recto_verso_corrections()
         try:
             data = self.project.load_mockup()
         except Exception:
@@ -4024,13 +2822,8 @@ class BookCanvas(tk.Frame):
         data, _ = self._ensure_minimum_structure(data)
         self.groups = [dict(group) for group in data.get("groups", []) if isinstance(group, dict)]
         self.items = [dict(item) for item in data.get("items", []) if isinstance(item, dict)]
-        saved = self.project.save_mockup(data)
-        if not isinstance(saved, dict):
-            saved = data
-        self._data = deepcopy(saved)
-        self.groups = [dict(group) for group in saved.get("groups", []) if isinstance(group, dict)]
-        self.items = [dict(item) for item in saved.get("items", []) if isinstance(item, dict)]
-        self._history_record_saved(saved)
+        self._data = data
+        self.project.save_mockup(data)
         if self.on_change is not None:
             self.on_change()
 
@@ -4171,9 +2964,6 @@ class BookCanvas(tk.Frame):
         return ""
 
     def _automatic_parent_id(self, item: dict) -> str:
-        source_ids = self._automatic_source_ids(item) if isinstance(item, dict) else []
-        if len(source_ids) == 1:
-            return source_ids[0]
         for key in ("recto_target_id", "linked_to", "parent_id", "source_page_id"):
             value = str(item.get(key) or "").strip()
             if value:
@@ -4184,7 +2974,10 @@ class BookCanvas(tk.Frame):
         item_id = str(item.get("id") or "").strip()
         if not item_id:
             return []
-        return [candidate for candidate in self.items if self._is_automatic_page(candidate) and item_id in self._automatic_source_ids(candidate)]
+        return [
+            candidate for candidate in self.items
+            if self._is_automatic_page(candidate) and self._automatic_parent_id(candidate) == item_id
+        ]
 
     @staticmethod
     def _group_name(group: dict) -> str:
@@ -4241,10 +3034,8 @@ class BookCanvas(tk.Frame):
             self._set_page_focus(False)
         target = min(38, self._book_height_cap())
         self.set_zoom(max(self.MIN_ZOOM, target), center_selected=False)
+        self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
-        # À l’ouverture, présenter la première page au centre de B au lieu de
-        # plaquer toute la structure contre le bord gauche.
-        self.after_idle(self.center_selected)
         self.after_idle(self._update_visible_part_marker)
 
     def _active_group_id(self) -> str:
@@ -4254,22 +3045,8 @@ class BookCanvas(tk.Frame):
             return self._item_group_id(self.items[self._selected_index])
         return self.START_GROUP_ID
 
-    def _structural_auto_is_deployed(self, index: int) -> bool:
-        """Une page auto se déploie lorsque l'une de ses pages de référence est sélectionnée."""
-        if not 0 <= index < len(self.items):
-            return False
-        item = self.items[index]
-        if not self._is_automatic_page(item):
-            return False
-        selected_ids = set(getattr(self, "_selected_page_ids", set()) or set())
-        if self._selected_index is not None and 0 <= self._selected_index < len(self.items):
-            selected_id = str(self.items[self._selected_index].get("id") or "").strip()
-            if selected_id:
-                selected_ids.add(selected_id)
-        return bool(selected_ids.intersection(self._automatic_source_ids(item)))
-
     def _page_size_factor(self, index: int, active_group_id: str | None = None) -> float:
-        """Trois tailles utiles : sélectionnée, page normale et page automatique rétractée."""
+        """Quatre tailles : tête de partie, page, automatique, sélectionnée."""
         if not 0 <= index < len(self.items):
             return self.PAGE_SIZE_NORMAL
         item = self.items[index]
@@ -4277,6 +3054,8 @@ class BookCanvas(tk.Frame):
             return self.PAGE_SIZE_SELECTED
         if self._is_automatic_page(item):
             return self.PAGE_SIZE_AUTO
+        if self._is_part_head_page(item):
+            return self.PAGE_SIZE_PART_HEAD
         return self.PAGE_SIZE_NORMAL
 
     def _set_page_focus(self, active: bool):
@@ -4889,39 +3668,6 @@ class BookCanvas(tk.Frame):
         """Affiche la page sélectionnée entière, au-dessus de B, sans toucher au livre."""
         self.open_page_overlay(reset_zoom=True)
 
-    def _structure_focus_new_group(self):
-        """Amène doucement la nouvelle partie dans la zone centrale de B."""
-        group_id = str(self._selected_group_id or "")
-        box = self._group_hitboxes.get(group_id)
-        if not group_id or box is None:
-            return
-        self.canvas.update_idletasks()
-        view_left = float(self.canvas.canvasx(0))
-        view_w = max(1.0, float(self.canvas.winfo_width()))
-        group_center = (float(box[0]) + float(box[2])) / 2.0
-        screen_x = group_center - view_left
-
-        # Zone confortable : entre 30 % et 70 % de la largeur visible.
-        if view_w * 0.30 <= screen_x <= view_w * 0.70:
-            return
-
-        region = self.canvas.cget("scrollregion")
-        if not region:
-            return
-        try:
-            rx1, _ry1, rx2, _ry2 = map(float, str(region).split())
-        except Exception:
-            return
-        total_w = max(1.0, rx2 - rx1)
-        if total_w <= view_w + 2:
-            return
-
-        # Viser légèrement à droite du centre conserve davantage de contexte à gauche.
-        desired_screen_x = view_w * 0.55
-        target_left = group_center - desired_screen_x - rx1
-        denominator = max(1.0, total_w - view_w)
-        self.canvas.xview_moveto(max(0.0, min(1.0, target_left / denominator)))
-
     def center_selected_group(self):
         """Centre horizontalement la partie sélectionnée sans modifier le zoom."""
         group_id = str(self._selected_group_id or "")
@@ -5226,7 +3972,7 @@ class BookCanvas(tk.Frame):
 
         if visual == "blank":
             self.canvas.create_rectangle(x1, y1, x2, y2, fill="#F7F7F3", outline="#D9DCD7")
-            if self._is_automatic_page(item) and not self._is_recto_verso_correction(item):
+            if self._is_automatic_page(item):
                 self.canvas.create_text(cx, cy, text="AUTO", fill=theme.ACCENT_DARK, font=(theme.FONT_UI, max(5, int(7*scale)), "bold"))
             return
 
@@ -5291,264 +4037,202 @@ class BookCanvas(tk.Frame):
             self.canvas.create_line(x1 + 3, yy, x2 - 3, yy, fill=line, width=1)
             yy += max(4, 10 * scale)
 
-    def _draw_structural_auto_preview(self, item: dict, x: float, y: float, w: float, h: float, scale: float) -> None:
-        """Page automatique : présence structurelle discrète au repos, détail seulement si sélectionnée."""
-        deployed = False
-        for index, candidate in enumerate(self.items):
-            if candidate is item:
-                deployed = self._structural_auto_is_deployed(index)
-                break
-
-        pad = max(2.0, 3.0 * scale)
-        x1, y1, x2, y2 = x + pad, y + pad, x + w - pad, y + h - pad
-        self.canvas.create_rectangle(
-            x1, y1, x2, y2,
-            fill="#4B5854" if not deployed else "#5D6965",
-            outline="#6D7C77" if not deployed else self.GOLD,
-            width=1 if not deployed else 2,
-        )
-        if not deployed:
-            return
-
-        target_types = [str(v) for v in item.get("automatic_target_types", []) if str(v)]
-        if target_types:
-            definition = self._structure_type_definition(target_types[0])
-            label = str(definition.get("short_label") or definition.get("label") or target_types[0]).strip()
-        else:
-            label = self._page_type_label(item)
-        if len(label) > 18:
-            label = label[:17] + "…"
-        self.canvas.create_text(
-            (x1+x2)/2, (y1+y2)/2, text=label,
-            fill="#26363B", justify="center", width=max(20, x2-x1-6),
-            font=(theme.FONT_UI, max(6, int(8*scale)), "bold"),
-        )
-
-    def _source_rule_tokens(self, item: dict) -> list[tuple[str, bool]]:
-        """Repères portés uniquement par la page d'origine : AV, AP, R ou V."""
-        if self._is_automatic_page(item) or self._is_locked_page(item):
-            return []
-        source_type = self._type_of(item)
-        if not source_type:
-            return []
-        tokens: list[tuple[str, bool]] = []
-        for position, code in (("before", "AV"), ("after", "AP")):
-            if self.structure_get_page_auto_type_rule(source_type, position):
-                tokens.append((code, self._page_auto_override_value(item, position) == "__none__"))
-        side = self.structure_get_recto_verso_type_rule(source_type)
-        if side in {"recto", "verso"}:
-            tokens.append(("R" if side == "recto" else "V", self._recto_verso_override_value(item) == "__none__"))
-        if self.structure_get_double_page_type_rule(source_type) and self._double_page_override_value(item) == "__none__":
-            tokens.append(("2P", True))
-        return tokens
-
-    def _draw_source_rule_tokens(self, item: dict, x: float, y: float, w: float, h: float, scale: float) -> None:
-        tokens = self._source_rule_tokens(item)
-        if not tokens:
-            return
-        font_size = max(6, min(10, int(7 + scale * 2)))
-        gap = max(4.0, 6.0 * scale)
-        widths = [max(15.0, (len(code) * 7 + 6) * max(0.75, scale)) for code, _excluded in tokens]
-        total = sum(widths) + gap * max(0, len(widths)-1)
-        cx = x + w/2.0 - total/2.0
-        cy = y + h - max(10.0, 13.0 * scale)
-        for (code, excluded), tw in zip(tokens, widths):
-            tx = cx + tw/2.0
-            color = "#7B8587" if excluded else self.GOLD
-            self.canvas.create_text(tx, cy, text=code, fill=color, font=(theme.FONT_UI, font_size, "bold"))
-            if excluded:
-                self.canvas.create_line(cx+2, cy, cx+tw-2, cy, fill="#7B8587", width=1)
-            cx += tw + gap
-
-    def _draw_recto_verso_reference_marker(self, item: dict, x: float, y: float, w: float, h: float, scale: float) -> None:
-        if self._is_automatic_page(item) or self._is_locked_page(item):
-            return
-        rule = self.structure_get_recto_verso_type_rule(self._type_of(item))
-        if rule not in {"recto", "verso"}:
-            return
-        excluded = self._recto_verso_override_value(item) == "__none__"
-        conflict = bool(item.get("recto_verso_conflict", False))
-        band_w = max(13.0, min(w * 0.18, 22.0 * max(0.8, scale)))
-        if rule == "recto":
-            bx1, bx2, token = x + w - band_w, x + w, "R"
-        else:
-            bx1, bx2, token = x, x + band_w, "V"
-        if conflict:
-            fill, fg, outline = "#A84A42", "#FFFFFF", "#D77A70"
-        elif excluded:
-            fill, fg, outline = "#4B555A", "#C8CCCA", "#7D878B"
-        else:
-            fill, fg, outline = self.GOLD, "#18242A", self.GOLD
-        self.canvas.create_rectangle(bx1, y, bx2, y + h, fill=fill, outline=outline, width=1)
-        self.canvas.create_text((bx1+bx2)/2, y+h*0.50, text=token, fill=fg, font=(theme.FONT_UI, max(10, min(18, int(12 + self.zoom/100))), "bold"))
-        if excluded:
-            self.canvas.create_line(bx1+2, y+h*0.36, bx2-2, y+h*0.64, fill="#D6D8D6", width=max(1, int(scale)))
-        if conflict:
-            self.canvas.create_text((bx1+bx2)/2, y+h*0.69, text="!", fill=fg, font=(theme.FONT_UI, max(7, int(8*scale)), "bold"))
-
     def _draw_page_auto_rule_markers(
-        self, item: dict, x: float, y: float, page_w: float, page_h: float, scale: float,
+        self,
+        item: dict,
+        x: float,
+        y: float,
+        page_w: float,
+        page_h: float,
+        scale: float,
     ) -> None:
-        """Exception locale : fantôme simple, discret et toujours accroché à sa page."""
+        """V32.2 : page fantôme plus visible, légèrement teintée, sans perdre l'effet fantôme."""
         if self._is_automatic_page(item) or self._is_locked_page(item):
             return
+
         source_type = self._type_of(item)
         if not source_type:
             return
-        before_auto_ghost = False
+
+        ghost_drawn = False
+
         for position in ("before", "after"):
-            if not self.structure_get_page_auto_type_rule(source_type, position):
+            target_type = self.structure_get_page_auto_type_rule(source_type, position)
+            if not target_type:
                 continue
-            if self._page_auto_override_value(item, position) != "__none__":
+
+            excluded = self._page_auto_override_value(item, position) == "__none__"
+            if not excluded:
                 continue
-            # Le fantôme est une vraie miniature au même ratio que la page,
-            # placée presque en haut sans toucher l'angle.
-            ghost_h = max(34.0, float(page_h) * 0.46)
-            ghost_w = ghost_h * (self.BASE_PAGE_W / self.BASE_PAGE_H)
-            gy = y + max(5.0, 8.0 * scale)
-            # Le fantôme appartient sans ambiguïté à sa page de référence :
-            # trois quarts sont posés sur la page, un quart seulement dépasse.
-            outside = ghost_w * 0.25
-            gx = x - outside if position == "before" else x + float(page_w) - ghost_w + outside
-            self.canvas.create_rectangle(
-                gx, gy, gx+ghost_w, gy+ghost_h,
-                fill="#74817E", outline="#97A39F", width=1, dash=(3, 3),
-                stipple="gray50", tags=("structure_auto_ghost",),
-            )
+
+            ghost_h = max(34, min(float(page_h) * 0.74, 52 * max(0.85, scale)))
+            ghost_w = ghost_h * 0.70
+            gy = y + max(4.0, (float(page_h) - ghost_h) * 0.28)
+
+            # V32.4 : le fantôme reste clairement rattaché à SA page.
+            # Environ deux tiers du fantôme restent sous la page principale ;
+            # seul un tiers dépasse du côté Avant ou Après.
+            overlap = ghost_w * 0.66
             if position == "before":
-                before_auto_ghost = True
+                gx = x - ghost_w + overlap
+            else:
+                gx = x + float(page_w) - overlap
 
-        # Exception Recto/Verso : même langage que Page auto, mais dans une
-        # tonalité ardoise bleutée. La correction R/V, lorsqu'elle est utile,
-        # se place toujours avant la page de référence.
-        side = self.structure_get_recto_verso_type_rule(source_type)
-        if side in {"recto", "verso"} and self._recto_verso_override_value(item) == "__none__":
-            ghost_h = max(34.0, float(page_h) * 0.46)
-            ghost_w = ghost_h * (self.BASE_PAGE_W / self.BASE_PAGE_H)
-            gy = y + max(5.0, 8.0 * scale)
-            outside = ghost_w * 0.25
-            gx = x - outside
-            # Si AV et R/V sont tous deux suspendus sur la même occurrence,
-            # les deux fantômes restent lisibles sans former un gros bloc.
-            if before_auto_ghost:
-                gx += max(3.0, 4.0 * scale)
-                gy += max(5.0, 7.0 * scale)
-            self.canvas.create_rectangle(
-                gx, gy, gx+ghost_w, gy+ghost_h,
-                fill="#596A78", outline="#7C91A0", width=1, dash=(3, 3),
-                stipple="gray50", tags=("structure_auto_ghost",),
-            )
-
-        self.canvas.after_idle(lambda: self.canvas.tag_raise("structure_auto_ghost"))
-
-    def _structure_page_type_font(self, text: str, page_w: float, scale: float):
-        """Réduit seulement la taille du texte pour garder le type entier dans la page."""
-        label = str(text or "Page").strip() or "Page"
-        available = max(18.0, float(page_w) - 10.0)
-        start = max(7, min(13, int(9 * max(0.8, scale))))
-        for size in range(start, 4, -1):
+            drawn = False
             try:
-                font = tkfont.Font(family=theme.FONT_UI, size=size, weight="bold")
-                if font.measure(label) <= available:
-                    return (theme.FONT_UI, size, "bold")
+                from pathlib import Path
+                from PIL import Image, ImageEnhance, ImageOps, ImageTk
+
+                definition = self._structure_type_definition(target_type)
+                preview = str(definition.get("preview_image") or "").strip()
+                if preview:
+                    preview_path = Path(preview)
+                    if not preview_path.is_absolute():
+                        preview_path = Path(__file__).resolve().parents[2] / preview_path
+
+                    if preview_path.is_file():
+                        pw = max(12, int(round(ghost_w)))
+                        ph = max(18, int(round(ghost_h)))
+                        cache = getattr(self, "_structure_ghost_page_cache", None)
+                        if not isinstance(cache, dict):
+                            cache = {}
+                            self._structure_ghost_page_cache = cache
+
+                        cache_key = ("v322", str(preview_path), pw, ph)
+                        photo = cache.get(cache_key)
+                        if photo is None:
+                            image = Image.open(preview_path).convert("RGBA")
+                            image = ImageOps.fit(image, (pw, ph), method=Image.Resampling.LANCZOS)
+
+                            # Fantôme plus visible : gris colorisé très légèrement,
+                            # puis opacité relevée sans le confondre avec une vraie page.
+                            gray = ImageOps.grayscale(image)
+                            image = ImageOps.colorize(gray, black="#6E7B78", white="#EEE6D5").convert("RGBA")
+                            image = ImageEnhance.Contrast(image).enhance(0.88)
+                            alpha = Image.new("L", image.size, 118)
+                            image.putalpha(alpha)
+
+                            photo = ImageTk.PhotoImage(image)
+                            cache[cache_key] = photo
+
+                        self.canvas.create_image(
+                            gx + ghost_w / 2,
+                            gy + ghost_h / 2,
+                            image=photo,
+                            tags=("structure_auto_ghost",),
+                        )
+                        self.canvas.create_rectangle(
+                            gx, gy, gx + ghost_w, gy + ghost_h,
+                            outline="#C7B78B",
+                            width=1,
+                            tags=("structure_auto_ghost",),
+                        )
+                        drawn = True
+                        ghost_drawn = True
             except Exception:
-                break
-        return (theme.FONT_UI, 5, "bold")
+                drawn = False
 
-    def _structure_work_number_span(self, index: int) -> tuple[int, int]:
-        """Numérotation de travail : une double page occupe deux positions."""
-        number = 1
-        for pos, item in enumerate(self.items):
-            width = 2 if self._effective_double_page_rule(item) else 1
-            if pos == index:
-                return number, number + width - 1
-            number += width
-        return number, number
+            if not drawn:
+                self.canvas.create_rectangle(
+                    gx, gy, gx + ghost_w, gy + ghost_h,
+                    fill="#DDD6C9",
+                    outline="#C7B78B",
+                    width=1,
+                    stipple="gray25",
+                    tags=("structure_auto_ghost",),
+                )
+                ghost_drawn = True
 
-    def _structure_work_page_count(self) -> int:
-        return sum(2 if self._effective_double_page_rule(item) else 1 for item in self.items)
+        if ghost_drawn:
+            self.canvas.after_idle(lambda: self.canvas.tag_raise("structure_auto_ghost"))
 
     def _draw_page(self, index: int, x: float, y: float, page_w: float, page_h: float, scale: float, *, show_label: bool = True):
         item = self.items[index]
         selected = self._is_page_index_selected(index)
         hovered = index == self._hover_index and not self._dragging
         automatic = self._is_automatic_page(item)
-        type_key = self._page_type_key(item)
+        if selected:
+            fill = "#EDF1EE"
+            outline = self.GOLD if hovered else theme.ACCENT
+            outline_width = 4 if hovered else 3
+        elif hovered:
+            fill = "#F0F3F1"
+            outline = theme.ACCENT_BRIGHT
+            outline_width = 2
+        elif automatic:
+            fill = "#E8ECE9"
+            outline = theme.ACCENT_DARK
+            outline_width = 1
+        else:
+            fill = "#F0F1EE"
+            outline = "#D5D7D3"
+            outline_width = 1
+
+        shadow = max(1, min(10, int(3 * scale)))
+        self.canvas.create_rectangle(x + shadow, y + shadow, x + page_w + shadow, y + page_h + shadow, fill="#151B21", outline="")
+        self.canvas.create_rectangle(x, y, x + page_w, y + page_h, fill=fill, outline=outline, width=outline_width)
+
+        rail_h = max(2, min(9, int(5 * scale)))
+        top_pad = max(2, 8 * scale)
+        rail_color = self.GOLD if self._is_locked_page(item) else theme.ACCENT_DARK
+        self.canvas.create_rectangle(x + top_pad, y + top_pad, x + page_w - top_pad, y + top_pad + rail_h, fill=rail_color, outline="")
+
         page_type = self._page_type_label(item, index)
+        self._draw_type_preview(item, x, y, page_w, page_h, page_type, scale)
+        self._draw_page_auto_rule_markers(item, x, y, page_w, page_h, scale)
 
         if automatic:
-            fill = "#4B5854" if not selected else "#5D6965"
-            outline = self.GOLD if selected else (theme.ACCENT_BRIGHT if hovered else "#6D7C77")
-            outline_width = 2 if selected or hovered else 1
-            shadow = 0
-        else:
-            cover = type_key in {"couverture", "premiere_couverture"}
-            back = type_key in {"quatrieme", "quatrieme_couverture", "4e_couverture"}
-            if cover:
-                fill, outline = "#263833", self.GOLD
-            elif back:
-                fill, outline = "#303A3A", self.GOLD
-            else:
-                # Carte de structure TomeLinea : ardoise fumée, calme et peu lumineuse.
-                # L'information reste très contrastée sans donner l'impression d'une page blanche.
-                if selected:
-                    fill = "#465154"
-                elif hovered:
-                    fill = "#404B4E"
-                else:
-                    fill = "#374145"
-                outline = self.GOLD if selected else (theme.ACCENT_BRIGHT if hovered else "#667570")
-            outline_width = 3 if selected else (2 if hovered else 1)
-            shadow = max(1, min(7, int(2 * scale)))
-
-        if shadow:
-            self.canvas.create_rectangle(x+shadow, y+shadow, x+page_w+shadow, y+page_h+shadow, fill="#151B21", outline="")
-        self.canvas.create_rectangle(x, y, x+page_w, y+page_h, fill=fill, outline=outline, width=outline_width)
-        if not automatic and type_key not in {"couverture", "premiere_couverture", "quatrieme", "quatrieme_couverture", "4e_couverture"}:
-            inset = max(2.0, min(4.0, 2.5 * scale))
-            if page_w > inset * 4 and page_h > inset * 4:
-                self.canvas.create_rectangle(
-                    x+inset, y+inset, x+page_w-inset, y+page_h-inset,
-                    fill="", outline="#56635F", width=1,
-                )
-
-        if not automatic and self._effective_double_page_rule(item):
-            fold_x = x + page_w / 2.0
-            fold_color = "#B76A61" if bool(item.get("double_page_conflict", False)) else "#7C8985"
-            self.canvas.create_line(fold_x, y+4, fold_x, y+page_h*0.34, fill=fold_color, width=1)
-            self.canvas.create_line(fold_x, y+page_h*0.60, fold_x, y+page_h-4, fill=fold_color, width=1)
-            if bool(item.get("double_page_conflict", False)):
-                self.canvas.create_text(
-                    fold_x, y+page_h*0.48, text="!", fill="#D88980",
-                    font=(theme.FONT_UI, max(8, int(9*scale)), "bold"),
-                )
-
-        if automatic:
-            self._draw_structural_auto_preview(item, x, y, page_w, page_h, scale)
-        else:
-            text_color = "#F3E8C8" if type_key in {"couverture", "premiere_couverture", "quatrieme", "quatrieme_couverture", "4e_couverture"} else "#ECE9E1"
-            label = str(page_type or "Page").strip()
-            type_font = self._structure_page_type_font(label, page_w, scale)
-            self.canvas.create_text(
-                x+page_w/2.0, y+page_h*0.46, text=label, fill=text_color,
-                justify="center", font=type_font,
+            # La petite liaison rappelle que cette page appartient à une autre page.
+            self.canvas.create_oval(
+                x + max(4, 7 * scale), y + max(4, 7 * scale),
+                x + max(10, 16 * scale), y + max(10, 16 * scale),
+                fill=theme.ACCENT_SOFT, outline=theme.ACCENT_BRIGHT, width=1,
             )
-            self._draw_source_rule_tokens(item, x, y, page_w, page_h, scale)
-            self._draw_page_auto_rule_markers(item, x, y, page_w, page_h, scale)
+
+        if page_w >= 34:
+            number_size = max(6, min(18, int(6 + self.zoom / 65)))
+            self.canvas.create_text(
+                x + page_w - max(8, 13 * scale),
+                y + page_h - max(7, 12 * scale),
+                anchor="se",
+                text=str(index + 1),
+                fill="#737B78",
+                font=(theme.FONT_UI, number_size),
+            )
+
+        # Nom libre de la page AU-DESSUS ; clic direct pour le modifier.
+        name = self._page_display_name(item, index)
+        name_text = name or ("Cliquer pour nommer" if selected or hovered else "")
+        name_y1 = y - self.PAGE_NAME_H
+        name_y2 = y - 2
+        self._page_name_hitboxes[index] = (x, name_y1, x + page_w, name_y2)
+        if name_text:
+            self.canvas.create_text(
+                x + page_w / 2.0,
+                y - 5,
+                anchor="s",
+                text=name_text,
+                fill=theme.INK if name else theme.MUTED_DARK,
+                width=max(50, page_w + 24),
+                font=(theme.FONT_UI, max(6, min(13, int(7 + self.zoom / 100))), "bold" if name else "italic"),
+                justify="center",
+                tags=(f"page_name:{index}", "page_name"),
+            )
 
         if show_label:
-            label_y = y + page_h + max(8, 13*scale)
-            number_from, number_to = self._structure_work_number_span(index)
-            number_text = str(number_from) if number_from == number_to else f"{number_from}–{number_to}"
+            label_size = max(6, min(15, int(7 + self.zoom / 80)))
             self.canvas.create_text(
-                x+page_w/2.0, label_y, text=number_text, fill=theme.INK,
-                font=(theme.FONT_UI, max(6, int(8*scale)), "bold"),
+                x + page_w / 2.0,
+                y + page_h + max(9, 14 * scale),
+                anchor="n",
+                text=page_type,
+                fill=theme.INK,
+                width=max(50, page_w + 26),
+                font=(theme.FONT_UI, label_size, "bold" if selected else "normal"),
+                justify="center",
             )
-
-        self._page_hitboxes[index] = (x, y, x+page_w, y+page_h)
-        item_id = str(item.get("id") or "").strip()
-        if item_id:
-            self._page_hitbox_ids[item_id] = index
+        self._page_hitboxes[index] = (x, y, x + page_w, y + page_h)
+        self._page_hitbox_ids[index] = str(item.get("id") or "")
 
     def _structure_view_anchor_snapshot(self):
         """Mémorise des repères stables avant chaque rendu Structure.
@@ -5642,30 +4326,31 @@ class BookCanvas(tk.Frame):
         self.after_idle(self._update_visible_part_marker)
 
     def _structure_refresh_page_auto_buttons(self) -> None:
+        """Indique dans le ruban si Avant/Après suivent une règle générale."""
         before_btn = getattr(self, "structure_auto_before_btn", None)
         after_btn = getattr(self, "structure_auto_after_btn", None)
         if before_btn is None or after_btn is None:
             return
-        before_text, after_text = "AV", "AP"
+        before_text, after_text = "Avant", "Après"
         indices = self._selected_source_indices()
-        source = self.items[indices[0]] if len(indices) == 1 else None
-        if source is not None:
+        if len(indices) == 1:
+            source = self.items[indices[0]]
             source_type = self._type_of(source)
-            for position, base in (("before", "AV"), ("after", "AP")):
-                rule = self.structure_get_page_auto_type_rule(source_type, position) if source_type else ""
-                override = self._page_auto_override_value(source, position)
-                if rule:
-                    label = f"{base} —" if override == "__none__" else f"{base} ✓"
-                    if position == "before":
-                        before_text = label
-                    else:
-                        after_text = label
+            if source_type:
+                for position, base in (("before", "Avant"), ("after", "Après")):
+                    rule = self.structure_get_page_auto_type_rule(source_type, position)
+                    override = self._page_auto_override_value(source, position)
+                    if rule:
+                        label = f"{base} ✓" if override != "__none__" else f"{base} —"
+                        if position == "before":
+                            before_text = label
+                        else:
+                            after_text = label
         try:
             before_btn.configure(text=before_text)
             after_btn.configure(text=after_text)
         except Exception:
             pass
-        self._structure_update_common_rule_actions()
 
     def render(self):
         self._render_pending = None
@@ -5701,14 +4386,12 @@ class BookCanvas(tk.Frame):
         if self._selected_index is None or not (0 <= self._selected_index < len(self.items)):
             self._selected_index = 0
 
-        selected_from, selected_to = self._structure_work_number_span(self._selected_index)
-        selected_page_number = str(selected_from) if selected_from == selected_to else f"{selected_from}–{selected_to}"
-        work_page_count = self._structure_work_page_count()
+        selected_page_number = self._selected_index + 1
         middle_count = sum(1 for group in self.groups if str(group.get("id", "")) not in {self.START_GROUP_ID, self.END_GROUP_ID})
         if self._page_focus:
-            self.status_var.set(f"Page {selected_page_number} sur {work_page_count}  •  travail détaillé")
+            self.status_var.set(f"Page {selected_page_number} sur {len(self.items)}  •  travail détaillé")
         else:
-            self.status_var.set(f"{middle_count} partie{'s' if middle_count != 1 else ''}  •  {work_page_count} page{'s' if work_page_count != 1 else ''}")
+            self.status_var.set(f"{middle_count} partie{'s' if middle_count != 1 else ''}  •  {len(self.items)} page{'s' if len(self.items) != 1 else ''}")
 
         scale = self.zoom / 100.0
         gap = max(8, self.BASE_GAP * scale)
@@ -5727,37 +4410,23 @@ class BookCanvas(tk.Frame):
             active_group_id = self._active_group_id()
             specs: dict[int, tuple[float, float]] = {}
             for index in range(len(self.items)):
-                item = self.items[index]
-                if self._is_automatic_page(item):
-                    deployed = self._structural_auto_is_deployed(index)
-                    width_factor = self.PAGE_AUTO_DEPLOY_W if deployed else self.PAGE_AUTO_REST_W
-                    height_factor = self.PAGE_AUTO_DEPLOY_H if deployed else self.PAGE_AUTO_REST_H
-                    specs[index] = (
-                        max(14, self.BASE_PAGE_W * scale * width_factor),
-                        max(30, self.BASE_PAGE_H * scale * height_factor),
-                    )
-                else:
-                    factor = self._page_size_factor(index, active_group_id)
-                    single_w = max(16, self.BASE_PAGE_W * scale * factor)
-                    page_h = max(22, self.BASE_PAGE_H * scale * factor)
-                    if self._effective_double_page_rule(item):
-                        specs[index] = (single_w * 2.0, page_h)
-                    else:
-                        specs[index] = (single_w, page_h)
+                factor = self._page_size_factor(index, active_group_id)
+                specs[index] = (
+                    max(16, self.BASE_PAGE_W * scale * factor),
+                    max(22, self.BASE_PAGE_H * scale * factor),
+                )
 
-            # Les pages auto et leur page source forment un seul bloc visuel.
-            # Aucun espace à l'intérieur du bloc ; l'espace normal reste entre les blocs.
-            group_layout: list[tuple[dict, list[list[int]], float]] = []
+            # On calcule d'abord toutes les largeurs pour pouvoir centrer un livre court.
+            group_layout: list[tuple[dict, list[int], float]] = []
             for group in self.groups:
                 group_id = str(group.get("id", ""))
-                blocks = self._page_blocks_in_group(group_id)
-                if blocks:
-                    body_w = sum(sum(specs[i][0] for i in block) for block in blocks)
-                    body_w += gap * max(0, len(blocks) - 1)
+                indexes = self._group_items(group_id)
+                if indexes:
+                    body_w = sum(specs[i][0] for i in indexes) + gap * max(0, len(indexes) - 1)
                 else:
                     body_w = max(90, self.EMPTY_SLOT_W * scale)
                 min_header = max(150, min(300, 174 + max(len(self._group_name(group)), len(self._group_part_title(group))) * 2))
-                group_layout.append((group, blocks, max(body_w, min_header)))
+                group_layout.append((group, indexes, max(body_w, min_header)))
 
             content_w = sum(width for _g, _i, width in group_layout) + group_gap * max(0, len(group_layout) - 1)
             # Aux deux extrémités, Début/Fin peuvent arriver exactement au centre
@@ -5769,13 +4438,8 @@ class BookCanvas(tk.Frame):
                 right_pad = max(margin, viewport_w / 2.0 - last_w / 2.0)
                 x = left_pad
             else:
-                # Quand toute la structure tient dans B, on la centre visuellement
-                # au lieu de la plaquer à gauche. On conserve une petite respiration
-                # de navigation sans provoquer un déplacement brutal.
-                nav_pad = max(margin, min(150.0, viewport_w * 0.09)) if len(group_layout) >= 4 else margin
-                centered_pad = max(0.0, (viewport_w - content_w) / 2.0)
-                left_pad = right_pad = max(nav_pad, centered_pad)
-                x = left_pad
+                left_pad = right_pad = margin
+                x = (viewport_w - content_w) / 2.0
             group_y1 = margin
             group_y2 = group_y1 + self.GROUP_H
 
@@ -5786,20 +4450,18 @@ class BookCanvas(tk.Frame):
             page_row_top = available_top + max(0, (available_h - row_needed) / 2.0)
             page_bottom = page_row_top + row_needed
 
-            for group_pos, (group, blocks, group_width) in enumerate(group_layout):
+            for group_pos, (group, indexes, group_width) in enumerate(group_layout):
                 group_id = str(group.get("id", ""))
                 start_x = x
                 cursor_x = start_x
-                if blocks:
-                    for block_pos, block in enumerate(blocks):
-                        # Le bloc [Auto Avant + source + Auto Après] est dessiné bord à bord.
-                        for index in block:
-                            self._visual_indices.append(index)
-                            page_w, page_h = specs[index]
-                            page_y = page_row_top + self.PAGE_NAME_H + (max_page_h - page_h)
-                            self._draw_page(index, cursor_x, page_y, page_w, page_h, scale)
-                            cursor_x += page_w
-                        if block_pos < len(blocks) - 1:
+                if indexes:
+                    for local_pos, index in enumerate(indexes):
+                        self._visual_indices.append(index)
+                        page_w, page_h = specs[index]
+                        page_y = page_row_top + self.PAGE_NAME_H + (max_page_h - page_h)
+                        self._draw_page(index, cursor_x, page_y, page_w, page_h, scale)
+                        cursor_x += page_w
+                        if local_pos < len(indexes) - 1:
                             cursor_x += gap
                 else:
                     empty_w = max(90, self.EMPTY_SLOT_W * scale)
@@ -5840,11 +4502,6 @@ class BookCanvas(tk.Frame):
             self._draw_structure_placement_preview()
 
         self._structure_refresh_page_auto_buttons()
-        self._structure_update_page_auto_visuals()
-        self._structure_update_double_page_visuals()
-        self._structure_update_recto_verso_visuals()
-        self._structure_update_common_rule_actions()
-        self._structure_update_auto_counter()
         self._structure_restore_view_anchor(structure_view_snapshot)
         self.after_idle(self._update_visible_part_marker)
 
@@ -5872,70 +4529,6 @@ class BookCanvas(tk.Frame):
     # ------------------------------------------------------------------
     # Repère de partie et édition directe du titre
     # ------------------------------------------------------------------
-
-    def _structure_auto_counter_values(self) -> dict[str, int]:
-        autos = [item for item in self.items if self._is_automatic_page(item)]
-
-        # Total physique projeté : chaque élément compte pour une page,
-        # une double page compte pour deux. Les pages auto mutualisées ne
-        # sont comptées qu'une fois puisqu'elles n'existent qu'une fois dans self.items.
-        total_pages = 0
-        for item in self.items:
-            if self._is_automatic_page(item):
-                total_pages += 1
-            elif self._effective_double_page_rule(item):
-                total_pages += 2
-            else:
-                total_pages += 1
-
-        values = {
-            "auto": len(autos),
-            "total": total_pages,
-            "blank": sum(1 for item in autos if self._type_of(item) == "page_blanche"),
-            "AV": 0, "AP": 0, "RV": 0, "DP": 0, "shared": 0,
-        }
-        for item in autos:
-            roles = self._automatic_roles(item)
-            codes = {str(role.get("code") or "") for role in roles}
-            values["AV"] += int("AV" in codes)
-            values["AP"] += int("AP" in codes)
-            values["RV"] += int(bool(codes.intersection({"R", "V"})))
-            values["DP"] += int("DP" in codes)
-            values["shared"] += int(self._automatic_is_shared(item))
-        return values
-
-    def _structure_update_auto_counter(self, *, detailed: bool | None = None) -> None:
-        label = getattr(self, "structure_auto_counter", None)
-        if label is None:
-            return
-        values = self._structure_auto_counter_values()
-        if detailed is None:
-            detailed = bool(getattr(self, "_structure_auto_counter_hover", False))
-        if detailed:
-            text = (
-                f"{values['auto']} auto / {values['total']} pages  •  "
-                f"AV {values['AV']} • AP {values['AP']} • R/V {values['RV']} • "
-                f"Double {values['DP']} • partagées {values['shared']}"
-            )
-            fg, bg = "#E7C37A", "#162A38"
-        else:
-            text = (
-                f"Auto : {values['auto']} / {values['total']} pages"
-                f"  •  blanches : {values['blank']}"
-            )
-            fg, bg = "#AEB8B5", theme.WINDOW_DEEP
-        try:
-            label.configure(text=text, fg=fg, bg=bg)
-        except Exception:
-            pass
-
-    def _structure_auto_counter_enter(self, _event=None):
-        self._structure_auto_counter_hover = True
-        self._structure_update_auto_counter(detailed=True)
-
-    def _structure_auto_counter_leave(self, _event=None):
-        self._structure_auto_counter_hover = False
-        self._structure_update_auto_counter(detailed=False)
 
     def _navigate_horizontal(self, velocity: float):
         """Défilement continu piloté par le point central du navigateur."""
@@ -6190,20 +4783,12 @@ class BookCanvas(tk.Frame):
             return []
         item = self.items[index]
         if self._is_automatic_page(item):
-            if self._automatic_is_shared(item):
-                return [index]
             parent_id = self._automatic_parent_id(item)
             parent_index = next((i for i, candidate in enumerate(self.items) if str(candidate.get("id") or "") == parent_id), None)
             if parent_index is not None:
                 index = parent_index
                 item = self.items[index]
-        item_id = str(item.get("id") or "")
-        linked = {
-            id(candidate) for candidate in self.items
-            if self._is_automatic_page(candidate)
-            and not self._automatic_is_shared(candidate)
-            and item_id in self._automatic_source_ids(candidate)
-        }
+        linked = set(id(candidate) for candidate in self._linked_automatic_items(item))
         return [i for i, candidate in enumerate(self.items) if i == index or id(candidate) in linked]
 
     def _page_blocks_in_group(self, group_id: str, *, exclude_indices: set[int] | None = None) -> list[list[int]]:
@@ -6218,13 +4803,9 @@ class BookCanvas(tk.Frame):
                 continue
             item = self.items[index]
             if self._is_automatic_page(item):
-                if self._automatic_is_shared(item):
-                    # Deux références : la page reprend une position centrale.
-                    blocks.append([index])
-                    consumed.add(index)
-                    continue
                 parent_index = by_id.get(self._automatic_parent_id(item))
                 if parent_index is not None and parent_index in index_set:
+                    # Le bloc sera créé depuis la page principale.
                     continue
                 blocks.append([index])
                 consumed.add(index)
@@ -6234,14 +4815,13 @@ class BookCanvas(tk.Frame):
             if item_id:
                 linked = [
                     i for i in indexes
-                    if self._is_automatic_page(self.items[i])
-                    and not self._automatic_is_shared(self.items[i])
-                    and item_id in self._automatic_source_ids(self.items[i])
+                    if self._is_automatic_page(self.items[i]) and self._automatic_parent_id(self.items[i]) == item_id
                 ]
                 block.extend(linked)
             block = sorted(set(block))
             consumed.update(block)
             blocks.append(block)
+        # Autos orphelines éventuellement sautées.
         for index in indexes:
             if index not in consumed:
                 blocks.append([index])
@@ -6379,11 +4959,6 @@ class BookCanvas(tk.Frame):
         self.render()
 
     def _on_press(self, event):
-        # Un clic n'importe où dans B valide aussi le nom de partie en cours.
-        # Les clics hors de B sont déjà couverts par _structure_global_click.
-        if getattr(self, "_title_editor", None) is not None:
-            self._close_title_editor(commit=True)
-
         if getattr(self, "_work_mode", "structure") == "structure" and getattr(self, "_structure_page_auto_mode", None):
             self.structure_cancel_page_auto_mode(silent=True)
         if getattr(self, "_work_mode", "structure") == "structure" and getattr(self, "_structure_action_mode", None):

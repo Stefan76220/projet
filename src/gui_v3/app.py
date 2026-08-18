@@ -283,6 +283,9 @@ class TomeLineaV3(tk.Tk):
         # Construction unique de l'Accueil et de l'espace permanent A/B/C.
         self._build_home()
         self._build_workspace()
+        self.bind_all("<Control-z>", self._workspace_keyboard_undo, add="+")
+        self.bind_all("<Control-y>", self._workspace_keyboard_redo, add="+")
+        self.bind_all("<Control-Shift-Z>", self._workspace_keyboard_redo, add="+")
         self.show_home()
 
         # Première passe de géométrie pendant que la fenêtre est cachée.
@@ -1013,6 +1016,7 @@ class TomeLineaV3(tk.Tk):
             on_open_item=self.open_consultation,
             on_change=self._refresh_workspace_state,
             on_focus_change=self._set_book_page_focus,
+            on_history_change=self._update_history_buttons,
         )
         self.book_canvas.pack(fill="both", expand=True)
         self.zone_b_info = tk.Label(
@@ -1131,9 +1135,12 @@ class TomeLineaV3(tk.Tk):
         V3Button(actions, "Aide", self._show_general_help, compact=True).pack(side="left", padx=3)
         V3Button(actions, "Accueil", self.show_home, compact=True).pack(side="left", padx=3)
         V3Button(actions, "Importer", self.import_sources, compact=True).pack(side="left", padx=3)
-        V3Button(actions, "Annuler", None, compact=True, state="disabled").pack(side="left", padx=3)
-        V3Button(actions, "Rétablir", None, compact=True, state="disabled").pack(side="left", padx=3)
+        self.undo_button = V3Button(actions, "Annuler", self._workspace_undo, compact=True, state="disabled")
+        self.undo_button.pack(side="left", padx=3)
+        self.redo_button = V3Button(actions, "Rétablir", self._workspace_redo, compact=True, state="disabled")
+        self.redo_button.pack(side="left", padx=3)
         V3Button(actions, "Fermer", self.destroy, compact=True).pack(side="left", padx=(10, 0))
+        self._update_history_buttons(False, False)
 
     def _build_zone_c(self):
         body = self.zone_c.body
@@ -1407,8 +1414,8 @@ class TomeLineaV3(tk.Tk):
         head = tk.Frame(atelier, bg=WORK_BG)
         head.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         head.grid_columnconfigure(3, weight=1)
-        structure_head_var = tk.StringVar(value="BRIQUES DE PAGES")
-        structure_hint_var = tk.StringVar(value="choisir → cliquer dans la ligne")
+        structure_head_var = tk.StringVar(value="TYPES DE PAGE")
+        structure_hint_var = tk.StringVar(value="sélectionner → déposer dans B")
         structure_head_label = tk.Label(
             head, textvariable=structure_head_var, bg=WORK_BG, fg=WORK_TEXT,
             font=(theme.FONT_TITLE, 10, "bold"),
@@ -1509,9 +1516,7 @@ class TomeLineaV3(tk.Tk):
 
 
         def make_brick(parent_, label, type_key, *, custom=False):
-            # Brique presque carrée : même style V16, composition verticale
-            # pour gagner de la largeur sans sacrifier la lisibilité.
-            width, height = 78, 58
+            width, height = 96, 30
             card = tk.Canvas(
                 parent_, width=width, height=height, bg=WORK_BG_2,
                 bd=0, highlightthickness=0, cursor="hand2",
@@ -1520,29 +1525,13 @@ class TomeLineaV3(tk.Tk):
 
             def draw(fill=WORK_TILE, outline=WORK_BORDER, active=False):
                 card.delete("all")
-                # Corps identique à V16 : seule la proportion devient presque carrée.
                 card.create_rectangle(
-                    1, 1, width-1, height-1,
-                    fill=fill, outline=outline, width=2 if active else 1,
-                )
-                # Mini-icône centrée en haut : elle ne vole plus de largeur au nom.
-                icon_size = 16
-                icon_x = width / 2
-                icon_y = 13
-                card.create_rectangle(
-                    icon_x-icon_size/2, icon_y-icon_size/2,
-                    icon_x+icon_size/2, icon_y+icon_size/2,
-                    fill="#122735", outline=WORK_GOLD, width=1,
+                    1, 1, width-1, height-1, fill=fill, outline=outline,
+                    width=2 if active else 1,
                 )
                 card.create_text(
-                    icon_x, icon_y, text=brick_icon(type_key), fill=WORK_GOLD,
-                    font=(theme.FONT_UI, 8, "bold"),
-                )
-                # Nom centré dessous avec retour à la ligne automatique.
-                card.create_text(
-                    width/2, 39, text=display, anchor="center", justify="center",
-                    fill=WORK_TEXT, font=(theme.FONT_UI, 7, "bold"),
-                    width=width-6,
+                    width/2, height/2, text=display, anchor="center", justify="center",
+                    fill=WORK_TEXT, font=(theme.FONT_UI, 7, "bold"), width=width-8,
                 )
 
             def normal():
@@ -1559,9 +1548,6 @@ class TomeLineaV3(tk.Tk):
                 draw("#102735", WORK_GOLD)
                 return "break"
             def release(_e=None):
-                # V25 : en mode Page auto, le clic sur une brique termine la
-                # création de la règle générale. Hors de ce mode, le même clic
-                # garde exactement son rôle normal d'insertion dans B.
                 canvas = book()
                 if canvas is not None and hasattr(canvas, "structure_consume_page_auto_choice"):
                     try:
@@ -1627,7 +1613,7 @@ class TomeLineaV3(tk.Tk):
                     bricks.append((key, label, custom)); seen.add(key)
             for i, (key, label, custom) in enumerate(bricks):
                 make_brick(inner, label, key, custom=bool(custom)).grid(
-                    row=i//12, column=i%12, padx=4, pady=4, sticky="nw"
+                    row=i//12, column=i%12, padx=3, pady=3, sticky="nw"
                 )
             def sync_region(_e=None):
                 bbox = cv.bbox("all")
@@ -1644,167 +1630,42 @@ class TomeLineaV3(tk.Tk):
             canvas = book()
             if canvas is None or not hasattr(canvas, "structure_create_custom_type"):
                 return
-            state = {"duplicable": tk.BooleanVar(value=True), "preview_image": None}
-            entries = {}
-            image_refs = []
-            selected_image_var = tk.StringVar(value="Aucune image sélectionnée")
-
-
-            def library_candidates():
-                items = []
-                canvas = book()
-                if canvas is not None and hasattr(canvas, "structure_builtin_page_type_catalog"):
-                    try:
-                        definitions = canvas.structure_builtin_page_type_catalog()
-                    except Exception:
-                        definitions = []
-                    if isinstance(definitions, list):
-                        for definition in definitions:
-                            if not isinstance(definition, dict):
-                                continue
-                            label = str(
-                                definition.get("short_label")
-                                or definition.get("label")
-                                or definition.get("name")
-                                or definition.get("type")
-                                or ""
-                            ).strip()
-                            preview_rel = str(definition.get("preview_image") or "").strip()
-                            if not label or not preview_rel:
-                                continue
-                            path = PROJECT_ROOT / preview_rel
-                            if path.is_file():
-                                items.append((label, path))
-                if items:
-                    return items
-
-                folder = PROJECT_ROOT / "assets" / "page_thumbnails"
-                if not folder.is_dir():
-                    return []
-                fallback = []
-                for path in sorted(folder.glob("type_page_*.png")):
-                    label = path.stem.replace("type_page_", "").replace("_", " ").strip().capitalize()
-                    fallback.append((label, path))
-                return fallback
-
-
-            def make_photo(path, size=(180, 250)):
+            for child in new_type_slot.winfo_children():
                 try:
-                    with Image.open(path) as source:
-                        image = source.convert("RGBA")
-                        image.thumbnail(size, Image.Resampling.LANCZOS)
-                        photo = ImageTk.PhotoImage(image)
-                    image_refs.append(photo)
-                    return photo
+                    child.destroy()
                 except Exception:
-                    return None
+                    pass
 
-            def build_body(body):
-                body.grid_columnconfigure(0, weight=1)
-                body.grid_columnconfigure(1, weight=0, minsize=240)
-                body.grid_rowconfigure(0, weight=1)
-                form = tk.Frame(body, bg=theme.PANEL_ALT)
-                form.grid(row=0, column=0, sticky="nsew", padx=(0, 18))
-                form.grid_columnconfigure(1, weight=1)
-
-                def field(row, label, key):
-                    tk.Label(form, text=label, bg=theme.PANEL_ALT, fg=theme.MUTED, font=(theme.FONT_UI, 8, "bold")).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=6)
-                    entry = tk.Entry(form, bg=theme.WINDOW_DEEP, fg=theme.INK, insertbackground=theme.ACCENT_BRIGHT, relief="flat", bd=0, font=(theme.FONT_UI, 9))
-                    entry.grid(row=row, column=1, sticky="ew", pady=6, ipady=6)
-                    entries[key] = entry
-                field(0, "Nom du type", "name")
-                field(1, "Libellé court", "short")
-
-                preview_slot = tk.Frame(body, bg=theme.WINDOW_DEEP, highlightthickness=1, highlightbackground=theme.BORDER, width=230)
-                preview_slot.grid(row=0, column=1, sticky="nsew")
-                preview_slot.grid_propagate(False)
-                tk.Label(preview_slot, text="APERÇU DE LA NOUVELLE CRÉATION", bg=theme.WINDOW_DEEP, fg=theme.ACCENT_BRIGHT, font=(theme.FONT_UI, 7, "bold")).pack(anchor="w", padx=12, pady=(12, 8))
-                preview_label = tk.Label(preview_slot, text="L’aperçu apparaîtra\naprès le choix d’une image.", bg=theme.WINDOW_DEEP, fg=theme.MUTED_DARK, font=(theme.FONT_UI, 8), justify="center")
-                preview_label.pack(expand=True, padx=12, pady=12)
-
-                def refresh_preview():
-                    path = state.get("preview_image")
-                    if isinstance(path, Path) and path.is_file():
-                        photo = make_photo(path)
-                        if photo is not None:
-                            preview_label.configure(image=photo, text="")
-                            preview_label.image = photo
-                            return
-                    preview_label.configure(image="", text="L’aperçu apparaîtra\naprès le choix d’une image.")
-                    preview_label.image = None
-
-                tk.Label(form, text="Image de base", bg=theme.PANEL_ALT, fg=theme.MUTED, font=(theme.FONT_UI, 8, "bold")).grid(row=2, column=0, sticky="nw", padx=(0, 10), pady=(12, 6))
-                image_area = tk.Frame(form, bg=theme.PANEL_ALT)
-                image_area.grid(row=2, column=1, sticky="ew", pady=(12, 6))
-                controls = tk.Frame(image_area, bg=theme.PANEL_ALT)
-                controls.pack(anchor="w")
-                library_holder = tk.Frame(image_area, bg=theme.WINDOW_DEEP, highlightthickness=1, highlightbackground=theme.BORDER)
-                def close_library():
-                    library_holder.pack_forget()
-                def choose_none():
-                    state["preview_image"] = None
-                    selected_image_var.set("Aucune image sélectionnée")
-                    close_library(); refresh_preview()
-                def choose_external():
-                    filename = filedialog.askopenfilename(title="Choisir une image de base", filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp")])
-                    if filename:
-                        state["preview_image"] = Path(filename)
-                        selected_image_var.set(Path(filename).name)
-                        close_library(); refresh_preview()
-                def choose_library():
-                    if library_holder.winfo_manager(): close_library()
-                    else: library_holder.pack(fill="x", pady=(7, 0))
-                for label, command in (("Bibliothèque", choose_library), ("Image extérieure", choose_external), ("Aucune image", choose_none)):
-                    command_chip(controls, label, command, compact=True).pack(side="left", padx=(0, 5))
-                tk.Label(image_area, textvariable=selected_image_var, bg=theme.PANEL_ALT, fg=theme.MUTED_DARK, font=(theme.FONT_UI, 8)).pack(anchor="w", pady=(5,0))
-                tk.Label(library_holder, text="Bibliothèque TomeLinea", bg=theme.WINDOW_DEEP, fg=theme.ACCENT_BRIGHT, font=(theme.FONT_UI, 8, "bold")).pack(anchor="w", padx=8, pady=(7,3))
-                lib_grid = tk.Frame(library_holder, bg=theme.WINDOW_DEEP)
-                lib_grid.pack(fill="x", padx=8, pady=(0,7))
-                row_i = col_i = 0
-                for lib_label, path in library_candidates():
-                    tile = tk.Frame(lib_grid, bg=theme.PANEL_SOFT, padx=5, pady=4, highlightthickness=1, highlightbackground=theme.BORDER)
-                    tile.grid(row=row_i, column=col_i, padx=3, pady=3, sticky="nsew")
-                    photo = make_photo(path, (46, 64))
-                    if photo is not None:
-                        img_lbl = tk.Label(tile, image=photo, bg=theme.PANEL_SOFT); img_lbl.image = photo; img_lbl.pack(side="left")
-                    txt_lbl = tk.Label(tile, text=lib_label, bg=theme.PANEL_SOFT, fg=theme.INK, font=(theme.FONT_UI,7,"bold")); txt_lbl.pack(side="left", padx=(4,0))
-                    def select_lib(_e=None, p=path, title_=lib_label):
-                        state["preview_image"] = p; selected_image_var.set(title_); close_library(); refresh_preview()
-                    for target in (tile, *tile.winfo_children()):
-                        target.bind("<Button-1>", select_lib)
-                        target.configure(cursor="hand2")
-                    col_i += 1
-                    if col_i >= 4:
-                        col_i = 0; row_i += 1
-
-                tk.Label(form, text="Propriété", bg=theme.PANEL_ALT, fg=theme.MUTED, font=(theme.FONT_UI, 8, "bold")).grid(row=3, column=0, sticky="nw", padx=(0,10), pady=(12,6))
-                tk.Checkbutton(form, text="Duplicable", variable=state["duplicable"], bg=theme.PANEL_ALT, fg=theme.INK, activebackground=theme.PANEL_ALT, activeforeground=theme.INK, selectcolor=theme.WINDOW_DEEP, font=(theme.FONT_UI,8), cursor="hand2").grid(row=3, column=1, sticky="w", pady=(12,6))
-                tk.Label(form, text="Les règles éditoriales se décident ensuite dans Structure, à partir de la page source.", bg=theme.PANEL_ALT, fg=theme.MUTED_DARK, font=(theme.FONT_UI,7), anchor="w", wraplength=520, justify="left").grid(row=4, column=1, sticky="w", pady=(4,0))
-                entries["name"].focus_set()
-
-            def confirm_new_type():
-                name = entries.get("name").get().strip() if entries.get("name") else ""
-                short = entries.get("short").get().strip() if entries.get("short") else ""
-                if not name:
-                    entries["name"].configure(highlightthickness=1, highlightbackground="#A94F43")
-                    entries["name"].focus_set()
-                    return True
-                created = canvas.structure_create_custom_type({
-                    "name": name, "short_label": short or name,
-                    "visual": "custom", "duplicable": bool(state["duplicable"].get()),
-                    "preview_image": str(state["preview_image"]) if state.get("preview_image") else "",
-                })
-                if not created:
-                    return True
-                self.after_idle(rebuild_catalog)
-                return False
-
-            show_structure_modal(
-                "Créer un nouveau type de page",
-                confirm_label="Créer le type",
-                on_confirm=confirm_new_type,
-                body_builder=build_body,
+            name_var = tk.StringVar()
+            entry = tk.Entry(
+                new_type_slot, textvariable=name_var, width=20,
+                bg="#172D3A", fg=WORK_TEXT, insertbackground=WORK_TEXT,
+                relief="flat", bd=0, highlightthickness=1,
+                highlightbackground=WORK_GOLD, highlightcolor=WORK_GOLD,
+                font=(theme.FONT_UI, 8),
             )
+            entry.pack(side="left", padx=(0, 5), ipady=3)
+
+            def cancel(_e=None):
+                refresh_page_auto_ui()
+                return "break"
+
+            def confirm(_e=None):
+                name = name_var.get().strip()
+                if not name:
+                    entry.focus_set()
+                    return "break"
+                created = canvas.structure_create_custom_type({"name": name})
+                if created:
+                    rebuild_catalog()
+                    refresh_page_auto_ui()
+                return "break"
+
+            command_chip(new_type_slot, "Créer", confirm, accent=WORK_GOLD, compact=True).pack(side="left", padx=(0, 4))
+            command_chip(new_type_slot, "×", cancel, compact=True).pack(side="left")
+            entry.bind("<Return>", confirm)
+            entry.bind("<Escape>", cancel)
+            entry.focus_set()
 
         # V25 : la même ligne d'en-tête devient contextuelle pendant Page auto.
         # En temps normal elle contient + Nouveau type. Pendant le choix Page auto,
@@ -1823,9 +1684,13 @@ class TomeLineaV3(tk.Tk):
                     if canvas is not None and hasattr(canvas, "structure_page_auto_context")
                     else {"active": False}
                 )
+                step = int(context.get("step") or 0)
                 if not context.get("active"):
-                    structure_head_var.set("BRIQUES DE PAGES")
-                    structure_hint_var.set("choisir → cliquer dans la ligne")
+                    atelier.configure(highlightthickness=1, highlightbackground=WORK_BORDER)
+                    structure_head_label.configure(fg=WORK_TEXT)
+                    structure_hint_label.configure(fg=WORK_MUTED)
+                    structure_head_var.set("TYPES DE PAGE")
+                    structure_hint_var.set("sélectionner → déposer dans B")
                     command_chip(
                         new_type_slot,
                         "+ Nouveau type",
@@ -1837,31 +1702,23 @@ class TomeLineaV3(tk.Tk):
 
                 side = str(context.get("side_label") or "")
                 source_label = str(context.get("source_label") or "page")
+                if step == 2:
+                    atelier.configure(highlightthickness=3, highlightbackground=WORK_GOLD)
+                    structure_head_label.configure(fg=WORK_GOLD)
+                    structure_hint_label.configure(fg=WORK_TEXT)
+                else:
+                    atelier.configure(highlightthickness=1, highlightbackground=WORK_BORDER)
+                    structure_head_label.configure(fg=WORK_TEXT)
+                    structure_hint_label.configure(fg=WORK_MUTED)
                 structure_head_var.set(f"PAGE AUTO — {side.upper()} DES « {source_label.upper()} »")
                 target_label = str(context.get("target_label") or "")
                 if target_label:
                     structure_hint_var.set(
-                        f"règle actuelle : {target_label}  •  cliquer une brique pour la remplacer"
+                        f"règle actuelle : {target_label}  •  choisir un autre type pour la remplacer"
                     )
                 else:
-                    structure_hint_var.set("cliquer la brique à associer  •  ce clic valide la règle")
+                    structure_hint_var.set("choisir le type à associer  •  ce clic valide la règle")
 
-                if context.get("has_rule") and canvas is not None:
-                    exception_text = (
-                        "Réintégrer à la règle"
-                        if context.get("excluded")
-                        else "Désolidariser cette page"
-                    )
-                    command_chip(
-                        new_type_slot, exception_text,
-                        canvas.structure_toggle_page_auto_exception,
-                        compact=True,
-                    ).pack(side="left", padx=(0, 5))
-                    command_chip(
-                        new_type_slot, "Retirer la règle",
-                        canvas.structure_remove_active_page_auto_rule,
-                        compact=True,
-                    ).pack(side="left")
 
             self.after_idle(later)
 
@@ -2217,6 +2074,42 @@ class TomeLineaV3(tk.Tk):
         self.book_canvas.set_project(None)
         self._refresh_workspace_state()
         self._screens["workspace"].tkraise()
+
+    def _update_history_buttons(self, can_undo=None, can_redo=None):
+        if can_undo is None:
+            can_undo = bool(getattr(self, "book_canvas", None) and self.book_canvas.can_undo())
+        if can_redo is None:
+            can_redo = bool(getattr(self, "book_canvas", None) and self.book_canvas.can_redo())
+        undo = getattr(self, "undo_button", None)
+        redo = getattr(self, "redo_button", None)
+        if undo is not None:
+            undo.configure(state="normal" if can_undo else "disabled", cursor="hand2" if can_undo else "arrow")
+        if redo is not None:
+            redo.configure(state="normal" if can_redo else "disabled", cursor="hand2" if can_redo else "arrow")
+
+    def _workspace_undo(self):
+        canvas = getattr(self, "book_canvas", None)
+        if canvas is not None:
+            canvas.structure_undo()
+
+    def _workspace_redo(self):
+        canvas = getattr(self, "book_canvas", None)
+        if canvas is not None:
+            canvas.structure_redo()
+
+    def _workspace_keyboard_undo(self, event=None):
+        widget = getattr(event, "widget", None) if event is not None else None
+        if isinstance(widget, (tk.Entry, tk.Text)):
+            return None
+        self._workspace_undo()
+        return "break"
+
+    def _workspace_keyboard_redo(self, event=None):
+        widget = getattr(event, "widget", None) if event is not None else None
+        if isinstance(widget, (tk.Entry, tk.Text)):
+            return None
+        self._workspace_redo()
+        return "break"
 
     def _refresh_workspace_state(self):
         if self.context is None:
