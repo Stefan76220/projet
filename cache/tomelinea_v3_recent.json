@@ -1,15 +1,33 @@
 [
   {
+    "name": "bd",
+    "type": "bande_dessinee",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\bd",
+    "last_opened": "2026-08-23T19:40"
+  },
+  {
+    "name": "textuel",
+    "type": "livre_textuel",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\textuel",
+    "last_opened": "2026-08-19T08:32"
+  },
+  {
+    "name": "fiche",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\fiche",
+    "last_opened": "2026-08-19T08:31"
+  },
+  {
     "name": "TEST STRUCTURE — RÉFÉRENCE",
     "type": "livre_textuel",
     "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST STRUCTURE — RÉFÉRENCE",
-    "last_opened": "2026-08-18T20:54"
+    "last_opened": "2026-08-19T08:20"
   },
   {
     "name": "test",
     "type": "ouvrage_structure",
     "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\test",
-    "last_opened": "2026-08-18T19:08"
+    "last_opened": "2026-08-19T08:10"
   },
   {
     "name": "TEST PAGES AUTO",
@@ -28,22 +46,5 @@
     "type": "ouvrage_structure",
     "path": "C:\\Users\\PC\\Desktop\\livre lapin\\version 2\\projet x",
     "last_opened": "2026-08-18T14:34"
-  },
-  {
-    "name": "Nouveau projet",
-    "type": "ouvrage_structure",
-    "path": "C:\\Users\\PC\\Desktop\\livre lapin\\version 2\\Nouveau projet",
-    "last_opened": "2026-08-16T15:32"
-  },
-  {
-    "name": "nouveau 1",
-    "type": "ouvrage_structure",
-    "path": "C:\\Users\\PC\\Desktop\\livre lapin\\version 2\\nouveau 1",
-    "last_opened": "2026-08-16T15:31"
-  },
-  {
-    "name": "Nouveau projet",
-    "type": "livre_textuel",
-    "path": "C:\\Users\\PC\\Documents\\Nouveau projet"
   }
 ]
