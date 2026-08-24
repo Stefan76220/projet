@@ -1232,29 +1232,6 @@ class BookCanvas(tk.Frame):
         ]
         return min(candidates)[1] if candidates else index
 
-    def _structure_selection_unit_indices(self, index: int | None) -> list[int]:
-        """Retourne l'unité Structure sélectionnable contenant ``index``.
-
-        Une page normale constitue une unité d'une page. Une vraie double page
-        soudée (paire 2P) constitue une seule unité de sélection : cliquer sur
-        l'une de ses deux moitiés doit toujours sélectionner les deux.
-        """
-        source_index = self._source_index_for_index(index)
-        if source_index is None or not 0 <= source_index < len(self.items):
-            return []
-        source = self.items[source_index]
-        pair_id = self._double_page_pair_id(source)
-        if pair_id:
-            members = self._valid_double_page_pair_members(pair_id)
-            if members:
-                member_ids = {str(item.get("id") or "").strip() for item in members}
-                return [
-                    i for i, item in enumerate(self.items)
-                    if not self._is_automatic_page(item)
-                    and str(item.get("id") or "").strip() in member_ids
-                ]
-        return [source_index]
-
     def _set_single_page_selection(self, index: int | None) -> None:
         self._structure_double_pair_pending = None
         source_index = self._source_index_for_index(index)
@@ -1270,24 +1247,14 @@ class BookCanvas(tk.Frame):
         new_id = str(self.items[source_index].get("id") or "")
         if previous_id and new_id != previous_id:
             self._structure_rule_target = ""
-
-        unit_indices = self._structure_selection_unit_indices(source_index) or [source_index]
-        unit_ids = {
-            str(self.items[i].get("id") or "").strip()
-            for i in unit_indices
-            if 0 <= i < len(self.items) and str(self.items[i].get("id") or "").strip()
-        }
         self._selected_index = source_index
         self._structure_selection_anchor_index = source_index
         source = self.items[source_index]
-        self._selected_page_ids = unit_ids
+        source_id = str(source.get("id") or "").strip()
+        self._selected_page_ids = {source_id} if source_id else set()
         self._selected_group_id = self._item_group_id(source)
         self._structure_selection_kind = "page"
-        # Une 2P est une unité atomique : les commandes R/V d'une page simple
-        # ne sont pas armées lorsqu'on sélectionne l'une de ses deux moitiés.
-        self._structure_recto_verso_armed = (
-            len(unit_indices) == 1 and self.structure_recto_verso_source_allowed(source)
-        )
+        self._structure_recto_verso_armed = self.structure_recto_verso_source_allowed(source)
 
     def _set_multi_page_selection(self, indices) -> None:
         self._structure_double_pair_pending = None
@@ -1295,11 +1262,11 @@ class BookCanvas(tk.Frame):
         ordered: list[int] = []
         seen: set[int] = set()
         for raw in indices or []:
-            for source_index in self._structure_selection_unit_indices(raw):
-                if source_index is None or source_index in seen:
-                    continue
-                seen.add(source_index)
-                ordered.append(source_index)
+            source_index = self._source_index_for_index(raw)
+            if source_index is None or source_index in seen:
+                continue
+            seen.add(source_index)
+            ordered.append(source_index)
         ordered.sort()
         if not ordered:
             self._selected_index = None
@@ -1364,15 +1331,6 @@ class BookCanvas(tk.Frame):
         if not source_id:
             return
 
-        unit_indices = self._structure_selection_unit_indices(source_index) or [source_index]
-        unit_ids = {
-            str(self.items[i].get("id") or "").strip()
-            for i in unit_indices
-            if 0 <= i < len(self.items) and str(self.items[i].get("id") or "").strip()
-        }
-        if not unit_ids:
-            return
-
         current_ids = {
             str(value or "").strip()
             for value in getattr(self, "_selected_page_ids", set())
@@ -1381,11 +1339,10 @@ class BookCanvas(tk.Frame):
         if str(getattr(self, "_structure_selection_kind", "page") or "page") != "page":
             current_ids.clear()
 
-        # Ctrl+clic sur une moitié d'une 2P ajoute/retire la 2P entière.
-        if unit_ids.issubset(current_ids):
-            current_ids.difference_update(unit_ids)
+        if source_id in current_ids:
+            current_ids.remove(source_id)
         else:
-            current_ids.update(unit_ids)
+            current_ids.add(source_id)
 
         self._selected_page_ids = current_ids
         self._structure_selection_kind = "page"
@@ -1404,12 +1361,12 @@ class BookCanvas(tk.Frame):
 
         # La dernière page ajoutée devient la page de référence. Si elle vient
         # d'être retirée, on conserve comme référence la première page restante.
-        if unit_ids.intersection(current_ids):
+        if source_id in current_ids:
             primary_index = source_index
             self._structure_selection_anchor_index = source_index
         else:
             primary_index = selected_indices[0]
-            if getattr(self, "_structure_selection_anchor_index", None) in unit_indices:
+            if getattr(self, "_structure_selection_anchor_index", None) == source_index:
                 self._structure_selection_anchor_index = primary_index
         self._selected_index = primary_index
         self._selected_group_id = self._item_group_id(self.items[primary_index])
@@ -1429,21 +1386,6 @@ class BookCanvas(tk.Frame):
                 source_id = str(self.items[source_index].get("id") or "").strip()
                 if source_id:
                     ids.add(source_id)
-        # Une sélection héritée ou restaurée ne doit jamais laisser une moitié
-        # de 2P isolée : dès qu'un membre est présent, son pair l'est aussi.
-        expanded_ids = set(ids)
-        for index, item in enumerate(self.items):
-            if self._is_automatic_page(item):
-                continue
-            item_id = str(item.get("id") or "").strip()
-            if item_id not in ids:
-                continue
-            for unit_index in self._structure_selection_unit_indices(index):
-                unit_id = str(self.items[unit_index].get("id") or "").strip()
-                if unit_id:
-                    expanded_ids.add(unit_id)
-        ids = expanded_ids
-
         result: list[int] = []
         for index, item in enumerate(self.items):
             if self._is_automatic_page(item):
@@ -1463,25 +1405,10 @@ class BookCanvas(tk.Frame):
         if source_index is None:
             return False
         source_id = str(self.items[source_index].get("id") or "").strip()
-        selected_ids = {
-            str(value or "").strip()
-            for value in getattr(self, "_selected_page_ids", set())
-            if str(value or "").strip()
-        }
+        selected_ids = getattr(self, "_selected_page_ids", set())
         if selected_ids:
-            if source_id in selected_ids:
-                return True
-            # Tolère un ancien état partiel : une moitié sélectionnée rend la
-            # double page entière visuellement sélectionnée.
-            unit_ids = {
-                str(self.items[i].get("id") or "").strip()
-                for i in self._structure_selection_unit_indices(source_index)
-                if str(self.items[i].get("id") or "").strip()
-            }
-            return bool(unit_ids.intersection(selected_ids))
-        if source_index == self._selected_index:
-            return True
-        return any(i == self._selected_index for i in self._structure_selection_unit_indices(source_index))
+            return source_id in selected_ids
+        return source_index == self._selected_index
 
     def _selected_pages_label(self) -> str:
         count = len(self._selected_source_indices())
@@ -1548,13 +1475,6 @@ class BookCanvas(tk.Frame):
         kept = {page_id for page_id in requested if page_id in source_by_id}
         if primary_id and primary_id in source_by_id:
             kept.add(primary_id)
-        expanded_kept = set(kept)
-        for page_id in list(kept):
-            for unit_index in self._structure_selection_unit_indices(source_by_id[page_id]):
-                unit_id = str(self.items[unit_index].get("id") or "").strip()
-                if unit_id:
-                    expanded_kept.add(unit_id)
-        kept = expanded_kept
 
         self._structure_selection_kind = "page"
         self._selected_page_ids = kept
@@ -9550,86 +9470,45 @@ class BookCanvas(tk.Frame):
         source = self.items[indices[0]] if len(indices) == 1 else None
         if source is None or code not in {"AV", "AP", "R", "V", "2P"}:
             return {"code": code, "source": source, "has_rule": False, "excluded": False}
-
         source_type = self._type_of(source)
-        result = {
-            "code": code,
-            "source": source,
-            "source_type": source_type,
-            "has_rule": False,
-            "general_exists": False,
-            "local_rule": False,
-            "local_variant": False,
-            "can_remove_local": False,
-            "can_reintegrate": False,
-            "excluded": False,
-        }
-
+        has_rule = False
+        excluded = False
         if code in {"AV", "AP"}:
             position = "before" if code == "AV" else "after"
             general_target = self.structure_get_page_auto_type_rule(source_type, position)
             local_override = self._page_auto_override_value(source, position)
             effective_target = self._structure_page_auto_type(source, position)
-            general_exists = bool(general_target)
-            local_rule = local_override not in (None, "", "__none__") and bool(effective_target)
-            local_variant = bool(local_rule and (not general_exists or str(local_override) != general_target))
-            excluded = bool(general_exists and local_override == "__none__")
+            has_rule = bool(general_target)
+            excluded = has_rule and local_override == "__none__"
+        elif code in {"R", "V"}:
+            side = "recto" if code == "R" else "verso"
+            general_side = self.structure_get_recto_verso_type_rule(source_type)
+            local_override = self._recto_verso_override_value(source)
+            effective_side = self._effective_recto_verso_rule(source)
+            has_rule = general_side == side
+            excluded = has_rule and local_override == "__none__"
+        elif code == "2P":
+            has_rule = bool(self.structure_get_double_page_type_rule(source_type))
+            excluded = has_rule and self._double_page_override_value(source) == "__none__"
+        result = {"code": code, "source": source, "source_type": source_type, "has_rule": has_rule, "excluded": excluded}
+        if code in {"AV", "AP"}:
             result.update({
                 "position": position,
                 "general_target": general_target,
                 "local_override": local_override,
                 "effective_target": effective_target,
-                "has_rule": general_exists,
-                "general_exists": general_exists,
-                "general_code": code,
-                "local_rule": local_rule,
-                "local_variant": local_variant,
-                "excluded": excluded,
-                # Une décision locale différente de la règle générale peut elle aussi
-                # être propagée volontairement à tout le type.
-                "can_extend": bool(local_rule and (not general_exists or effective_target != general_target)),
-                "can_scind": bool(general_exists and not local_variant),
-                "can_remove_local": bool(local_rule and not general_exists),
-                "can_reintegrate": bool(general_exists and local_override is not None),
+                "can_extend": bool(effective_target and not general_target),
+                "can_scind": bool(general_target),
             })
-            return result
-
-        if code in {"R", "V"}:
-            side = "recto" if code == "R" else "verso"
-            general_side = self.structure_get_recto_verso_type_rule(source_type)
-            local_override = self._recto_verso_override_value(source)
-            effective_side = self._effective_recto_verso_rule(source)
-            general_exists = general_side in {"recto", "verso"}
-            local_rule = local_override in {"recto", "verso"}
-            local_variant = bool(local_rule and (not general_exists or local_override != general_side))
-            excluded = bool(general_exists and local_override == "__none__")
+        elif code in {"R", "V"}:
             result.update({
                 "side": side,
                 "general_side": general_side,
                 "local_override": local_override,
                 "effective_side": effective_side,
-                "has_rule": general_exists,
-                "general_exists": general_exists,
-                "general_code": "R" if general_side == "recto" else "V" if general_side == "verso" else code,
-                "local_rule": local_rule,
-                "local_variant": local_variant,
-                "excluded": excluded,
-                "can_extend": bool(local_rule and (not general_exists or effective_side != general_side)),
-                "can_scind": bool(general_exists and not local_variant),
-                "can_remove_local": bool(local_rule and not general_exists),
-                "can_reintegrate": bool(general_exists and local_override is not None),
+                "can_extend": bool(effective_side == side and not general_side),
+                "can_scind": bool(general_side == side),
             })
-            return result
-
-        # Ancienne règle 2P par type : conservée uniquement pour compatibilité.
-        has_rule = bool(self.structure_get_double_page_type_rule(source_type))
-        excluded = has_rule and self._double_page_override_value(source) == "__none__"
-        result.update({
-            "has_rule": has_rule,
-            "general_exists": has_rule,
-            "general_code": "2P",
-            "excluded": excluded,
-        })
         return result
 
     def _structure_update_common_rule_actions(self) -> None:
@@ -9645,10 +9524,8 @@ class BookCanvas(tk.Frame):
         code = str(context.get("code") or "")
         display_code = code or ("2P" if pair_context.get("active") else "")
         active = bool(display_code)
-        general_exists = bool(context.get("general_exists", context.get("has_rule")))
-        local_variant = bool(context.get("local_variant"))
-        can_remove_local = bool(context.get("can_remove_local"))
-        can_reintegrate = bool(context.get("can_reintegrate"))
+        has_rule = bool(context.get("has_rule"))
+        excluded = bool(context.get("excluded"))
         try:
             panel.configure(
                 highlightthickness=2 if active else 1,
@@ -9670,35 +9547,20 @@ class BookCanvas(tk.Frame):
                     bg="#4A2C2A" if scind_mode else "#162A38",
                     fg="#FFF0F0" if scind_mode else "#F2F3F1",
                 )
-
-            # Une règle générale accepte une exception locale. Si la page possède
-            # déjà n'importe quel override local (exclusion ou variante), le même
-            # bouton devient Réintégrer.
             exception_btn.configure(
-                state="normal" if general_exists else "disabled",
-                text="Réintégrer" if can_reintegrate else "Exception",
+                state="normal" if has_rule else "disabled",
+                text="Réintégrer" if has_rule and excluded else "Exception",
             )
-
-            # Une règle locale seule doit pouvoir être retirée. Pour une variante
-            # locale posée sur une règle générale, on évite l'ambiguïté : Étendre
-            # ou Réintégrer sont proposés, mais pas la suppression globale.
-            can_remove_general = bool(general_exists and not local_variant)
-            remove_enabled = bool(can_remove_general or can_remove_local)
             pending_key = str(getattr(self, "_structure_rule_remove_pending", "") or "")
-            general_code = str(context.get("general_code") or code)
-            current_key = f"{general_code}:{context.get('source_type', '')}" if can_remove_general else ""
-            pending = bool(can_remove_general and pending_key == current_key)
-            if can_remove_local and not general_exists:
-                remove_text = "Retirer local"
-            else:
-                remove_text = "Confirmer" if pending else "Retirer règle"
+            current_key = f"{code}:{context.get('source_type', '')}" if has_rule else ""
+            pending = bool(has_rule and pending_key == current_key)
             remove_btn.configure(
-                state="normal" if remove_enabled else "disabled",
-                text=remove_text,
+                state="normal" if has_rule else "disabled",
+                text="Confirmer" if pending else "Retirer règle",
                 bg="#4A2C2A" if pending else "#162A38",
                 fg="#FFF0F0" if pending else "#F2F3F1",
             )
-            if not remove_enabled:
+            if not has_rule:
                 self._structure_rule_remove_pending = ""
         except Exception:
             pass
@@ -9763,14 +9625,12 @@ class BookCanvas(tk.Frame):
             self.structure_cancel_tool()
         self._structure_rule_remove_pending = ""
         context = self._structure_target_rule_context()
-        if not bool(context.get("general_exists", context.get("has_rule"))):
+        if not context.get("has_rule"):
             return False
         code = str(context.get("code") or "")
         if code in {"AV", "AP"}:
             position = "before" if code == "AV" else "after"
-            # Toute variante locale sur une règle générale se réintègre en
-            # supprimant l'override ; sans override on crée une vraie exception.
-            if context.get("local_override") is not None:
+            if context.get("excluded"):
                 ok = self.structure_reset_selected_page_auto_override(position)
             else:
                 ok = self.structure_set_selected_page_auto(position, "", scope="local")
@@ -9789,36 +9649,13 @@ class BookCanvas(tk.Frame):
         if getattr(self, "_structure_pending_kind", None):
             self.structure_cancel_tool()
         context = self._structure_target_rule_context()
-        code = str(context.get("code") or "")
-        source_type = str(context.get("source_type") or "")
-        general_exists = bool(context.get("general_exists", context.get("has_rule")))
-        local_variant = bool(context.get("local_variant"))
-        can_remove_local = bool(context.get("can_remove_local"))
-
-        # Portée locale : depuis que AV/AP et R/V naissent localement, leur
-        # suppression doit être possible sans les avoir d'abord étendus.
-        if not general_exists and can_remove_local:
-            self._structure_rule_remove_pending = ""
-            if code in {"AV", "AP"}:
-                position = "before" if code == "AV" else "after"
-                ok = self.structure_set_selected_page_auto(position, "", scope="local")
-            elif code in {"R", "V"}:
-                ok = self.structure_remove_selected_local_recto_verso_rule()
-            else:
-                ok = False
-            if ok:
-                self.status_var.set(f"Règle locale {code} retirée de cette page.")
-            self._structure_update_common_rule_actions()
-            return bool(ok)
-
-        # Une variante locale sur une règle générale a deux gestes non ambigus :
-        # Étendre cette variante ou Réintégrer la règle générale. On ne supprime
-        # pas silencieusement la règle de tout le type depuis cet état.
-        if not general_exists or local_variant:
+        if not context.get("has_rule"):
             self._structure_rule_remove_pending = ""
             self._structure_update_common_rule_actions()
             return False
 
+        code = str(context.get("code") or "")
+        source_type = str(context.get("source_type") or "")
         definition = self._structure_type_definition(source_type)
         source_label = str(
             definition.get("short_label")
@@ -9826,20 +9663,20 @@ class BookCanvas(tk.Frame):
             or source_type.replace("_", " ").strip().capitalize()
             or "ce type"
         )
-        general_code = str(context.get("general_code") or code)
-        pending_key = f"{general_code}:{source_type}"
+        pending_key = f"{code}:{source_type}"
 
-        # Suppression d'une règle générale : confirmation en deux clics car la
-        # portée dépasse la page courante.
+        # Même principe que Supprimer/Dupliquer :
+        # 1er clic = armement visuel ; 2e clic = exécution.
         if str(getattr(self, "_structure_rule_remove_pending", "") or "") != pending_key:
             self._structure_rule_remove_pending = pending_key
             self._structure_update_common_rule_actions()
             self.status_var.set(
-                f"Retirer {general_code} pour tous les {source_label}  •  cliquez une seconde fois pour confirmer"
+                f"Retirer {code} pour tous les {source_label}  •  cliquez une seconde fois pour confirmer"
             )
             return False
 
         self._structure_rule_remove_pending = ""
+
         if code in {"AV", "AP"}:
             position = "before" if code == "AV" else "after"
             ok = self.structure_remove_page_auto_type_rule(source_type, position)
@@ -9852,7 +9689,7 @@ class BookCanvas(tk.Frame):
             return False
 
         if ok:
-            self.status_var.set(f"Règle {general_code} retirée pour tous les {source_label}.")
+            self.status_var.set(f"Règle {code} retirée pour tous les {source_label}.")
         self._structure_update_common_rule_actions()
         return bool(ok)
 
@@ -10779,27 +10616,6 @@ class BookCanvas(tk.Frame):
             return ""
         return self.structure_get_recto_verso_type_rule(self._type_of(item))
 
-    def structure_remove_selected_local_recto_verso_rule(self) -> bool:
-        """Retire uniquement la règle R/V locale de la page sélectionnée."""
-        indices = self._selected_source_indices()
-        if len(indices) != 1:
-            return False
-        source = self.items[indices[0]]
-        override = self._recto_verso_override_value(source)
-        if override not in {"recto", "verso"}:
-            return False
-        source_id = str(source.get("id") or "")
-        source.pop("recto_verso_override", None)
-        source.pop("recto_verso_conflict", None)
-        source["structure_side"] = self.structure_get_recto_verso_type_rule(self._type_of(source)) or "libre"
-        self._sync_structural_automatic_pages()
-        self._save_order()
-        restored = next((i for i, item in enumerate(self.items) if str(item.get("id") or "") == source_id), None)
-        if restored is not None:
-            self._set_single_page_selection(restored)
-        self.render()
-        return True
-
     def structure_toggle_recto_verso_exception(self) -> bool:
         indices = self._selected_source_indices()
         if len(indices) != 1:
@@ -10810,10 +10626,8 @@ class BookCanvas(tk.Frame):
         if not rule:
             self.status_var.set("Aucune règle Recto/Verso à désolidariser.")
             return False
-        override = self._recto_verso_override_value(source)
-        if override is not None:
+        if self._recto_verso_override_value(source) == "__none__":
             source.pop("recto_verso_override", None)
-            source["structure_side"] = rule
             message = "Page réintégrée à la règle Recto/Verso."
         else:
             source["recto_verso_override"] = "__none__"
@@ -11046,11 +10860,13 @@ class BookCanvas(tk.Frame):
         if not isinstance(rules, dict):
             rules = {}
         entry = dict(rules.get(source, {})) if isinstance(rules.get(source, {}), dict) else {}
-        # Une règle de type signifie réellement « toutes les pages du type ».
-        # Lors d'une création comme d'un remplacement, les anciens overrides et
-        # exclusions de cette position sont donc nettoyés avant application.
+        had_rule = bool(str(entry.get(position) or "").strip())
+
+        # Une nouvelle règle repart d'un état propre. Lors d'un remplacement,
+        # seules les vraies exclusions « désolidarisées » sont conservées ; les
+        # anciens overrides locaux de V23/V24 ne peuvent plus prendre le dessus.
         self._clear_page_auto_position_state(
-            source, position, data=data, keep_exclusions=False
+            source, position, data=data, keep_exclusions=had_rule
         )
 
         entry[position] = target
@@ -11549,7 +11365,7 @@ class BookCanvas(tk.Frame):
                 built_for_token[token] = self._prepare_structural_auto_item(
                     best,
                     roles=roles,
-                    group_id=auto_groups.get(token, self._structure_fallback_content_group_id()),
+                    group_id=auto_groups.get(token, self.DEFAULT_GROUP_ID),
                 )
 
             rebuilt: list[dict] = []
@@ -12123,25 +11939,15 @@ class BookCanvas(tk.Frame):
             self.status_var.set(f"Type déjà appliqué  •  {label}")
             return False
 
-        # Le changement de type ne doit pas effacer les décisions LOCALES
-        # attachées à cette occurrence (AV/AP/R/V). Les règles générales de
-        # l'ancien type cessent naturellement de s'appliquer une fois le type
-        # changé ; les overrides locaux, eux, suivent la page.
-        #
-        # L'exception 2P par type reste spécifique à l'ancien type et est donc
-        # retirée. Les marqueurs de conflit sont toujours recalculés.
         for key in (
-            "recto_verso_conflict",
+            "page_auto_before_override", "page_auto_after_override",
+            "page_auto_before_type", "page_auto_after_type",
+            "recto_verso_override", "recto_verso_conflict",
             "double_page_override", "double_page_conflict",
         ):
             item.pop(key, None)
 
         self._structure_apply_type_metadata(item, page_type, label)
-        local_side = self._recto_verso_override_value(item)
-        if local_side in {"recto", "verso"}:
-            item["structure_side"] = str(local_side)
-        elif local_side == "__none__":
-            item["structure_side"] = "libre"
         for key in (
             "gabarit_zones", "gabarit_page_settings", "gabarit_scope_last",
             "gabarit_scope_active", "gabarit_status", "gabarit_done",
@@ -12182,21 +11988,14 @@ class BookCanvas(tk.Frame):
 
         source_ids = [str(item.get("id") or "").strip() for item in sources]
         for item in sources:
-            # Même règle que pour le remplacement unitaire : AV/AP/R/V locaux
-            # appartiennent à la page et sont conservés lors du changement de type.
-            # Seules les anciennes exceptions 2P liées au type et les marques de
-            # conflit sont nettoyées avant recalcul.
             for key in (
-                "recto_verso_conflict",
+                "page_auto_before_override", "page_auto_after_override",
+                "page_auto_before_type", "page_auto_after_type",
+                "recto_verso_override", "recto_verso_conflict",
                 "double_page_override", "double_page_conflict",
             ):
                 item.pop(key, None)
             self._structure_apply_type_metadata(item, type_key, label)
-            local_side = self._recto_verso_override_value(item)
-            if local_side in {"recto", "verso"}:
-                item["structure_side"] = str(local_side)
-            elif local_side == "__none__":
-                item["structure_side"] = "libre"
             for key in (
                 "gabarit_zones", "gabarit_page_settings", "gabarit_scope_last",
                 "gabarit_scope_active", "gabarit_status", "gabarit_done",
@@ -12370,28 +12169,8 @@ class BookCanvas(tk.Frame):
         return self._structure_insert_group_at_position(self._target_movable_group_index(canvas_x))
 
     def _structure_valid_local_positions(self, group_id: str) -> list[int]:
-        """Retourne uniquement les frontières entre blocs structurels atomiques.
-
-        Une insertion depuis la bibliothèque doit respecter exactement les mêmes
-        invariants qu'un déplacement : elle ne peut jamais couper une 2P soudée,
-        ni se glisser entre une page principale et ses pages automatiques AV/AP.
-        Les positions sont exprimées dans la séquence physique du groupe car
-        ``_move_page_to_group_position`` insère ensuite dans cette même séquence.
-        """
         indexes = self._group_items(group_id)
-        if not indexes:
-            positions = [0]
-        else:
-            local_by_index = {index: pos for pos, index in enumerate(indexes)}
-            blocks = self._page_blocks_in_group(group_id)
-            # Frontière avant le premier bloc, puis après chaque bloc complet.
-            positions = [0]
-            for block in blocks:
-                local_members = [local_by_index[index] for index in block if index in local_by_index]
-                if local_members:
-                    positions.append(max(local_members) + 1)
-            positions = sorted(set(max(0, min(len(indexes), int(pos))) for pos in positions))
-
+        positions = list(range(len(indexes) + 1))
         if group_id == self.START_GROUP_ID and indexes:
             last_locked = -1
             for local_pos, index in enumerate(indexes):
@@ -12839,14 +12618,12 @@ class BookCanvas(tk.Frame):
             ]
             self._structure_renumber_parts()
 
-            # Après suppression, sélectionner une autre partie ordinaire si elle
-            # existe. Ne pas basculer artificiellement sur Début/Fin.
-            remaining_middle = [
-                str(group.get("id", ""))
-                for group in self.groups
-                if str(group.get("id", "")) not in {self.START_GROUP_ID, self.END_GROUP_ID}
-            ]
-            self._selected_group_id = remaining_middle[0] if remaining_middle else None
+            # On conserve une sélection structurelle valide sans recentrer B.
+            if self.groups:
+                neighbor_pos = min(max(0, group_pos - 1), len(self.groups) - 1)
+                self._selected_group_id = str(self.groups[neighbor_pos].get("id", ""))
+            else:
+                self._selected_group_id = None
             self._selected_index = None
             self._selected_page_ids.clear()
             self._structure_selection_kind = "group"
@@ -13013,28 +12790,7 @@ class BookCanvas(tk.Frame):
                 )
                 seen.add(group_id)
 
-        # `pages_interieures` est l'identifiant historique de la première Partie 1,
-        # pas une partie structurelle obligatoire. Une Partie 1 supprimée ne doit
-        # donc pas réapparaître vide à la sauvegarde. On ne recrée la partie par
-        # défaut que pour une structure réellement neuve, ou si des pages de
-        # contenu orphelines ont besoin d'un groupe d'accueil.
-        persisted_group_ids = {
-            str(raw.get("id", "")).strip()
-            for raw in raw_groups
-            if isinstance(raw, dict) and not bool(raw.get("deleted", False))
-            and str(raw.get("id", "")).strip()
-        } if isinstance(raw_groups, list) else set()
-        raw_items_for_group_need = data.get("items", [])
-        needs_content_group = any(
-            isinstance(item, dict)
-            and not self._is_automatic_page(item)
-            and not self._is_cover(item)
-            and not self._is_second_cover(item)
-            and not self._is_third_cover(item)
-            and not self._is_back_cover(item)
-            for item in (raw_items_for_group_need if isinstance(raw_items_for_group_need, list) else [])
-        )
-        if not middle and (not persisted_group_ids or needs_content_group):
+        if self.DEFAULT_GROUP_ID not in seen:
             middle.insert(0, dict(defaults[self.DEFAULT_GROUP_ID]))
 
         start_group = dict(defaults[self.START_GROUP_ID])
@@ -13050,14 +12806,6 @@ class BookCanvas(tk.Frame):
 
         valid_group_ids = [str(group.get("id", "")) for group in groups]
         valid_group_set = set(valid_group_ids)
-        content_group_ids = [
-            group_id for group_id in valid_group_ids
-            if group_id not in {self.START_GROUP_ID, self.END_GROUP_ID}
-        ]
-        fallback_content_group_id = (
-            self.DEFAULT_GROUP_ID if self.DEFAULT_GROUP_ID in valid_group_set
-            else (content_group_ids[0] if content_group_ids else self.DEFAULT_GROUP_ID)
-        )
         page_type_group: dict[str, str] = {}
         raw_defs = data.get("page_types", [])
         if isinstance(raw_defs, list):
@@ -13114,9 +12862,9 @@ class BookCanvas(tk.Frame):
                 group_id = old_group
             else:
                 page_type = str(item.get("type", "")).strip()
-                group_id = page_type_group.get(page_type, fallback_content_group_id)
+                group_id = page_type_group.get(page_type, self.DEFAULT_GROUP_ID)
                 if group_id not in valid_group_set:
-                    group_id = fallback_content_group_id
+                    group_id = self.DEFAULT_GROUP_ID
             if old_group != group_id:
                 item["plan_group"] = group_id
                 changed = True
@@ -13234,16 +12982,6 @@ class BookCanvas(tk.Frame):
             return (1,)
         return (0,)
 
-    def _structure_fallback_content_group_id(self) -> str:
-        """Retourne une partie de contenu réellement présente, sans recréer Partie 1."""
-        valid = [str(group.get("id", "")) for group in self.groups if isinstance(group, dict)]
-        if self.DEFAULT_GROUP_ID in valid:
-            return self.DEFAULT_GROUP_ID
-        return next(
-            (group_id for group_id in valid if group_id not in {self.START_GROUP_ID, self.END_GROUP_ID}),
-            self.DEFAULT_GROUP_ID,
-        )
-
     def _item_group_id(self, item: dict) -> str:
         if self._is_cover(item) or self._is_second_cover(item):
             return self.START_GROUP_ID
@@ -13251,7 +12989,7 @@ class BookCanvas(tk.Frame):
             return self.END_GROUP_ID
         group_id = str(item.get("plan_group", "")).strip()
         valid = {str(group.get("id", "")) for group in self.groups}
-        return group_id if group_id in valid else self._structure_fallback_content_group_id()
+        return group_id if group_id in valid else self.DEFAULT_GROUP_ID
 
     def _item_label(self, item: dict, index: int) -> str:
         for key in ("name", "nom", "title", "titre", "label", "type_name", "page_type_name"):
@@ -14195,14 +13933,7 @@ class BookCanvas(tk.Frame):
 
     def _draw_group_header(self, group: dict, x1: float, x2: float, y1: float, y2: float):
         group_id = str(group.get("id", ""))
-        # Une partie n'est visuellement « sélectionnée » que lorsqu'elle est
-        # réellement la cible structurelle. Une page sélectionnée conserve son
-        # contexte de partie via _selected_group_id, mais ne doit pas donner le
-        # même signal visuel que la sélection de la partie entière.
-        selected = (
-            str(getattr(self, "_structure_selection_kind", "page") or "page") == "group"
-            and group_id == self._selected_group_id
-        )
+        selected = group_id == self._selected_group_id
         hovered = group_id == self._hover_group_id and not self._dragging
         protected = group_id in {self.START_GROUP_ID, self.END_GROUP_ID} or bool(group.get("protected", False))
         accent = str(group.get("accent") or theme.ACCENT_BRIGHT)
@@ -14514,36 +14245,19 @@ class BookCanvas(tk.Frame):
         )
 
     def _source_rule_tokens(self, item: dict) -> list[tuple[str, bool]]:
-        """Repères cumulés de toutes les règles réellement portées par la page.
-
-        Une règle locale et une règle étendue utilisent le même code visuel ; une
-        exception à une règle générale reste visible mais barrée. Le but est que
-        la page montre toujours AV + AP + R/V + 2P simultanément lorsqu'ils existent.
-        """
+        """Repères portés uniquement par la page d'origine : AV, AP, R ou V."""
         if self._is_automatic_page(item) or self._is_locked_page(item):
             return []
         source_type = self._type_of(item)
         if not source_type:
             return []
         tokens: list[tuple[str, bool]] = []
-
         for position, code in (("before", "AV"), ("after", "AP")):
-            general = self.structure_get_page_auto_type_rule(source_type, position)
-            override = self._page_auto_override_value(item, position)
-            effective = self._structure_page_auto_type(item, position)
-            if effective:
-                tokens.append((code, False))
-            elif general and override == "__none__":
-                tokens.append((code, True))
-
-        general_side = self.structure_get_recto_verso_type_rule(source_type)
-        override_side = self._recto_verso_override_value(item)
-        effective_side = self._effective_recto_verso_rule(item)
-        if effective_side in {"recto", "verso"}:
-            tokens.append(("R" if effective_side == "recto" else "V", False))
-        elif general_side in {"recto", "verso"} and override_side == "__none__":
-            tokens.append(("R" if general_side == "recto" else "V", True))
-
+            if self.structure_get_page_auto_type_rule(source_type, position):
+                tokens.append((code, self._page_auto_override_value(item, position) == "__none__"))
+        side = self.structure_get_recto_verso_type_rule(source_type)
+        if side in {"recto", "verso"}:
+            tokens.append(("R" if side == "recto" else "V", self._recto_verso_override_value(item) == "__none__"))
         if self._double_page_pair_role(item) == "left":
             tokens.append(("2P", False))
         elif self.structure_get_double_page_type_rule(source_type) and self._double_page_override_value(item) == "__none__":
@@ -14875,24 +14589,14 @@ class BookCanvas(tk.Frame):
         if source is not None:
             source_type = self._type_of(source)
             for position, base in (("before", "AV"), ("after", "AP")):
-                general = self.structure_get_page_auto_type_rule(source_type, position) if source_type else ""
+                rule = self.structure_get_page_auto_type_rule(source_type, position) if source_type else ""
                 override = self._page_auto_override_value(source, position)
-                effective = self._structure_page_auto_type(source, position)
-
-                # L'indicateur du bouton décrit l'état EFFECTIF de la page
-                # sélectionnée, qu'il provienne d'une règle locale ou étendue.
-                # Une exception explicite à une règle générale reste barrée.
-                if effective:
-                    label = f"{base} ✓"
-                elif general and override == "__none__":
-                    label = f"{base} —"
-                else:
-                    label = base
-
-                if position == "before":
-                    before_text = label
-                else:
-                    after_text = label
+                if rule:
+                    label = f"{base} —" if override == "__none__" else f"{base} ✓"
+                    if position == "before":
+                        before_text = label
+                    else:
+                        after_text = label
         try:
             before_btn.configure(text=before_text)
             after_btn.configure(text=after_text)
@@ -14978,35 +14682,20 @@ class BookCanvas(tk.Frame):
             self._update_scrollbars(viewport_w, viewport_h)
             return
 
-        # Structure autorise explicitement deux natures de sélection :
-        # une ou plusieurs pages, OU une partie entière. Ne jamais effacer une
-        # sélection de partie simplement parce qu'aucune page n'est sélectionnée.
-        # C'était la cause du clic sur une partie qui semblait ne rien faire :
-        # _on_press posait bien _selected_group_id, puis render() l'annulait.
-        selection_kind = str(getattr(self, "_structure_selection_kind", "page") or "page")
-        if selection_kind == "group":
-            valid_group_ids = {str(group.get("id", "")) for group in self.groups}
-            group_selection_valid = bool(
-                self._selected_group_id
-                and str(self._selected_group_id) in valid_group_ids
-            )
+        # Structure autorise désormais explicitement une sélection vide.
+        # Un clic dans le vide ne doit jamais réactiver silencieusement la
+        # première page (la couverture), car cela rend la désélection trompeuse
+        # et empêche ensuite d'armer normalement un nouveau dépôt depuis C.
+        selection_valid = (
+            self._selected_index is not None
+            and 0 <= int(self._selected_index) < len(self.items)
+        )
+        if not selection_valid:
             self._selected_index = None
             self._selected_page_ids.clear()
-            if not group_selection_valid:
-                self._selected_group_id = None
+            self._selected_group_id = None
             if self._page_focus:
                 self._page_focus = False
-        else:
-            selection_valid = (
-                self._selected_index is not None
-                and 0 <= int(self._selected_index) < len(self.items)
-            )
-            if not selection_valid:
-                self._selected_index = None
-                self._selected_page_ids.clear()
-                self._selected_group_id = None
-                if self._page_focus:
-                    self._page_focus = False
 
         work_page_count = self._structure_work_page_count()
         middle_count = sum(1 for group in self.groups if str(group.get("id", "")) not in {self.START_GROUP_ID, self.END_GROUP_ID})
@@ -15478,7 +15167,7 @@ class BookCanvas(tk.Frame):
     def _group_id_at_x(self, canvas_x: float) -> str:
         """Retourne la partie correspondant à x, y compris dans les espaces entre parties."""
         if not self._group_page_bounds:
-            return self._structure_fallback_content_group_id()
+            return self.DEFAULT_GROUP_ID
         ordered = []
         for group in self.groups:
             group_id = str(group.get("id", ""))
@@ -15486,7 +15175,7 @@ class BookCanvas(tk.Frame):
             if bounds is not None:
                 ordered.append((group_id, bounds[0], bounds[1]))
         if not ordered:
-            return self._structure_fallback_content_group_id()
+            return self.DEFAULT_GROUP_ID
         if canvas_x <= ordered[0][1]:
             return ordered[0][0]
         for pos, (group_id, x1, x2) in enumerate(ordered):
@@ -15616,12 +15305,7 @@ class BookCanvas(tk.Frame):
         return blocks
 
     def _target_local_pos_from_x(self, canvas_x: float, group_id: str, *, dragged_index: int | None = None) -> int:
-        """Position d'insertion parmi les pages sources, sans jamais couper une 2P.
-
-        Les pages automatiques restent invisibles pour le calcul de position. Une
-        double page soudée, en revanche, constitue une cible atomique : le pointeur
-        peut viser avant le bloc ou après le bloc, jamais entre ses deux moitiés.
-        """
+        """Position d'insertion parmi les pages sources, indépendante des autos visibles."""
         excluded = self._drag_excluded_indices() if getattr(self, "_drag_kind", None) == "page" else set()
         source_indexes = [
             index for index in self._group_items(group_id)
@@ -15629,59 +15313,17 @@ class BookCanvas(tk.Frame):
         ]
         if not source_indexes:
             return 0
-
-        local_by_index = {index: pos for pos, index in enumerate(source_indexes)}
-        consumed: set[int] = set()
-
-        for index in source_indexes:
-            if index in consumed:
-                continue
-
-            item = self.items[index]
-            atomic_sources = [index]
-            pair_id = self._double_page_pair_id(item)
-            if pair_id:
-                members = [
-                    member_index for member_index, _member in self._double_page_pair_members(pair_id)
-                    if member_index in local_by_index and member_index not in excluded
-                ]
-                if len(members) == 2:
-                    atomic_sources = sorted(members)
-
-            consumed.update(atomic_sources)
-
-            visual_indices: set[int] = set(atomic_sources)
-            source_ids = {
-                str(self.items[source_index].get("id") or "").strip()
-                for source_index in atomic_sources
-            }
-            source_ids.discard("")
-            if source_ids:
-                for candidate_index in self._group_items(group_id):
-                    if candidate_index in excluded or not self._is_automatic_page(self.items[candidate_index]):
-                        continue
-                    if source_ids.intersection(self._automatic_source_ids(self.items[candidate_index])):
-                        visual_indices.add(candidate_index)
-
-            boxes = [
-                self._page_hitboxes[candidate_index]
-                for candidate_index in visual_indices
-                if candidate_index in self._page_hitboxes
-            ]
+        for local_pos, index in enumerate(source_indexes):
+            block = self._drag_block_indices(index)
+            boxes = [self._page_hitboxes[i] for i in block if i in self._page_hitboxes and i not in excluded]
+            if not boxes and index in self._page_hitboxes:
+                boxes = [self._page_hitboxes[index]]
             if not boxes:
                 continue
-
             x1 = min(box[0] for box in boxes)
             x2 = max(box[2] for box in boxes)
-            first_pos = min(local_by_index[source_index] for source_index in atomic_sources)
-            after_pos = max(local_by_index[source_index] for source_index in atomic_sources) + 1
-
-            # Une 2P n'offre que deux cibles : avant ou après son bloc complet.
             if canvas_x < (x1 + x2) / 2.0:
-                return first_pos
-            if len(atomic_sources) > 1 and canvas_x <= x2:
-                return after_pos
-
+                return local_pos
         return len(source_indexes)
 
     def _refresh_drag_target(self):
@@ -15891,10 +15533,14 @@ class BookCanvas(tk.Frame):
             self.after_idle(lambda idx=self._selected_index: self._begin_page_name_edit(idx) if idx is not None else None)
             return "break"
 
-        # Un clic simple sur le titre d’une partie doit sélectionner la partie,
-        # exactement comme un clic sur le reste de son bandeau. Le renommage
-        # reste réservé au double-clic (_on_double_click). Cela permet ensuite
-        # Dupliquer / Supprimer sans provoquer l’édition du titre par erreur.
+        title_group_id = self._group_title_at(event)
+        if title_group_id is not None and not self._page_focus:
+            self._drag_selected_page_ids.clear()
+            self._structure_selection_kind = "group"
+            self._selected_page_ids.clear()
+            self._selected_group_id = title_group_id
+            self.after_idle(lambda gid=title_group_id: self._begin_group_title_edit(gid))
+            return "break"
 
         if self._page_focus:
             index = self._index_at(event)

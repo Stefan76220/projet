@@ -1668,35 +1668,6 @@ class TomeLineaV3(tk.Tk):
                     reset_active_brick()
                     return "break"
 
-                # Structure — remplacement direct en 2 clics :
-                # 1) sélectionner une ou plusieurs pages dans B ;
-                # 2) cliquer le nouveau type dans C.
-                # Tant qu'un dépôt multiple est déjà armé, un clic sur un autre
-                # type continue toutefois de changer l'outil d'insertion.
-                if not pending_type and canvas is not None:
-                    try:
-                        selected = (
-                            list(canvas._selected_source_indices())
-                            if hasattr(canvas, "_selected_source_indices")
-                            else []
-                        )
-                    except Exception:
-                        selected = []
-                    if selected and str(getattr(canvas, "_structure_selection_kind", "") or "") == "page":
-                        try:
-                            replaced = bool(
-                                hasattr(canvas, "structure_replace_selected_page_type")
-                                and canvas.structure_replace_selected_page_type(str(type_key or ""))
-                            )
-                        except Exception:
-                            replaced = False
-                        reset_active_brick()
-                        refresh_page_auto_ui()
-                        # Même si la page est protégée ou si le type est déjà appliqué,
-                        # le clic reste une tentative de remplacement et ne doit pas
-                        # armer accidentellement un dépôt de page.
-                        return "break"
-
                 reset_active_brick()
                 active_brick["widget"] = card
                 active_brick["normalizer"] = normal

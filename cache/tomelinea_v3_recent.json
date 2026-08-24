@@ -1,5 +1,29 @@
 [
   {
+    "name": "LABO RÈGLES STRUCTURE",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\LABO RÈGLES STRUCTURE",
+    "last_opened": "2026-08-24T20:58"
+  },
+  {
+    "name": "LABO RÈGLES STRUCTURE — ISOLÉ",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\LABO RÈGLES STRUCTURE — ISOLÉ",
+    "last_opened": "2026-08-24T12:23"
+  },
+  {
+    "name": "TEST STRUCTURE — PAS À PAS",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST STRUCTURE — PAS À PAS",
+    "last_opened": "2026-08-24T11:05"
+  },
+  {
+    "name": "livre fiche test",
+    "type": "ouvrage_structure",
+    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\livre fiche test",
+    "last_opened": "2026-08-24T07:57"
+  },
+  {
     "name": "bd",
     "type": "bande_dessinee",
     "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\bd",
@@ -22,29 +46,5 @@
     "type": "livre_textuel",
     "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST STRUCTURE — RÉFÉRENCE",
     "last_opened": "2026-08-19T08:20"
-  },
-  {
-    "name": "test",
-    "type": "ouvrage_structure",
-    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\test",
-    "last_opened": "2026-08-19T08:10"
-  },
-  {
-    "name": "TEST PAGES AUTO",
-    "type": "livre_textuel",
-    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\TEST PAGES AUTO",
-    "last_opened": "2026-08-18T19:08"
-  },
-  {
-    "name": "les pieds nickeles",
-    "type": "bande_dessinee",
-    "path": "C:\\Users\\PC\\Documents\\TomeLinea\\Projets\\les pieds nickeles",
-    "last_opened": "2026-08-18T14:38"
-  },
-  {
-    "name": "projet x",
-    "type": "ouvrage_structure",
-    "path": "C:\\Users\\PC\\Desktop\\livre lapin\\version 2\\projet x",
-    "last_opened": "2026-08-18T14:34"
   }
 ]
