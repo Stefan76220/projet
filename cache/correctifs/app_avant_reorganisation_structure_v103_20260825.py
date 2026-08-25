@@ -1049,23 +1049,20 @@ class TomeLineaV3(tk.Tk):
             a_h = max(66, min(74, int(h * 0.075)))
             active_tab = str(getattr(self, "active_tab", "structure") or "structure")
 
-            # V104 — le bandeau porteur des onglets reste AU-DESSUS de la surface
-            # de travail en Structure/Gabarits. Pour Production/Sortie, C conserve
-            # son rôle de panneau de commandes sous B.
-            compact_tabs = active_tab in {"gabarits", "structure"}
-            if compact_tabs:
+            # Structure conserve l'atelier horizontal de C. Gabarits, au contraire,
+            # transforme C en simple barre de navigation : les outils vivent
+            # verticalement dans B afin que la page récupère presque toute la hauteur.
+            if active_tab == "gabarits":
                 c_h = 48
-                c_y = margin_y + a_h + gap
-                b_y = c_y + c_h + gap
-                normal_b_h = max(290, h - b_y - margin_y)
             else:
                 c_h = max(255, min(320, int(h * 0.285)))
-                b_y = margin_y + a_h + gap
-                normal_b_h = max(290, h - (margin_y * 2) - (gap * 2) - a_h - c_h)
-                c_y = b_y + normal_b_h + gap
+
+            normal_b_h = max(290, h - (margin_y * 2) - (gap * 2) - a_h - c_h)
+            normal_c_y = margin_y + a_h + gap + normal_b_h + gap
+            b_y = margin_y + a_h + gap
 
             self.zone_a.place(x=margin_x, y=margin_y, width=inner_w, height=a_h)
-            self.zone_c.place(x=margin_x, y=c_y, width=inner_w, height=c_h)
+            self.zone_c.place(x=margin_x, y=normal_c_y, width=inner_w, height=c_h)
 
             if self._book_page_focus:
                 # Même B, aucune transition d'écran : il couvre simplement C.

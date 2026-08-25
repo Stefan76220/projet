@@ -1,5 +1,3 @@
-# TOMELINEA_GABARITS_REPERE_FOND_GUIDE_V112 — repère Fond guide dans la ligne de contexte + survol cumulatif
-# TOMELINEA_STRUCTURE_ICONES_DEDIEES_V111
 # TOMELINEA_STRUCTURE_VUE_AUTO_FIT_V100
 # TOMELINEA_GABARITS_OVERLAY_V98
 # TOMELINEA_GABARITS_ICONES_ASSETS_V97 — icônes légèrement réduites + bouton capsule disque plein
@@ -864,8 +862,6 @@ class BookCanvas(tk.Frame):
         # 14 icônes sémantiques seulement ; toutes les fonctions internes
         # réutilisent le même bouton circulaire "station".
         self._gabarit_premium_icon_cache: dict[tuple[str, str, int], object] = {}
-        # V111 — icônes Structure validées graphiquement, séparées de Gabarits.
-        self._structure_premium_icon_cache: dict[tuple[str, str, int], object] = {}
         self._gabarit_station_button_cache: dict[tuple[str, int], object] = {}
         # Palette contextuelle Gabarits : blocs réordonnables verticalement.
         self._gabarit_inspector_block_bounds: dict[str, tuple[float, float]] = {}
@@ -6187,15 +6183,6 @@ class BookCanvas(tk.Frame):
             if bool(unit.get("double")):
                 characteristics.append("Double page")
 
-            # V112 — le Fond guide doit être identifiable sans ouvrir la page.
-            # Il reste un support de travail de la page : on signale seulement
-            # sa présence/visibilité dans la ligne de contexte.
-            guide = {} if automatic else self._gabarit_guide_data(item)
-            has_guide = bool(isinstance(guide, dict) and guide.get("path"))
-            guide_visible = bool(guide.get("visible", True)) if has_guide else False
-            if has_guide:
-                characteristics.append("Fond guide · visible" if guide_visible else "Fond guide · masqué")
-
             local_exception = (not automatic) and self._gabarit_is_local_exception(item, idx)
             frame_exception = (not automatic) and self._gabarit_alignment_is_exception(item)
             if local_exception:
@@ -6241,21 +6228,6 @@ class BookCanvas(tk.Frame):
                     target.create_line(x - 7, 61, x + 7, 61, fill="#A7C9C3" if active else "#8DAAA6", width=2)
                     marker_key=f"{idx}:frame_exception"
                     self._gabarit_context_marker_hitboxes[marker_key]=((x-10,57,x+10,66),cumulative_label)
-                    if str(getattr(self,"_gabarit_hover_context_marker","") or "")==marker_key:
-                        self._gabarit_draw_context_marker_tooltip(target,x,cumulative_label)
-
-                if has_guide:
-                    # Petit pictogramme image, volontairement plus discret que
-                    # la station principale. Actif = céladon ; masqué = gris + barre.
-                    gx1, gy1, gx2, gy2 = x + 14.0, 46.0, x + 23.0, 54.0
-                    gcol = ("#8EC1B6" if active else "#79A89F") if guide_visible else "#778287"
-                    target.create_rectangle(gx1, gy1, gx2, gy2, outline=gcol, width=1)
-                    target.create_line(gx1 + 1.5, gy2 - 1.8, gx1 + 4.0, gy1 + 3.8, gx1 + 5.6, gy2 - 3.0, gx2 - 1.2, gy2 - 1.8, fill=gcol, width=1)
-                    target.create_oval(gx2 - 3.2, gy1 + 1.4, gx2 - 1.8, gy1 + 2.8, outline=gcol, width=1)
-                    if not guide_visible:
-                        target.create_line(gx1 - 0.8, gy2 + 0.8, gx2 + 0.8, gy1 - 0.8, fill="#A98D86", width=1)
-                    marker_key=f"{idx}:guide"
-                    self._gabarit_context_marker_hitboxes[marker_key]=((gx1-3,gy1-4,gx2+3,gy2+4),cumulative_label)
                     if str(getattr(self,"_gabarit_hover_context_marker","") or "")==marker_key:
                         self._gabarit_draw_context_marker_tooltip(target,x,cumulative_label)
             if active:
@@ -15235,172 +15207,6 @@ class BookCanvas(tk.Frame):
         self._structure_update_common_rule_actions()
 
     # ------------------------------------------------------------------
-    # Structure V111 — icônes graphiques dédiées
-    # ------------------------------------------------------------------
-
-    def _structure_external_icon_image(self, kind: str, state: str, size: int):
-        """Charge une icône Structure validée sans modifier les assets Gabarits."""
-        if Image is None:
-            return None
-        try:
-            base_dir = Path(__file__).resolve().with_name("structure_icones_v111")
-        except Exception:
-            return None
-
-        aliases = {
-            # Rail principal.
-            "book_start": "book_start",
-            "liminaries": "liminaries",
-            "book_body": "book_body",
-            "annex": "annex",
-            "book_end": "book_end",
-            "part": "part",
-            "rules": "rules",
-            "double_page": "double_page",
-            "actions": "actions",
-            "undo": "undo",
-            "redo": "redo",
-            "trash": "trash",
-            # Menus de règles/actions.
-            "before": "before",
-            "after": "after",
-            "recto": "recto",
-            "verso": "verso",
-            "extend": "extend",
-            "split": "split",
-            "exception": "reintegrate",
-            "reintegrate": "reintegrate",
-            "remove_rule": "delete",
-            "duplicate": "duplicate",
-            "delete": "delete",
-        }
-        stem = aliases.get(str(kind or "").strip(), str(kind or "").strip())
-        if not stem:
-            return None
-        path = base_dir / f"{stem}.png"
-        if not path.exists():
-            return None
-        try:
-            image = Image.open(path).convert("RGBA")
-        except Exception:
-            return None
-
-        # Les états sont portés surtout par la cellule, comme dans Gabarits.
-        # En désactivé, seule l'opacité de l'icône est abaissée.
-        if str(state) == "disabled":
-            try:
-                alpha = image.getchannel("A").point(lambda p: int(p * 0.34))
-                image.putalpha(alpha)
-            except Exception:
-                pass
-
-        target = max(16, int(size))
-        try:
-            return image.resize((target, target), Image.Resampling.LANCZOS)
-        except Exception:
-            return image.resize((target, target))
-
-    def _structure_premium_icon_photo(self, kind: str, state: str, size: int):
-        if ImageTk is None:
-            return None
-        key = (str(kind), str(state), int(size))
-        cached = getattr(self, "_structure_premium_icon_cache", {}).get(key)
-        if cached is not None:
-            return cached
-        image = self._structure_external_icon_image(kind, state, size)
-        if image is None:
-            return None
-        try:
-            photo = ImageTk.PhotoImage(image)
-        except Exception:
-            return None
-        self._structure_premium_icon_cache[key] = photo
-        return photo
-
-    def _structure_draw_premium_icon(
-        self, target, kind: str, box, *,
-        selected: bool = False, disabled: bool = False, hovered: bool = False,
-        fallback_kind: str = "document",
-    ):
-        x1, y1, x2, y2 = map(float, box)
-        cx = (x1 + x2) / 2.0
-        cy = (y1 + y2) / 2.0
-        state = "disabled" if disabled else ("active" if selected else ("hover" if hovered else "normal"))
-        size = max(16, min(46, int(round(min(x2 - x1, y2 - y1) * 0.94))))
-        photo = self._structure_premium_icon_photo(kind, state, size)
-        if photo is not None and hasattr(target, "create_image"):
-            target.create_image(cx, cy, image=photo)
-            return True
-        return self._gabarit_inspector_draw_premium_icon(
-            target, fallback_kind, box,
-            selected=selected, disabled=disabled, hovered=hovered,
-        )
-
-    def _structure_page_type_icon_kind(self, type_key: str) -> tuple[str, str]:
-        """Icône validée + repli Gabarits pour chaque destination Structure."""
-        key = str(type_key or "").strip()
-        dedicated = {
-            "page_titre": "page_titre",
-            "mentions_legales": "mentions_legales",
-            "dedicace": "dedicace",
-            "avant_propos": "preambule",
-            "preface": "preambule",
-            "sommaire": "sommaire",
-            "tete_partie": "ouverture_section",
-            "chapitre": "ouverture_section",
-            "texte": "texte",
-            "fiche": "fiche",
-            "illustration": "illustration",
-            "transition": "transition",
-            "intercalaire": "transition",
-            "page_blanche": "page_blanche",
-            "annexe": "annexes_page",
-            "sources": "sources",
-            "bibliographie": "sources",
-            "glossaire": "glossaire",
-            "index": "index",
-            "remerciements": "remerciements",
-            "a_propos_auteur": "a_propos",
-            "colophon": "colophon",
-            "conclusion": "book_end",
-        }
-        fallback = "image" if key == "illustration" else (
-            "text" if key in {"texte", "fiche", "tete_partie", "chapitre"} else "document"
-        )
-        return dedicated.get(key, ""), fallback
-
-    def _structure_draw_icon_button(
-        self, target, key: str, box, kind: str, *,
-        disabled: bool = False, danger: bool = False, tooltip: str = "",
-    ):
-        x1, y1, x2, y2 = map(float, box)
-        hovered = str(getattr(self, "_structure_tools_hover", "") or "") == str(key)
-        if disabled:
-            fill, outline = "#131A1F", "#2E3A40"
-        elif danger and hovered:
-            fill, outline = "#3B2727", "#C96F63"
-        elif hovered:
-            fill, outline = "#1E2D34", "#55747A"
-        else:
-            fill, outline = "#19242B", "#34464F"
-        target.create_rectangle(x1, y1, x2, y2, fill=fill, outline=outline, width=1)
-        self._structure_draw_premium_icon(
-            target, kind, (x1 + 3, y1 + 3, x2 - 3, y2 - 3),
-            disabled=disabled, hovered=hovered,
-            fallback_kind=("trash" if danger else kind),
-        )
-        self._gabarit_inspector_hitboxes[str(key)] = (x1, y1, x2, y2)
-        if hovered and tooltip:
-            tw = max(82.0, min(210.0, 20.0 + len(tooltip) * 5.7))
-            tx2 = x1 - 7.0
-            tx1 = max(8.0, tx2 - tw)
-            ty1 = max(6.0, y1 + (y2 - y1 - 24.0) / 2.0)
-            target.create_rectangle(tx1, ty1, tx2, ty1 + 24.0, fill="#111A20", outline="#4B6169", width=1)
-            target.create_text((tx1 + tx2) / 2.0, ty1 + 12.0, text=tooltip, anchor="center",
-                               fill="#DDE5E5", font=(theme.FONT_UI, 7, "bold"))
-        return (x1, y1, x2, y2)
-
-    # ------------------------------------------------------------------
     # Structure V104 — organisation empilée + rail unique
     # ------------------------------------------------------------------
 
@@ -15754,11 +15560,10 @@ class BookCanvas(tk.Frame):
 
             # Taille d'icône identique à Gabarits : presque toute la cellule.
             inset = max(3.0, (row_h - 44.0) / 2.0)
-            self._structure_draw_premium_icon(
+            self._gabarit_inspector_draw_premium_icon(
                 target, icon,
                 (x1+inset, y1+inset, x2-inset, y2-inset),
                 selected=active, hovered=hovered,
-                fallback_kind=icon,
             )
             self._gabarit_inspector_hitboxes[key]=(x1,y1,x2,y2)
 
@@ -15784,16 +15589,21 @@ class BookCanvas(tk.Frame):
             str(getattr(self, "_structure_selection_kind", "") or "") == "group"
             and str(getattr(self, "_selected_group_id", "") or "")
         )
-        for key,icon,disabled,danger,tip in (
-            ("undo","undo",not self.can_undo(),False,"Annuler · Ctrl+Z"),
-            ("redo","redo",not self.can_redo(),False,"Rétablir · Ctrl+Y / Ctrl+Maj+Z"),
-            ("delete_quick","trash",not (has_page_selection or has_group_selection),True,"Supprimer la sélection"),
-        ):
-            self._structure_draw_icon_button(
-                target, key, (quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),
-                icon, disabled=disabled, danger=danger, tooltip=tip,
-            )
-            quick_x += quick_button + quick_gap
+        old_hover = str(getattr(self, "_gabarit_inspector_hover", "") or "")
+        try:
+            self._gabarit_inspector_hover = str(getattr(self, "_structure_tools_hover", "") or "")
+            for key,icon,disabled,danger,tip in (
+                ("undo","undo",not self.can_undo(),False,"Annuler · Ctrl+Z"),
+                ("redo","redo",not self.can_redo(),False,"Rétablir · Ctrl+Y / Ctrl+Maj+Z"),
+                ("delete_quick","trash",not (has_page_selection or has_group_selection),True,"Supprimer la sélection"),
+            ):
+                self._gabarit_inspector_premium_icon_button(
+                    target,key,(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),
+                    icon,disabled=disabled,danger=danger,tooltip=tip,
+                )
+                quick_x += quick_button + quick_gap
+        finally:
+            self._gabarit_inspector_hover = old_hover
 
         band=str(self._structure_tools_active_band or "")
         if not band:
@@ -15819,12 +15629,8 @@ class BookCanvas(tk.Frame):
                 hovered=self._structure_tools_hover==f"type:{type_key}"
                 box=(fly_left+10,yrow,fly_right-10,yrow+38)
                 target.create_rectangle(*box,fill="#20313A" if hovered else "#19272E",outline="#55747A" if hovered else "#34464F",width=1)
-                icon_kind, fallback_kind = self._structure_page_type_icon_kind(type_key)
-                self._structure_draw_premium_icon(
-                    target, icon_kind or fallback_kind,
-                    (box[0]+5,box[1]+4,box[0]+34,box[3]-4),
-                    hovered=hovered, fallback_kind=fallback_kind,
-                )
+                icon_kind="image" if type_key=="illustration" else ("text" if type_key in {"texte","fiche","tete_partie","chapitre"} else "document")
+                self._gabarit_inspector_draw_premium_icon(target,icon_kind,(box[0]+5,box[1]+4,box[0]+34,box[3]-4),hovered=hovered)
                 target.create_text(box[0]+42,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold"))
                 self._gabarit_inspector_hitboxes[f"type:{type_key}"]=box
                 yrow+=43
@@ -15840,7 +15646,7 @@ class BookCanvas(tk.Frame):
             for key,label,icon in rows:
                 hover=self._structure_tools_hover==key; box=(fly_left+10,yy,fly_right-10,yy+35)
                 target.create_rectangle(*box,fill="#20313A" if hover else "#19272E",outline="#55747A" if hover else "#34464F")
-                self._structure_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover,fallback_kind=("trash" if icon=="remove_rule" else icon))
+                self._gabarit_inspector_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover)
                 target.create_text(box[0]+40,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold"))
                 self._gabarit_inspector_hitboxes[key]=box; yy+=39
         elif band=="actions":
@@ -15855,10 +15661,10 @@ class BookCanvas(tk.Frame):
                 bx=fly_right-72 if key=="dup_minus" else fly_right-38; box=(bx,yy,bx+28,yy+28)
                 target.create_rectangle(*box,fill="#20313A",outline="#34464F"); target.create_text((box[0]+box[2])/2,(box[1]+box[3])/2,text=label,fill="#DDE4E4",font=(theme.FONT_UI,10,"bold")); self._gabarit_inspector_hitboxes[key]=box
             yy+=40
-            for key,label,icon in (("duplicate","Dupliquer","duplicate"),("delete","Supprimer","delete")):
+            for key,label,icon in (("duplicate","Dupliquer","duplicate"),("delete","Supprimer","trash")):
                 box=(fly_left+10,yy,fly_right-10,yy+35); hover=self._structure_tools_hover==key
                 target.create_rectangle(*box,fill="#20313A" if hover else "#19272E",outline="#55747A" if hover else "#34464F")
-                self._structure_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover,fallback_kind=("trash" if key=="delete" else "duplicate"))
+                self._gabarit_inspector_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover)
                 target.create_text(box[0]+40,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold")); self._gabarit_inspector_hitboxes[key]=box; yy+=39
 
     def _structure_scroll_press(self, event) -> bool:

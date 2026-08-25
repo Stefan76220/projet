@@ -1,5 +1,3 @@
-# TOMELINEA_GABARITS_REPERE_FOND_GUIDE_V112 — repère Fond guide dans la ligne de contexte + survol cumulatif
-# TOMELINEA_STRUCTURE_ICONES_DEDIEES_V111
 # TOMELINEA_STRUCTURE_VUE_AUTO_FIT_V100
 # TOMELINEA_GABARITS_OVERLAY_V98
 # TOMELINEA_GABARITS_ICONES_ASSETS_V97 — icônes légèrement réduites + bouton capsule disque plein
@@ -598,11 +596,6 @@ class BookCanvas(tk.Frame):
     # encadré, graphique...) n'est pas un type de page Structure.
     STRUCTURE_EXTRA_PAGE_TYPES = (
         {
-            "type": "page_garde", "label": "Page de garde", "short_label": "Garde",
-            "visual": "blank", "family": "ouverture", "custom": False,
-            "duplicable": True, "structure_builtin": True,
-        },
-        {
             "type": "planche", "label": "Planche", "short_label": "Planche",
             "visual": "text", "family": "corps", "custom": False,
             "duplicable": True, "structure_builtin": True,
@@ -673,7 +666,7 @@ class BookCanvas(tk.Frame):
     PAGE_AUTO_DEPLOY_H = 0.56
     PAGE_SIZE_NORMAL = 0.82
     PAGE_SIZE_PART_HEAD = 0.98
-    PAGE_SIZE_SELECTED = 0.96
+    PAGE_SIZE_SELECTED = 1.16
     PAGE_LABEL_H = 20
     PAGE_NAME_H = 0
 
@@ -864,8 +857,6 @@ class BookCanvas(tk.Frame):
         # 14 icônes sémantiques seulement ; toutes les fonctions internes
         # réutilisent le même bouton circulaire "station".
         self._gabarit_premium_icon_cache: dict[tuple[str, str, int], object] = {}
-        # V111 — icônes Structure validées graphiquement, séparées de Gabarits.
-        self._structure_premium_icon_cache: dict[tuple[str, str, int], object] = {}
         self._gabarit_station_button_cache: dict[tuple[str, int], object] = {}
         # Palette contextuelle Gabarits : blocs réordonnables verticalement.
         self._gabarit_inspector_block_bounds: dict[str, tuple[float, float]] = {}
@@ -926,29 +917,6 @@ class BookCanvas(tk.Frame):
         # page automatique puisse satisfaire plusieurs contraintes compatibles.
         self._structure_rule_sync_in_progress = False
 
-        # Structure V103 — nouvelle organisation : parties empilées verticalement,
-        # chaque partie possède son propre défilement horizontal. Le rail droit
-        # réutilise les icônes premium de Gabarits ; aucune logique métier n'est
-        # déplacée dans cette couche de présentation.
-        self._structure_stacked_layout = True
-        self._structure_group_scroll: dict[str, float] = {}
-        self._structure_group_row_bounds: dict[str, tuple[float, float, float, float]] = {}
-        self._structure_group_page_bands: dict[str, tuple[float, float]] = {}
-        self._structure_scroll_track_hitboxes: dict[str, tuple[float, float, float, float]] = {}
-        self._structure_scroll_thumb_hitboxes: dict[str, tuple[float, float, float, float]] = {}
-        self._structure_scroll_drag_group: str = ""
-        self._structure_scroll_drag_start_x: float = 0.0
-        self._structure_scroll_drag_start_value: float = 0.0
-        self._structure_tools_active_band: str = ""
-        self._structure_tools_hover: str = ""
-        self._structure_tools_pressed: str = ""
-        # V107 — le rail Structure reprend le comportement de Gabarits :
-        # ouverture au survol, fermeture temporisée afin de pouvoir rejoindre
-        # le panneau déroulé sans qu'il disparaisse dans l'intervalle.
-        self._structure_tools_pending_band: str = ""
-        self._structure_tools_open_job = None
-        self._structure_tools_close_job = None
-
         # Historique Structure : un état correspond à une décision utilisateur complète.
         # Les recalculs automatiques AV/AP/R/V/2P restent intégrés à cette même étape.
         self._history_undo: list[dict] = []
@@ -965,7 +933,6 @@ class BookCanvas(tk.Frame):
         try:
             top = self.winfo_toplevel()
             top.bind("<Button-1>", self._structure_global_click, add="+")
-            top.bind("<Button-3>", self._structure_right_click_cancel, add="+")
             top.bind("<Escape>", self._structure_escape, add="+")
         except Exception:
             pass
@@ -1931,7 +1898,6 @@ class BookCanvas(tk.Frame):
         )
         self.gabarit_inspector_canvas.pack(fill="both", expand=True)
         self.gabarit_inspector_canvas.bind("<ButtonPress-1>", self._gabarit_inspector_press)
-        self.gabarit_inspector_canvas.bind("<ButtonPress-3>", self._structure_right_click_cancel, add="+")
         self.gabarit_inspector_canvas.bind("<B1-Motion>", self._gabarit_inspector_drag_motion)
         self.gabarit_inspector_canvas.bind("<ButtonRelease-1>", self._gabarit_inspector_release)
         self.gabarit_inspector_canvas.bind("<Motion>", self._gabarit_inspector_motion)
@@ -2268,19 +2234,9 @@ class BookCanvas(tk.Frame):
         self.structure_auto_counter.bind("<Enter>", self._structure_auto_counter_enter)
         self.structure_auto_counter.bind("<Leave>", self._structure_auto_counter_leave)
 
-        # V103 : le ruban inférieur historique reste construit afin que toutes les
-        # méthodes d'état existantes continuent à fonctionner, mais il n'est plus
-        # l'interface visible de Structure. Le rail droit reprend ses commandes.
-        try:
-            self.structure_command_bar.grid_remove()
-            self.structure_bottom_controls.grid_remove()
-        except Exception:
-            pass
-
         self.canvas.configure(xscrollcommand=self._on_canvas_xview, yscrollcommand=self._on_canvas_yview)
 
         self.canvas.bind("<ButtonPress-1>", self._on_press)
-        self.canvas.bind("<ButtonPress-3>", self._structure_right_click_cancel, add="+")
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<ButtonPress-2>", self._gabarit_middle_press, add="+")
@@ -2391,7 +2347,7 @@ class BookCanvas(tk.Frame):
 
     def _gabarit_visibility_watchdog(self) -> None:
         self._gabarit_visibility_watch_job = None
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "structure"}:
+        if str(getattr(self, "_work_mode", "")) != "gabarits":
             self._gabarit_hide_detached_hosts()
             return
 
@@ -2444,7 +2400,7 @@ class BookCanvas(tk.Frame):
         if not self._project_shell_visible:
             self._gabarit_hide_detached_hosts()
             return
-        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure"}:
+        if str(getattr(self, "_work_mode", "")) == "gabarits":
             self._gabarit_inspector_signature = None
             try:
                 self.after_idle(self._show_gabarit_inspector_host)
@@ -2457,7 +2413,7 @@ class BookCanvas(tk.Frame):
     def _gabarit_owner_mapped(self, _event=None):
         # Si on revient réellement sur le bureau Gabarits, la palette reprend
         # sa place ; sinon elle reste masquée.
-        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure"}:
+        if str(getattr(self, "_work_mode", "")) == "gabarits":
             try:
                 self.after_idle(self._show_gabarit_inspector_host)
             except Exception:
@@ -2613,8 +2569,7 @@ class BookCanvas(tk.Frame):
         canvas = getattr(self, "canvas", None)
         if host is None or canvas is None:
             return
-        current_mode = str(getattr(self, "_work_mode", "") or "")
-        if current_mode not in {"gabarits", "structure"} or not self._gabarit_owner_is_visible():
+        if str(getattr(self, "_work_mode", "")) != "gabarits" or not self._gabarit_owner_is_visible():
             try:
                 host.withdraw()
             except Exception:
@@ -2626,10 +2581,7 @@ class BookCanvas(tk.Frame):
             width = int(self._gabarit_inspector_width(float(cw)))
             height = max(1, int(canvas.winfo_height()))
             edge_gutter = 8
-            # Structure conserve un seul rail à droite. Gabarits garde sa
-            # préférence gauche/droite historique.
-            side = "right" if current_mode == "structure" else self._gabarit_tools_side()
-            if side == "left":
+            if self._gabarit_tools_side() == "left":
                 x = int(canvas.winfo_rootx()) + edge_gutter
             else:
                 x = int(canvas.winfo_rootx()) + cw - width - edge_gutter
@@ -2637,7 +2589,7 @@ class BookCanvas(tk.Frame):
             host.geometry(f"{width}x{height}+{x}+{y}")
             host.deiconify()
             host.lift()
-            self._render_gabarit_inspector_overlay(force=True)
+            self._render_gabarit_inspector_overlay()
         except Exception:
             pass
 
@@ -2645,7 +2597,7 @@ class BookCanvas(tk.Frame):
         host = getattr(self, "gabarit_inspector_host", None)
         if host is None:
             return
-        if str(getattr(self, "_work_mode", "") or "") not in {"gabarits", "structure"} or not self._gabarit_owner_is_visible():
+        if str(getattr(self, "_work_mode", "")) != "gabarits" or not self._gabarit_owner_is_visible():
             self._hide_gabarit_inspector_host()
             return
         self._gabarit_inspector_signature = None
@@ -2654,8 +2606,7 @@ class BookCanvas(tk.Frame):
             return
         try:
             width = self._gabarit_inspector_width(float(self.canvas.winfo_width()))
-            side = "right" if str(getattr(self, "_work_mode", "") or "") == "structure" else self._gabarit_tools_side()
-            if side == "left":
+            if self._gabarit_tools_side() == "left":
                 host.place(x=8, y=0, width=width, relheight=1.0, anchor="nw")
             else:
                 host.place(relx=1.0, x=-8, y=0, width=width, relheight=1.0, anchor="ne")
@@ -3044,41 +2995,6 @@ class BookCanvas(tk.Frame):
             self._gabarit_premium_metal_rect(image,(28,27,66,61),5); d=ImageDraw.Draw(image)
             d.line((22,70,72,70),fill=accent,width=3); d.polygon([(22,70),(29,66),(29,74)],fill=accent); d.polygon([(72,70),(65,66),(65,74)],fill=accent)
             d.line((76,24,76,62),fill=gold,width=3); d.polygon([(76,24),(72,31),(80,31)],fill=gold); d.polygon([(76,62),(72,55),(80,55)],fill=gold)
-        elif kind in {"book_start","book_body","book_end","liminaries","annex"}:
-            # Même matière métallique que Gabarits, avec une sémantique de livre.
-            d=ImageDraw.Draw(image)
-            self._gabarit_premium_metal_line(d,[(22,28),(45,35),(45,70),(22,62),(22,28)],5)
-            self._gabarit_premium_metal_line(d,[(74,28),(51,35),(51,70),(74,62),(74,28)],5)
-            d.line((48,34,48,71),fill=accent,width=3)
-            if kind=="book_start": d.polygon([(18,19),(36,23),(18,29)],fill=gold)
-            elif kind=="book_end": d.polygon([(60,19),(78,23),(60,29)],fill=gold)
-            elif kind=="liminaries":
-                for yy in (42,49,56): d.line((29,yy,39,yy),fill=silver,width=2)
-            elif kind=="annex": d.ellipse((61,45,69,53),outline=gold,width=3)
-            else: d.ellipse((44,21,52,29),fill=gold)
-        elif kind == "part":
-            d=ImageDraw.Draw(image); self._gabarit_premium_metal_rect(image,(24,27,72,69),6); d=ImageDraw.Draw(image)
-            d.line((48,36,48,60),fill=accent,width=4); d.line((36,48,60,48),fill=accent,width=4); d.line((28,74,68,74),fill=gold,width=2)
-        elif kind == "rules":
-            d=ImageDraw.Draw(image)
-            for yy,xx in ((30,38),(48,59),(66,45)):
-                d.line((22,yy,74,yy),fill=silver,width=3); d.ellipse((xx-4,yy-4,xx+4,yy+4),fill=gold,outline=accent,width=2)
-        elif kind == "double_page":
-            self._gabarit_premium_metal_rect(image,(18,25,46,70),5); self._gabarit_premium_metal_rect(image,(50,25,78,70),5); d=ImageDraw.Draw(image); d.line((48,27,48,68),fill=gold,width=3)
-        elif kind == "actions":
-            d=ImageDraw.Draw(image)
-            for xx in (30,48,66): d.ellipse((xx-5,43,xx+5,53),fill=silver,outline=accent,width=2)
-        elif kind == "duplicate":
-            self._gabarit_premium_metal_rect(image,(29,22,70,63),5); self._gabarit_premium_metal_rect(image,(20,33,61,74),5); d=ImageDraw.Draw(image); d.line((37,48,55,48),fill=accent,width=3)
-        elif kind in {"before","after","recto","verso","extend","exception","remove_rule"}:
-            d=ImageDraw.Draw(image)
-            if kind in {"before","after"}:
-                self._gabarit_premium_metal_rect(image,(37,27,62,69),5); d=ImageDraw.Draw(image); d.line((24,48,35,48),fill=accent,width=4); d.polygon([(22,48),(31,41),(31,55)],fill=gold) if kind=="before" else d.polygon([(76,48),(67,41),(67,55)],fill=gold); d.line((63,48,74,48),fill=accent,width=4)
-            elif kind in {"recto","verso"}:
-                self._gabarit_premium_metal_rect(image,(26,23,70,73),6); d=ImageDraw.Draw(image); d.text((39,35),"R" if kind=="recto" else "V",fill=gold)
-            elif kind=="extend": d.line((27,48,69,48),fill=accent,width=4); d.polygon([(69,48),(59,40),(59,56)],fill=gold)
-            elif kind=="exception": d.ellipse((29,29,67,67),outline=accent,width=4); d.line((35,61,61,35),fill=gold,width=4)
-            else: d.line((28,48,68,48),fill="#C97669",width=5)
 
         d=ImageDraw.Draw(image)
         if state == "hover":
@@ -4107,8 +4023,6 @@ class BookCanvas(tk.Frame):
             pass
 
     def _render_gabarit_inspector_overlay(self, *, force: bool = False):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._render_structure_tools_overlay(force=force)
         """Inspecteur Gabarits V81 : architecture permanente.
 
         La sélection ne change plus la structure de l'interface : Réglages, Ajouter,
@@ -4259,8 +4173,6 @@ class BookCanvas(tk.Frame):
             close_band()
 
     def _gabarit_inspector_motion(self, event):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._structure_tools_motion(event)
         if self._gabarit_inline_geometry_is_active():
             return "break"
         if str(getattr(self, "_gabarit_inspector_drag_block", "") or ""):
@@ -4287,8 +4199,6 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _gabarit_inspector_drag_motion(self, event):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._structure_tools_drag(event)
         if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "guide_opacity_bar":
             self._gabarit_set_guide_transparency_from_x(float(event.x),save=False)
             return "break"
@@ -4312,8 +4222,6 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _gabarit_inspector_leave(self, _event=None):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._structure_tools_leave(_event)
         if self._gabarit_inline_geometry_is_active():
             return "break"
         if str(getattr(self, "_gabarit_inspector_drag_block", "") or ""):
@@ -4343,8 +4251,6 @@ class BookCanvas(tk.Frame):
             pass
 
     def _gabarit_inspector_press(self, event):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._structure_tools_press(event)
         self._gabarit_inspector_cancel_tooltip_job()
         self._gabarit_inspector_tooltip_key = ""
         # Un clic ailleurs termine une saisie X/Y/L/H : Entrée n'est jamais obligatoire.
@@ -4455,8 +4361,6 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _gabarit_inspector_release(self, event):
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            return self._structure_tools_release(event)
         if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "guide_opacity_bar":
             self._gabarit_set_guide_transparency_from_x(float(event.x),save=True)
             self._gabarit_inspector_pressed = ""
@@ -4504,12 +4408,10 @@ class BookCanvas(tk.Frame):
         bottom = getattr(self, "structure_bottom_controls", None)
         bar = getattr(self, "structure_command_bar", None)
         if mode == "structure":
-            # V103 : plus de ruban inférieur. Les outils Structure vivent dans le
-            # rail droit et chaque partie possède son curseur horizontal local.
             if bottom is not None:
-                bottom.grid_remove()
+                bottom.grid()
             if bar is not None:
-                bar.grid_remove()
+                bar.grid()
         else:
             if bottom is not None:
                 bottom.grid_remove()
@@ -4540,12 +4442,6 @@ class BookCanvas(tk.Frame):
                 except Exception: pass
 
         if mode == "gabarits":
-            self._hide_gabarit_tools_host()
-            self._show_gabarit_inspector_host()
-            self._ensure_gabarit_visibility_watchdog()
-        elif mode == "structure":
-            # Le même calque transparent que Gabarits porte le rail Structure :
-            # qualité d'icônes et comportement de déploiement restent cohérents.
             self._hide_gabarit_tools_host()
             self._show_gabarit_inspector_host()
             self._ensure_gabarit_visibility_watchdog()
@@ -6187,15 +6083,6 @@ class BookCanvas(tk.Frame):
             if bool(unit.get("double")):
                 characteristics.append("Double page")
 
-            # V112 — le Fond guide doit être identifiable sans ouvrir la page.
-            # Il reste un support de travail de la page : on signale seulement
-            # sa présence/visibilité dans la ligne de contexte.
-            guide = {} if automatic else self._gabarit_guide_data(item)
-            has_guide = bool(isinstance(guide, dict) and guide.get("path"))
-            guide_visible = bool(guide.get("visible", True)) if has_guide else False
-            if has_guide:
-                characteristics.append("Fond guide · visible" if guide_visible else "Fond guide · masqué")
-
             local_exception = (not automatic) and self._gabarit_is_local_exception(item, idx)
             frame_exception = (not automatic) and self._gabarit_alignment_is_exception(item)
             if local_exception:
@@ -6241,21 +6128,6 @@ class BookCanvas(tk.Frame):
                     target.create_line(x - 7, 61, x + 7, 61, fill="#A7C9C3" if active else "#8DAAA6", width=2)
                     marker_key=f"{idx}:frame_exception"
                     self._gabarit_context_marker_hitboxes[marker_key]=((x-10,57,x+10,66),cumulative_label)
-                    if str(getattr(self,"_gabarit_hover_context_marker","") or "")==marker_key:
-                        self._gabarit_draw_context_marker_tooltip(target,x,cumulative_label)
-
-                if has_guide:
-                    # Petit pictogramme image, volontairement plus discret que
-                    # la station principale. Actif = céladon ; masqué = gris + barre.
-                    gx1, gy1, gx2, gy2 = x + 14.0, 46.0, x + 23.0, 54.0
-                    gcol = ("#8EC1B6" if active else "#79A89F") if guide_visible else "#778287"
-                    target.create_rectangle(gx1, gy1, gx2, gy2, outline=gcol, width=1)
-                    target.create_line(gx1 + 1.5, gy2 - 1.8, gx1 + 4.0, gy1 + 3.8, gx1 + 5.6, gy2 - 3.0, gx2 - 1.2, gy2 - 1.8, fill=gcol, width=1)
-                    target.create_oval(gx2 - 3.2, gy1 + 1.4, gx2 - 1.8, gy1 + 2.8, outline=gcol, width=1)
-                    if not guide_visible:
-                        target.create_line(gx1 - 0.8, gy2 + 0.8, gx2 + 0.8, gy1 - 0.8, fill="#A98D86", width=1)
-                    marker_key=f"{idx}:guide"
-                    self._gabarit_context_marker_hitboxes[marker_key]=((gx1-3,gy1-4,gx2+3,gy2+4),cumulative_label)
                     if str(getattr(self,"_gabarit_hover_context_marker","") or "")==marker_key:
                         self._gabarit_draw_context_marker_tooltip(target,x,cumulative_label)
             if active:
@@ -12124,11 +11996,11 @@ class BookCanvas(tk.Frame):
             label = str(payload[1])
         if self._structure_pending_kind == "page":
             self.status_var.set(
-                f"{label}  •  dépôt multiple actif  •  clic gauche pour déposer  •  clic droit ou Échap pour terminer"
+                f"{label}  •  dépôt multiple actif  •  cliquez sur la ligne des pages  •  clic hors ligne ou Échap pour terminer"
             )
         else:
             self.status_var.set(
-                f"{label}  •  déplacez la souris dans B  •  clic gauche pour placer  •  clic droit ou Échap pour annuler"
+                f"{label}  •  déplacez la souris dans B puis cliquez à l’emplacement voulu"
             )
         try:
             self.canvas.configure(cursor="crosshair")
@@ -12166,60 +12038,9 @@ class BookCanvas(tk.Frame):
             pass
         self.render()
 
-    def _structure_right_click_cancel(self, _event=None):
-        """Désarmer le mode Structure temporaire courant sans lancer d'autre action.
-
-        Principe ergonomique TomeLinea : clic gauche = exécuter/continuer ;
-        clic droit = terminer le mode. Hors mode temporaire, le clic droit est
-        laissé libre pour de futurs menus contextuels.
-        """
-        if getattr(self, "_work_mode", "structure") != "structure":
-            return None
-
-        cancelled = False
-        pending_kind = str(getattr(self, "_structure_pending_kind", "") or "")
-        if pending_kind:
-            self.structure_cancel_tool()
-            cancelled = True
-            if pending_kind == "page":
-                self.status_var.set("Dépôt de pages terminé.")
-            elif pending_kind == "group":
-                self.status_var.set("Ajout de partie annulé.")
-            else:
-                self.status_var.set("Mode terminé.")
-
-        if getattr(self, "_structure_page_auto_mode", None):
-            self.structure_cancel_page_auto_mode(silent=True)
-            cancelled = True
-            self.status_var.set("Commande Page auto annulée.")
-
-        if getattr(self, "_structure_action_mode", None):
-            self._structure_reset_action()
-            cancelled = True
-            self.status_var.set("Commande annulée.")
-
-        # Un clic droit pendant un mode armé doit aussi dégager immédiatement
-        # l'écran : aucun flyout du rail ne reste ouvert derrière l'action.
-        if cancelled and str(getattr(self, "_structure_tools_active_band", "") or ""):
-            self._structure_tools_active_band = ""
-            try:
-                self._render_structure_tools_overlay(force=True)
-            except Exception:
-                pass
-
-        return "break" if cancelled else None
-
     def _structure_escape(self, _event=None):
         if getattr(self, "_work_mode", "structure") != "structure":
             return None
-        # V107 — un bandeau Structure ouvert au survol se ferme avec Échap.
-        if str(getattr(self, "_structure_tools_active_band", "") or ""):
-            self._structure_tools_active_band = ""
-            try:
-                self._render_structure_tools_overlay(force=True)
-            except Exception:
-                pass
-            return "break"
         if getattr(self, "_structure_pending_kind", None):
             self.structure_cancel_tool()
             self.status_var.set("Dépôt multiple terminé.")
@@ -12234,26 +12055,8 @@ class BookCanvas(tk.Frame):
         return None
 
     def _structure_global_click(self, event):
-        """Valide les éditeurs et ferme les bandeaux Structure au clic extérieur."""
+        """Valide les éditeurs au clic extérieur puis gère l'annulation des outils."""
         widget = getattr(event, "widget", None)
-
-        # V107 — les familles et outils du rail s'ouvrent au survol.
-        # Un clic réellement extérieur les referme également.
-        active_band = str(getattr(self, "_structure_tools_active_band", "") or "")
-        inspector = getattr(self, "gabarit_inspector_canvas", None)
-        if active_band and widget is not inspector:
-            try:
-                widget_path = str(widget)
-                inspector_path = str(inspector) if inspector is not None else ""
-                inside_inspector = bool(inspector_path) and (widget is inspector or widget_path.startswith(inspector_path))
-            except Exception:
-                inside_inspector = widget is inspector
-            if not inside_inspector:
-                self._structure_tools_active_band = ""
-                try:
-                    self.after_idle(lambda: self._render_structure_tools_overlay(force=True))
-                except Exception:
-                    pass
 
         # Le Canvas ne prend pas forcément le focus : un clic extérieur doit
         # néanmoins valider le nom de partie sans exiger la touche Entrée.
@@ -12722,21 +12525,6 @@ class BookCanvas(tk.Frame):
             return (left[2] + right[0]) / 2.0
         return 0.0
 
-    def _structure_group_id_at_point(self, canvas_x: float, canvas_y: float) -> str:
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            rows = getattr(self, "_structure_group_row_bounds", {})
-            for group in self.groups:
-                gid = str(group.get("id", ""))
-                box = rows.get(gid)
-                if box and box[1] <= canvas_y <= box[3]:
-                    return gid
-            if rows:
-                ordered = [(str(g.get("id", "")), rows.get(str(g.get("id", "")))) for g in self.groups]
-                ordered = [(gid, box) for gid, box in ordered if box]
-                if ordered:
-                    return min(ordered, key=lambda it: abs(canvas_y - (it[1][1]+it[1][3])/2.0))[0]
-        return self._group_id_at_x(canvas_x)
-
     def _structure_page_line_contains_event(self, event) -> bool:
         """Vrai uniquement dans la bande visuelle occupée par la ligne des pages.
 
@@ -12744,14 +12532,6 @@ class BookCanvas(tk.Frame):
         la ligne du squelette est une zone de dépôt. Un clic au-dessus ou au-
         dessous sert donc à quitter le mode, pas à insérer une page.
         """
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            try:
-                cx = float(self.canvas.canvasx(event.x)); cy = float(self.canvas.canvasy(event.y))
-            except Exception:
-                return False
-            gid = self._structure_group_id_at_point(cx, cy)
-            band = getattr(self, "_structure_group_page_bands", {}).get(gid)
-            return bool(band and band[0] <= cy <= band[1])
         bounds = getattr(self, "_structure_page_line_bounds", None)
         if not bounds:
             return False
@@ -12766,11 +12546,10 @@ class BookCanvas(tk.Frame):
         if not self._structure_page_line_contains_event(event):
             return None
         cx = self.canvas.canvasx(event.x)
-        cy = self.canvas.canvasy(event.y)
         # La partie de destination est d'abord déterminée par la position du pointeur.
         # Dans l'espace entre deux parties, le milieu de l'espace fait la séparation :
         # moitié gauche = fin de la première, moitié droite = début de la suivante.
-        group_id = self._structure_group_id_at_point(cx, cy)
+        group_id = self._group_id_at_x(cx)
         positions = self._structure_valid_local_positions(group_id)
         if not positions:
             return None
@@ -12783,12 +12562,6 @@ class BookCanvas(tk.Frame):
 
     def _structure_group_hover_target(self, event):
         cx = self.canvas.canvasx(event.x)
-        cy = self.canvas.canvasy(event.y)
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            position = self._target_movable_group_index_y(cy)
-            # En vue empilée la cible est verticale : le troisième champ n'est
-            # qu'un repère de pointeur, jamais une coordonnée X de placement.
-            return ("group", position, cy)
         middle_count = sum(
             1 for group in self.groups
             if str(group.get("id", "")) not in {self.START_GROUP_ID, self.END_GROUP_ID}
@@ -12854,40 +12627,25 @@ class BookCanvas(tk.Frame):
                 tags=("structure_ghost",),
             )
         elif target[0] == "group":
-            _kind, position, _pointer_y = target
-            # V105 — une nouvelle partie n'est plus représentée par un grand
-            # rectangle couvrant la Structure. On montre seulement la frontière
-            # exacte où elle sera insérée, comme pour un déplacement de partie.
-            ids = self._movable_group_ids()
-            if ids:
-                if int(position) >= len(ids):
-                    box = getattr(self, "_structure_group_row_bounds", {}).get(ids[-1])
-                    insert_y = (box[3] + 5.0) if box else 0.0
-                else:
-                    box = getattr(self, "_structure_group_row_bounds", {}).get(ids[int(position)])
-                    insert_y = (box[1] - 5.0) if box else 0.0
-                row_boxes = list(getattr(self, "_structure_group_row_bounds", {}).values())
-                if row_boxes:
-                    left = min(b[0] for b in row_boxes)
-                    right = max(b[2] for b in row_boxes)
-                else:
-                    left, right = 18.0, max(180.0, float(self.canvas.winfo_width()) - 18.0)
-                self.canvas.create_line(
-                    left, insert_y, right, insert_y, fill=self.GOLD, width=3,
-                    tags=("structure_ghost",),
-                )
-                label_w, label_h = 118.0, 24.0
-                label_cx = min(right - label_w / 2.0, max(left + label_w / 2.0, (left + right) / 2.0))
-                self.canvas.create_rectangle(
-                    label_cx - label_w/2.0, insert_y - label_h/2.0,
-                    label_cx + label_w/2.0, insert_y + label_h/2.0,
-                    fill="#17252B", outline=self.GOLD, width=1,
-                    tags=("structure_ghost",),
-                )
-                self.canvas.create_text(
-                    label_cx, insert_y, text="+ Nouvelle partie", fill="#E7D5A7",
-                    font=(theme.FONT_UI, 7, "bold"), tags=("structure_ghost",),
-                )
+            _kind, position, cx = target
+            header_boxes = list(self._group_hitboxes.values())
+            if header_boxes:
+                y1 = min(box[1] for box in header_boxes)
+                y2 = max(box[3] for box in header_boxes)
+                cy = (y1 + y2) / 2.0
+                h = max(44.0, y2 - y1 - 8)
+            else:
+                cy, h = 48.0, 46.0
+            w = 126.0
+            self.canvas.create_rectangle(
+                cx - w/2, cy - h/2, cx + w/2, cy + h/2,
+                fill="#29463D", stipple="gray50", outline=self.GOLD, width=2,
+                tags=("structure_ghost",),
+            )
+            self.canvas.create_text(
+                cx, cy, text="Nouvelle partie", fill=theme.INK,
+                font=(theme.FONT_UI, 8, "bold"), tags=("structure_ghost",),
+            )
 
     def _structure_apply_pending_event(self, event):
         kind = getattr(self, "_structure_pending_kind", None)
@@ -12909,17 +12667,10 @@ class BookCanvas(tk.Frame):
 
         if kind == "page":
             if target is None:
-                # V110 — le clic gauche ne désarme plus un type actif. Il sert
-                # uniquement au dépôt. Le clic droit (ou Échap) termine le mode.
-                self._structure_hover_target = None
-                self.status_var.set(
-                    f"{page_label} armé  •  cliquez sur une cible valide  •  clic droit ou Échap pour terminer"
-                )
-                try:
-                    self.canvas.configure(cursor="crosshair")
-                except Exception:
-                    pass
-                self.render()
+                # Sécurité : même à l'intérieur de B, un clic hors de la ligne
+                # des pages termine immédiatement le dépôt multiple.
+                self.structure_cancel_tool()
+                self.status_var.set("Dépôt multiple terminé.")
                 return "break"
 
             # Dépôt multiple : une insertion réussie ne désarme jamais la brique.
@@ -12928,7 +12679,7 @@ class BookCanvas(tk.Frame):
             self._structure_hover_target = None
             if success:
                 self.status_var.set(
-                    f"{page_label} ajouté  •  dépôt multiple actif  •  clic gauche pour continuer  •  clic droit ou Échap pour terminer"
+                    f"{page_label} ajouté  •  dépôt multiple actif  •  cliquez sur la ligne pour continuer  •  clic hors ligne ou Échap pour terminer"
                 )
             try:
                 self.canvas.configure(cursor="crosshair")
@@ -12936,21 +12687,7 @@ class BookCanvas(tk.Frame):
                 pass
             self.render()
         else:
-            if success:
-                # + Partie reste une action de placement unique : une fois la
-                # partie créée, le mode se termine. Avant placement, clic droit
-                # ou Échap permettent de l'annuler sans autre action.
-                self.structure_cancel_tool()
-            else:
-                self._structure_hover_target = None
-                self.status_var.set(
-                    "Nouvelle partie armée  •  cliquez sur une cible valide  •  clic droit ou Échap pour annuler"
-                )
-                try:
-                    self.canvas.configure(cursor="crosshair")
-                except Exception:
-                    pass
-                self.render()
+            self.structure_cancel_tool()
 
         # Dès qu'une partie est créée, proposer immédiatement son nommage.
         if success and created_group_id:
@@ -15234,744 +14971,6 @@ class BookCanvas(tk.Frame):
             pass
         self._structure_update_common_rule_actions()
 
-    # ------------------------------------------------------------------
-    # Structure V111 — icônes graphiques dédiées
-    # ------------------------------------------------------------------
-
-    def _structure_external_icon_image(self, kind: str, state: str, size: int):
-        """Charge une icône Structure validée sans modifier les assets Gabarits."""
-        if Image is None:
-            return None
-        try:
-            base_dir = Path(__file__).resolve().with_name("structure_icones_v111")
-        except Exception:
-            return None
-
-        aliases = {
-            # Rail principal.
-            "book_start": "book_start",
-            "liminaries": "liminaries",
-            "book_body": "book_body",
-            "annex": "annex",
-            "book_end": "book_end",
-            "part": "part",
-            "rules": "rules",
-            "double_page": "double_page",
-            "actions": "actions",
-            "undo": "undo",
-            "redo": "redo",
-            "trash": "trash",
-            # Menus de règles/actions.
-            "before": "before",
-            "after": "after",
-            "recto": "recto",
-            "verso": "verso",
-            "extend": "extend",
-            "split": "split",
-            "exception": "reintegrate",
-            "reintegrate": "reintegrate",
-            "remove_rule": "delete",
-            "duplicate": "duplicate",
-            "delete": "delete",
-        }
-        stem = aliases.get(str(kind or "").strip(), str(kind or "").strip())
-        if not stem:
-            return None
-        path = base_dir / f"{stem}.png"
-        if not path.exists():
-            return None
-        try:
-            image = Image.open(path).convert("RGBA")
-        except Exception:
-            return None
-
-        # Les états sont portés surtout par la cellule, comme dans Gabarits.
-        # En désactivé, seule l'opacité de l'icône est abaissée.
-        if str(state) == "disabled":
-            try:
-                alpha = image.getchannel("A").point(lambda p: int(p * 0.34))
-                image.putalpha(alpha)
-            except Exception:
-                pass
-
-        target = max(16, int(size))
-        try:
-            return image.resize((target, target), Image.Resampling.LANCZOS)
-        except Exception:
-            return image.resize((target, target))
-
-    def _structure_premium_icon_photo(self, kind: str, state: str, size: int):
-        if ImageTk is None:
-            return None
-        key = (str(kind), str(state), int(size))
-        cached = getattr(self, "_structure_premium_icon_cache", {}).get(key)
-        if cached is not None:
-            return cached
-        image = self._structure_external_icon_image(kind, state, size)
-        if image is None:
-            return None
-        try:
-            photo = ImageTk.PhotoImage(image)
-        except Exception:
-            return None
-        self._structure_premium_icon_cache[key] = photo
-        return photo
-
-    def _structure_draw_premium_icon(
-        self, target, kind: str, box, *,
-        selected: bool = False, disabled: bool = False, hovered: bool = False,
-        fallback_kind: str = "document",
-    ):
-        x1, y1, x2, y2 = map(float, box)
-        cx = (x1 + x2) / 2.0
-        cy = (y1 + y2) / 2.0
-        state = "disabled" if disabled else ("active" if selected else ("hover" if hovered else "normal"))
-        size = max(16, min(46, int(round(min(x2 - x1, y2 - y1) * 0.94))))
-        photo = self._structure_premium_icon_photo(kind, state, size)
-        if photo is not None and hasattr(target, "create_image"):
-            target.create_image(cx, cy, image=photo)
-            return True
-        return self._gabarit_inspector_draw_premium_icon(
-            target, fallback_kind, box,
-            selected=selected, disabled=disabled, hovered=hovered,
-        )
-
-    def _structure_page_type_icon_kind(self, type_key: str) -> tuple[str, str]:
-        """Icône validée + repli Gabarits pour chaque destination Structure."""
-        key = str(type_key or "").strip()
-        dedicated = {
-            "page_titre": "page_titre",
-            "mentions_legales": "mentions_legales",
-            "dedicace": "dedicace",
-            "avant_propos": "preambule",
-            "preface": "preambule",
-            "sommaire": "sommaire",
-            "tete_partie": "ouverture_section",
-            "chapitre": "ouverture_section",
-            "texte": "texte",
-            "fiche": "fiche",
-            "illustration": "illustration",
-            "transition": "transition",
-            "intercalaire": "transition",
-            "page_blanche": "page_blanche",
-            "annexe": "annexes_page",
-            "sources": "sources",
-            "bibliographie": "sources",
-            "glossaire": "glossaire",
-            "index": "index",
-            "remerciements": "remerciements",
-            "a_propos_auteur": "a_propos",
-            "colophon": "colophon",
-            "conclusion": "book_end",
-        }
-        fallback = "image" if key == "illustration" else (
-            "text" if key in {"texte", "fiche", "tete_partie", "chapitre"} else "document"
-        )
-        return dedicated.get(key, ""), fallback
-
-    def _structure_draw_icon_button(
-        self, target, key: str, box, kind: str, *,
-        disabled: bool = False, danger: bool = False, tooltip: str = "",
-    ):
-        x1, y1, x2, y2 = map(float, box)
-        hovered = str(getattr(self, "_structure_tools_hover", "") or "") == str(key)
-        if disabled:
-            fill, outline = "#131A1F", "#2E3A40"
-        elif danger and hovered:
-            fill, outline = "#3B2727", "#C96F63"
-        elif hovered:
-            fill, outline = "#1E2D34", "#55747A"
-        else:
-            fill, outline = "#19242B", "#34464F"
-        target.create_rectangle(x1, y1, x2, y2, fill=fill, outline=outline, width=1)
-        self._structure_draw_premium_icon(
-            target, kind, (x1 + 3, y1 + 3, x2 - 3, y2 - 3),
-            disabled=disabled, hovered=hovered,
-            fallback_kind=("trash" if danger else kind),
-        )
-        self._gabarit_inspector_hitboxes[str(key)] = (x1, y1, x2, y2)
-        if hovered and tooltip:
-            tw = max(82.0, min(210.0, 20.0 + len(tooltip) * 5.7))
-            tx2 = x1 - 7.0
-            tx1 = max(8.0, tx2 - tw)
-            ty1 = max(6.0, y1 + (y2 - y1 - 24.0) / 2.0)
-            target.create_rectangle(tx1, ty1, tx2, ty1 + 24.0, fill="#111A20", outline="#4B6169", width=1)
-            target.create_text((tx1 + tx2) / 2.0, ty1 + 12.0, text=tooltip, anchor="center",
-                               fill="#DDE5E5", font=(theme.FONT_UI, 7, "bold"))
-        return (x1, y1, x2, y2)
-
-    # ------------------------------------------------------------------
-    # Structure V104 — organisation empilée + rail unique
-    # ------------------------------------------------------------------
-
-    def _structure_family_catalog(self) -> list[tuple[str, str, str, list[str]]]:
-        """Familles dans l'ordre réel d'un livre ; uniquement des destinations."""
-        return [
-            ("debut", "DÉBUT", "book_start", []),
-            ("liminaires", "LIMINAIRES", "liminaries", [
-                "page_titre", "mentions_legales", "dedicace", "avant_propos", "preface", "sommaire",
-            ]),
-            ("corps", "CORPS", "book_body", [
-                "tete_partie", "texte", "fiche", "illustration", "transition", "page_blanche",
-            ]),
-            ("annexes", "ANNEXES", "annex", [
-                "annexe", "glossaire", "bibliographie", "sources", "index",
-            ]),
-            ("fin", "FIN", "book_end", [
-                "conclusion", "remerciements", "a_propos_auteur", "autres_ouvrages",
-            ]),
-        ]
-
-    def _structure_family_rows(self, family_key: str) -> list[tuple[str, str]]:
-        available = self._structure_palette_available_map()
-        desired = next((values for key, _label, _icon, values in self._structure_family_catalog() if key == family_key), [])
-        result: list[tuple[str, str]] = []
-        seen: set[str] = set()
-        label_overrides = {
-            "tete_partie": "Ouverture de section",
-            "chapitre": "Ouverture de chapitre",
-            "page_blanche": "Page blanche",
-            "a_propos_auteur": "À propos",
-        }
-        for key in desired:
-            if key in available and key not in seen:
-                label = label_overrides.get(key) or str(available[key][0] or key)
-                result.append((key, label)); seen.add(key)
-        if family_key == "corps":
-            # Les anciens types techniques ou fondés sur le contenu ne doivent pas
-            # réenvahir le menu Corps. Seuls les types créés par l'utilisateur
-            # restent proposés en complément des destinations explicitement classées.
-            assigned = {k for _fk, _fl, _fi, vals in self._structure_family_catalog() for k in vals}
-            for key, (label, custom) in available.items():
-                if custom and key not in assigned and key not in seen:
-                    result.append((key, str(label or key))); seen.add(key)
-        return result
-
-    def _structure_choose_page_type_from_rail(self, type_key: str, label: str) -> None:
-        type_key = str(type_key or "").strip()
-        if not type_key:
-            return
-        try:
-            if self.structure_consume_page_auto_choice(type_key):
-                self._structure_tools_active_band = ""
-                self._render_structure_tools_overlay(force=True)
-                return
-        except Exception:
-            pass
-        pending_type = self.structure_pending_page_type()
-        if pending_type == type_key:
-            self.structure_cancel_tool()
-            self._structure_tools_active_band = ""
-            return
-        if not pending_type:
-            try:
-                selected = list(self._selected_source_indices())
-            except Exception:
-                selected = []
-            if selected and str(getattr(self, "_structure_selection_kind", "") or "") == "page":
-                self.structure_replace_selected_page_type(type_key)
-                self._structure_tools_active_band = ""
-                return
-        self.structure_arm_tool("page", {"type": type_key, "label": label})
-        self._structure_tools_active_band = ""
-
-    def _structure_tools_key_at(self, x: float, y: float) -> str:
-        items = list(getattr(self, "_gabarit_inspector_hitboxes", {}).items())
-        for key, box in reversed(items):
-            if self._gabarit_point_in(box, x, y):
-                return str(key)
-        return ""
-
-    def _structure_tools_cancel_job(self, attr: str) -> None:
-        job = getattr(self, attr, None)
-        if job is None:
-            return
-        try:
-            self.gabarit_inspector_canvas.after_cancel(job)
-        except Exception:
-            pass
-        setattr(self, attr, None)
-
-    def _structure_tools_band_for_key(self, key: str) -> str:
-        key = str(key or "")
-        if key.startswith("family:"):
-            return key.split(":", 1)[1]
-        if key == "rules" or key.startswith("rule_"):
-            return "rules"
-        if key == "actions" or key in {"duplicate", "dup_minus", "dup_plus", "delete"}:
-            return "actions"
-        if key.startswith("type:"):
-            current = str(getattr(self, "_structure_tools_active_band", "") or "")
-            if current in {"debut", "liminaires", "corps", "annexes", "fin"}:
-                return current
-        return ""
-
-    def _structure_tools_schedule_band_open(self, band: str) -> None:
-        band = str(band or "")
-        if not band:
-            return
-        self._structure_tools_cancel_job("_structure_tools_close_job")
-        if band == str(getattr(self, "_structure_tools_active_band", "") or ""):
-            self._structure_tools_cancel_job("_structure_tools_open_job")
-            self._structure_tools_pending_band = ""
-            return
-        if (
-            band == str(getattr(self, "_structure_tools_pending_band", "") or "")
-            and getattr(self, "_structure_tools_open_job", None) is not None
-        ):
-            return
-        self._structure_tools_cancel_job("_structure_tools_open_job")
-        self._structure_tools_pending_band = band
-
-        def open_band():
-            self._structure_tools_open_job = None
-            if str(getattr(self, "_structure_tools_pending_band", "") or "") != band:
-                return
-            self._structure_tools_pending_band = ""
-            self._structure_tools_active_band = band
-            self._render_structure_tools_overlay(force=True)
-
-        try:
-            self._structure_tools_open_job = self.gabarit_inspector_canvas.after(120, open_band)
-        except Exception:
-            open_band()
-
-    def _structure_tools_schedule_band_close(self, delay: int = 260) -> None:
-        self._structure_tools_cancel_job("_structure_tools_open_job")
-        self._structure_tools_pending_band = ""
-        self._structure_tools_cancel_job("_structure_tools_close_job")
-        if not str(getattr(self, "_structure_tools_active_band", "") or ""):
-            return
-
-        def close_band():
-            self._structure_tools_close_job = None
-            self._structure_tools_active_band = ""
-            self._render_structure_tools_overlay(force=True)
-
-        try:
-            self._structure_tools_close_job = self.gabarit_inspector_canvas.after(max(0, int(delay)), close_band)
-        except Exception:
-            close_band()
-
-    def _structure_tools_close_band_now(self) -> None:
-        self._structure_tools_cancel_job("_structure_tools_open_job")
-        self._structure_tools_cancel_job("_structure_tools_close_job")
-        self._structure_tools_pending_band = ""
-        if str(getattr(self, "_structure_tools_active_band", "") or ""):
-            self._structure_tools_active_band = ""
-            self._render_structure_tools_overlay(force=True)
-
-    def _structure_tools_motion(self, event):
-        key = self._structure_tools_key_at(float(event.x), float(event.y))
-        band = self._structure_tools_band_for_key(key)
-
-        if band:
-            self._structure_tools_cancel_job("_structure_tools_close_job")
-            self._structure_tools_schedule_band_open(band)
-        elif key in {"new_part", "double_page", "undo", "redo", "delete_quick"}:
-            # Les commandes directes doivent toujours être accessibles sur un
-            # écran dégagé. + Partie ferme donc immédiatement tout déroulé avant
-            # même le clic, conformément au retour d'usage V107.
-            self._structure_tools_close_band_now()
-        else:
-            # Petit délai indispensable pour franchir l'espace entre le rail et
-            # le panneau déroulé sans provoquer de fermeture intempestive.
-            self._structure_tools_schedule_band_close(280)
-
-        if key != self._structure_tools_hover:
-            self._structure_tools_hover = key
-            self._render_structure_tools_overlay(force=True)
-        try:
-            self.gabarit_inspector_canvas.configure(cursor="hand2" if key else "arrow")
-        except Exception:
-            pass
-        return "break"
-
-    def _structure_tools_leave(self, _event=None):
-        self._structure_tools_hover = ""
-        self._structure_tools_pressed = ""
-        self._structure_tools_schedule_band_close(220)
-        try:
-            self.gabarit_inspector_canvas.configure(cursor="arrow")
-        except Exception:
-            pass
-        self._render_structure_tools_overlay(force=True)
-        return "break"
-
-    def _structure_tools_press(self, event):
-        self._structure_tools_cancel_job("_structure_tools_close_job")
-        self._structure_tools_pressed = self._structure_tools_key_at(float(event.x), float(event.y))
-        self._render_structure_tools_overlay(force=True)
-        return "break"
-
-    def _structure_tools_drag(self, _event):
-        return "break"
-
-    def _structure_tools_release(self, event):
-        key = self._structure_tools_key_at(float(event.x), float(event.y))
-        pressed = str(self._structure_tools_pressed or "")
-        self._structure_tools_pressed = ""
-        if not key:
-            self._structure_tools_schedule_band_close(160)
-            self._render_structure_tools_overlay(force=True)
-            return "break"
-        if key != pressed:
-            self._render_structure_tools_overlay(force=True)
-            return "break"
-
-        # Les têtes de bandeau sont pilotées par le survol. Cliquer dessus ne
-        # change donc pas leur état ; le clic reste réservé aux commandes réelles.
-        if key.startswith("family:") or key in {"rules", "actions"}:
-            band = self._structure_tools_band_for_key(key)
-            if band:
-                self._structure_tools_cancel_job("_structure_tools_close_job")
-                self._structure_tools_active_band = band
-        elif key.startswith("type:"):
-            type_key = key.split(":", 1)[1]
-            label = str(self._structure_type_definition(type_key).get("label") or self._structure_type_definition(type_key).get("name") or type_key)
-            if type_key == "tete_partie":
-                label = "Ouverture de section"
-            self._structure_choose_page_type_from_rail(type_key, label)
-            self._structure_tools_close_band_now()
-        elif key == "new_part":
-            self._structure_tools_close_band_now()
-            self._structure_new_part_command()
-        elif key == "double_page":
-            self._structure_tools_close_band_now()
-            self.structure_select_double_page_rule()
-        elif key == "rule_av":
-            self.structure_select_page_auto_rule("before")
-            self._structure_tools_close_band_now()
-        elif key == "rule_ap":
-            self.structure_select_page_auto_rule("after")
-            self._structure_tools_close_band_now()
-        elif key == "rule_r":
-            self.structure_select_recto_verso_rule("recto")
-            self._structure_tools_close_band_now()
-        elif key == "rule_v":
-            self.structure_select_recto_verso_rule("verso")
-            self._structure_tools_close_band_now()
-        elif key == "rule_extend":
-            self.structure_extend_or_scind_context_rule()
-            self._structure_tools_close_band_now()
-        elif key == "rule_exception":
-            self.structure_toggle_target_rule_exception()
-            self._structure_tools_close_band_now()
-        elif key == "rule_remove":
-            self.structure_remove_target_rule()
-            self._structure_tools_close_band_now()
-        elif key == "duplicate":
-            self.structure_duplicate_selected(self._structure_duplicate_count())
-            self._structure_tools_close_band_now()
-        elif key == "dup_minus":
-            try:
-                self.structure_duplicate_count_var.set(str(max(1, self._structure_duplicate_count() - 1)))
-            except Exception:
-                pass
-        elif key == "dup_plus":
-            try:
-                self.structure_duplicate_count_var.set(str(min(50, self._structure_duplicate_count() + 1)))
-            except Exception:
-                pass
-        elif key == "delete":
-            self._structure_action_button("delete")
-            self._structure_tools_close_band_now()
-        elif key == "delete_quick":
-            self._structure_tools_close_band_now()
-            self._structure_action_button("delete")
-        elif key == "undo":
-            self._structure_tools_close_band_now()
-            self.structure_undo()
-        elif key == "redo":
-            self._structure_tools_close_band_now()
-            self.structure_redo()
-        self._render_structure_tools_overlay(force=True)
-        return "break"
-
-    def _render_structure_tools_overlay(self, *, force: bool = False):
-        target = getattr(self, "gabarit_inspector_canvas", None)
-        if target is None:
-            return
-        try:
-            target.update_idletasks(); width=float(target.winfo_width()); height=float(target.winfo_height())
-        except Exception:
-            return
-        target.delete("all")
-        self._gabarit_inspector_hitboxes = {}
-
-        # V108 — Structure reprend maintenant les dimensions REELLES de la
-        # palette Gabarits : rail de 54 px, icônes plein format, et une zone
-        # permanente de 164 px pour Annuler / Rétablir / Poubelle.
-        # Les libellés ne réduisent plus les pictogrammes dans le rail : ils
-        # restent dans les panneaux déroulés et les infobulles.
-        rail_w = 54.0
-        permanent_w = 164.0
-        x2 = width - 7.0
-        x1 = x2 - rail_w
-        permanent_right = x2
-        permanent_left = max(8.0, permanent_right - permanent_w)
-
-        # Les commandes globales du bas sont TOUJOURS ancrées au bas de la
-        # fenêtre, indépendamment de la hauteur occupée par le rail.
-        quick_button = 43.0
-        quick_gap = 6.0
-        quick_y = max(8.0, height - quick_button - 9.0)
-
-        families = list(self._structure_family_catalog())
-        tools = [
-            ("new_part", "+ Partie", "part"),
-            ("rules", "Règles", "rules"),
-            ("double_page", "Double page", "double_page"),
-            ("actions", "Actions", "actions"),
-        ]
-        entries = [(f"family:{key}", label, icon, key) for key,label,icon,_vals in families]
-        entries += [(key, label, icon, key) for key,label,icon in tools]
-
-        rail_top = 13.0
-        rail_bottom = max(rail_top + 1.0, quick_y - 15.0)
-        gap = 5.0
-        available = max(1.0, rail_bottom - rail_top)
-        row_h = min(52.0, max(34.0, (available - gap * max(0, len(entries)-1)) / max(1, len(entries))))
-        total_h = len(entries) * row_h + gap * max(0, len(entries)-1)
-        y = rail_top + max(0.0, (available - total_h) / 2.0)
-
-        # Même plaque anthracite que Gabarits, sans bandeaux de texte qui
-        # écrasent les icônes.
-        target.create_rectangle(
-            x1-2.0, y-4.0, x2+1.0, min(rail_bottom+4.0, y+total_h+4.0),
-            fill="#141E24", outline="#34464F", width=1,
-        )
-
-        family_keys = {key for key,_label,_icon,_vals in families}
-        for key,label,icon,logical in entries:
-            y1=y; y2=y+row_h
-            band = logical if logical in family_keys or logical in {"rules","actions"} else ""
-            active = bool(band and str(getattr(self, "_structure_tools_active_band", "") or "") == band)
-            hovered = str(getattr(self, "_structure_tools_hover", "") or "") == key
-            fill = "#21353C" if active else ("#1E2D34" if hovered else "#19242B")
-            outline = "#63BEB7" if active else ("#55747A" if hovered else "#34464F")
-            target.create_rectangle(x1,y1,x2,y2,fill=fill,outline=outline,width=2 if active else 1)
-
-            # Taille d'icône identique à Gabarits : presque toute la cellule.
-            inset = max(3.0, (row_h - 44.0) / 2.0)
-            self._structure_draw_premium_icon(
-                target, icon,
-                (x1+inset, y1+inset, x2-inset, y2-inset),
-                selected=active, hovered=hovered,
-                fallback_kind=icon,
-            )
-            self._gabarit_inspector_hitboxes[key]=(x1,y1,x2,y2)
-
-            # Infobulle simple au survol : le rail reste iconographique comme
-            # Gabarits, mais la fonction reste immédiatement explicite.
-            if hovered:
-                tw = max(72.0, min(150.0, 18.0 + len(label)*6.2))
-                tx2=x1-7.0; tx1=max(8.0,tx2-tw)
-                ty1=max(6.0,y1+(row_h-24.0)/2.0); ty2=ty1+24.0
-                target.create_rectangle(tx1,ty1,tx2,ty2,fill="#111A20",outline="#4B6169",width=1)
-                target.create_text((tx1+tx2)/2.0,(ty1+ty2)/2.0,text=label,anchor="center",fill="#DDE5E5",font=(theme.FONT_UI,7,"bold"))
-            y=y2+gap
-
-        # Trois commandes fixes au même format et au même emplacement relatif
-        # que Gabarits. Contrairement à V107, elles ne peuvent plus être
-        # repoussées sous l'écran par la hauteur du rail.
-        quick_x = permanent_left
-        try:
-            has_page_selection = bool(self._selected_source_indices())
-        except Exception:
-            has_page_selection = False
-        has_group_selection = bool(
-            str(getattr(self, "_structure_selection_kind", "") or "") == "group"
-            and str(getattr(self, "_selected_group_id", "") or "")
-        )
-        for key,icon,disabled,danger,tip in (
-            ("undo","undo",not self.can_undo(),False,"Annuler · Ctrl+Z"),
-            ("redo","redo",not self.can_redo(),False,"Rétablir · Ctrl+Y / Ctrl+Maj+Z"),
-            ("delete_quick","trash",not (has_page_selection or has_group_selection),True,"Supprimer la sélection"),
-        ):
-            self._structure_draw_icon_button(
-                target, key, (quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),
-                icon, disabled=disabled, danger=danger, tooltip=tip,
-            )
-            quick_x += quick_button + quick_gap
-
-        band=str(self._structure_tools_active_band or "")
-        if not band:
-            return
-        fly_right=x1-9; fly_left=max(8.0,fly_right-250.0)
-        if band in {"debut","liminaires","corps","annexes","fin"}:
-            rows=self._structure_family_rows(band)
-            fh=max(96.0,42.0+len(rows)*45.0)
-            family_index=[k for k,_,_,_ in self._structure_family_catalog()].index(band)
-            # Le panneau s'aligne sur la famille correspondante, en tenant
-            # compte de la hauteur réelle des cellules adaptatives.
-            fy=max(8.0,min(height-fh-8.0,rail_top + family_index*(row_h+gap)))
-            target.create_rectangle(fly_left,fy,fly_right,fy+fh,fill="#141E24",outline="#58727A",width=1)
-            title=next((lbl for key,lbl,_i,_v in self._structure_family_catalog() if key==band),band.upper())
-            target.create_text(fly_left+14,fy+18,text=title,anchor="w",fill="#8FD0C7",font=(theme.FONT_UI,8,"bold"))
-            yrow=fy+35
-            if not rows:
-                target.create_text(
-                    fly_left+14, yrow+16, text="Types à définir", anchor="w",
-                    fill="#7F9296", font=(theme.FONT_UI,7,"italic")
-                )
-            for type_key,label in rows:
-                hovered=self._structure_tools_hover==f"type:{type_key}"
-                box=(fly_left+10,yrow,fly_right-10,yrow+38)
-                target.create_rectangle(*box,fill="#20313A" if hovered else "#19272E",outline="#55747A" if hovered else "#34464F",width=1)
-                icon_kind, fallback_kind = self._structure_page_type_icon_kind(type_key)
-                self._structure_draw_premium_icon(
-                    target, icon_kind or fallback_kind,
-                    (box[0]+5,box[1]+4,box[0]+34,box[3]-4),
-                    hovered=hovered, fallback_kind=fallback_kind,
-                )
-                target.create_text(box[0]+42,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold"))
-                self._gabarit_inspector_hitboxes[f"type:{type_key}"]=box
-                yrow+=43
-        elif band=="rules":
-            rows=[("rule_av","AV — Avant","before"),("rule_ap","AP — Après","after"),("rule_r","Recto","recto"),("rule_v","Verso","verso"),("rule_extend","Étendre / Scinder","extend"),("rule_exception","Exception / Réintégrer","exception"),("rule_remove","Retirer la règle","remove_rule")]
-            fh=42+len(rows)*42
-            # alignement sur l'icône Règles (après les 5 familles + Partie)
-            rules_index=len(families)+1
-            fy=max(8.0,min(height-fh-8.0,rail_top + rules_index*(row_h+gap)))
-            target.create_rectangle(fly_left,fy,fly_right,fy+fh,fill="#141E24",outline="#58727A",width=1)
-            target.create_text(fly_left+14,fy+18,text="RÈGLES",anchor="w",fill="#D5AD63",font=(theme.FONT_UI,8,"bold"))
-            yy=fy+34
-            for key,label,icon in rows:
-                hover=self._structure_tools_hover==key; box=(fly_left+10,yy,fly_right-10,yy+35)
-                target.create_rectangle(*box,fill="#20313A" if hover else "#19272E",outline="#55747A" if hover else "#34464F")
-                self._structure_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover,fallback_kind=("trash" if icon=="remove_rule" else icon))
-                target.create_text(box[0]+40,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold"))
-                self._gabarit_inspector_hitboxes[key]=box; yy+=39
-        elif band=="actions":
-            fh=155
-            actions_index=len(entries)-1
-            fy=max(8.0,min(height-fh-8.0,rail_top + actions_index*(row_h+gap)))
-            target.create_rectangle(fly_left,fy,fly_right,fy+fh,fill="#141E24",outline="#58727A",width=1)
-            target.create_text(fly_left+14,fy+18,text="ACTIONS",anchor="w",fill="#D5AD63",font=(theme.FONT_UI,8,"bold"))
-            yy=fy+38
-            target.create_text(fly_left+14,yy+16,text=f"Dupliquer ×{self._structure_duplicate_count()}",anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold"))
-            for key,label in (("dup_minus","−"),("dup_plus","+")):
-                bx=fly_right-72 if key=="dup_minus" else fly_right-38; box=(bx,yy,bx+28,yy+28)
-                target.create_rectangle(*box,fill="#20313A",outline="#34464F"); target.create_text((box[0]+box[2])/2,(box[1]+box[3])/2,text=label,fill="#DDE4E4",font=(theme.FONT_UI,10,"bold")); self._gabarit_inspector_hitboxes[key]=box
-            yy+=40
-            for key,label,icon in (("duplicate","Dupliquer","duplicate"),("delete","Supprimer","delete")):
-                box=(fly_left+10,yy,fly_right-10,yy+35); hover=self._structure_tools_hover==key
-                target.create_rectangle(*box,fill="#20313A" if hover else "#19272E",outline="#55747A" if hover else "#34464F")
-                self._structure_draw_premium_icon(target,icon,(box[0]+4,box[1]+3,box[0]+32,box[3]-3),hovered=hover,fallback_kind=("trash" if key=="delete" else "duplicate"))
-                target.create_text(box[0]+40,(box[1]+box[3])/2,text=label,anchor="w",fill="#E4E9E8",font=(theme.FONT_UI,7,"bold")); self._gabarit_inspector_hitboxes[key]=box; yy+=39
-
-    def _structure_scroll_press(self, event) -> bool:
-        if not bool(getattr(self, "_structure_stacked_layout", False)):
-            return False
-        try:
-            cx=self.canvas.canvasx(event.x); cy=self.canvas.canvasy(event.y)
-        except Exception:
-            return False
-        for gid,box in getattr(self,"_structure_scroll_thumb_hitboxes",{}).items():
-            if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
-                self._structure_scroll_drag_group=gid; self._structure_scroll_drag_start_x=float(event.x); self._structure_scroll_drag_start_value=float(self._structure_group_scroll.get(gid,0.0)); return True
-        for gid,box in getattr(self,"_structure_scroll_track_hitboxes",{}).items():
-            if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
-                frac=max(0.0,min(1.0,(cx-box[0])/max(1.0,box[2]-box[0])))
-                self._structure_group_scroll[gid]=frac; self.render(); return True
-        return False
-
-    def _structure_scroll_motion(self, event):
-        gid=str(self._structure_scroll_drag_group or "")
-        track=getattr(self,"_structure_scroll_track_hitboxes",{}).get(gid)
-        thumb=getattr(self,"_structure_scroll_thumb_hitboxes",{}).get(gid)
-        if not gid or not track or not thumb:
-            return "break"
-        usable=max(1.0,(track[2]-track[0])-(thumb[2]-thumb[0]))
-        delta=float(event.x)-self._structure_scroll_drag_start_x
-        self._structure_group_scroll[gid]=max(0.0,min(1.0,self._structure_scroll_drag_start_value+delta/usable))
-        self.render(); return "break"
-
-    def _render_structure_stacked(self, viewport_w: float, viewport_h: float, scale: float) -> tuple[float, float]:
-        # La vue empilée est une cartographie du livre, pas une visionneuse :
-        # garder 3 à 4 parties lisibles prime sur l'agrandissement des cartes.
-        scale=min(float(scale),0.22)
-        gap=max(8.0,self.BASE_GAP*scale)
-        margin=max(18.0,self.MARGIN*min(scale,1.0))
-        active_group_id=self._active_group_id()
-        specs={}
-        for index,item in enumerate(self.items):
-            if self._is_automatic_page(item):
-                deployed=self._structural_auto_is_deployed(index)
-                wf=self.PAGE_AUTO_DEPLOY_W if deployed else self.PAGE_AUTO_REST_W
-                hf=self.PAGE_AUTO_DEPLOY_H if deployed else self.PAGE_AUTO_REST_H
-                specs[index]=(max(14,self.BASE_PAGE_W*scale*wf),max(30,self.BASE_PAGE_H*scale*hf))
-            else:
-                factor=self._page_size_factor(index,active_group_id)
-                sw=max(16,self.BASE_PAGE_W*scale*factor); ph=max(22,self.BASE_PAGE_H*scale*factor)
-                specs[index]=((sw*2.0 if self._effective_double_page_rule(item) else sw),ph)
-        # V109 — La hauteur d'une partie ne doit jamais dépendre de l'état de
-        # sélection. Jusqu'ici ``max_page_h`` venait des miniatures réellement
-        # dessinées : sélectionner une page augmentait donc la hauteur de sa
-        # rangée et repoussait toutes les parties suivantes vers le bas.
-        #
-        # On réserve désormais dès le départ la hauteur maximale qu'une miniature
-        # peut occuper dans Structure (page sélectionnée ou auto déployée). La
-        # page normale est simplement alignée dans cette réserve et peut grossir
-        # sans provoquer aucun reflow vertical.
-        reserved_main_h=max(22.0,self.BASE_PAGE_H*scale*self.PAGE_SIZE_SELECTED)
-        reserved_auto_h=max(30.0,self.BASE_PAGE_H*scale*self.PAGE_AUTO_DEPLOY_H)
-        max_page_h=max(reserved_main_h,reserved_auto_h)
-        row_h=max(145.0,self.GROUP_H+18+self.PAGE_NAME_H+max_page_h+self.PAGE_LABEL_H+24)
-        row_gap=10.0
-        x1=margin; x2=max(x1+180.0,viewport_w-margin)
-        visible_w=max(120.0,x2-x1)
-        y=margin
-        for group in self.groups:
-            gid=str(group.get("id", "")); blocks=self._page_blocks_in_group(gid)
-            body_w=sum(sum(specs[i][0] for i in block) for block in blocks)+gap*max(0,len(blocks)-1) if blocks else max(90,self.EMPTY_SLOT_W*scale)
-            frac=max(0.0,min(1.0,float(self._structure_group_scroll.get(gid,0.0))))
-            max_scroll=max(0.0,body_w-visible_w)
-            offset=frac*max_scroll
-            gy1=y; gy2=y+self.GROUP_H
-            page_top=gy2+9.0+self.PAGE_NAME_H
-            band=(page_top-8.0,page_top+max_page_h+8.0)
-            self._structure_group_row_bounds[gid]=(x1,gy1,x2,y+row_h)
-            self._structure_group_page_bands[gid]=band
-            self._group_hitboxes[gid]=(x1,gy1,x2,gy2)
-            self._group_page_bounds[gid]=(x1,x2)
-            self._draw_group_header(group,x1,x2,gy1,gy2)
-            cursor=x1-offset
-            if blocks:
-                for bp,block in enumerate(blocks):
-                    for index in block:
-                        self._visual_indices.append(index)
-                        pw,ph=specs[index]; py=page_top+(max_page_h-ph)
-                        self._draw_page(index,cursor,py,pw,ph,scale)
-                        box=self._page_hitboxes.get(index)
-                        if box and (box[2] < x1-1 or box[0] > x2+1):
-                            self._page_hitboxes.pop(index,None)
-                        cursor+=pw
-                    if bp < len(blocks)-1: cursor+=gap
-            elif gid not in {self.START_GROUP_ID,self.END_GROUP_ID}:
-                sw=max(90,self.EMPTY_SLOT_W*scale); sh=min(max_page_h,max(100,self.BASE_PAGE_H*scale*self.PAGE_SIZE_AUTO)); sy=page_top+(max_page_h-sh)
-                self._draw_waiting_slot(x1,sy,x1+sw,sy+sh,group)
-            # masque gauche, afin qu'une page défilée ne passe jamais sous le titre de partie
-            self.canvas.create_rectangle(0,gy2,x1-2,y+row_h,fill=theme.WINDOW_DEEP,outline="",tags=("structure_row_mask",))
-            # curseur local sous la partie
-            track_y=y+row_h-10.0; tx1=x1+16; tx2=x2-16
-            self.canvas.create_line(tx1,track_y,tx2,track_y,fill="#3F4B52",width=2)
-            if body_w > visible_w+1:
-                thumb_w=max(54.0,(tx2-tx1)*min(1.0,visible_w/body_w)); thumb_x=tx1+frac*max(0.0,(tx2-tx1)-thumb_w)
-                self.canvas.create_rectangle(thumb_x,track_y-4,thumb_x+thumb_w,track_y+4,fill="#6A9295",outline="#9FC9C3",width=1)
-                self._structure_scroll_track_hitboxes[gid]=(tx1,track_y-8,tx2,track_y+8)
-                self._structure_scroll_thumb_hitboxes[gid]=(thumb_x,track_y-8,thumb_x+thumb_w,track_y+8)
-            else:
-                self.canvas.create_oval((tx1+tx2)/2-3,track_y-3,(tx1+tx2)/2+3,track_y+3,fill="#58646A",outline="")
-            self.canvas.create_line(x1,y+row_h,x2,y+row_h,fill=theme.BORDER_SOFT,width=1)
-            y+=row_h+row_gap
-        total_h=max(viewport_h,y+margin-row_gap)
-        self._h_scroll_needed=False
-        try: self.h_nav.set_enabled(False)
-        except Exception: pass
-        return viewport_w,total_h
-
     def render(self):
         self._render_pending = None
         if not hasattr(self, "canvas"):
@@ -16040,10 +15039,6 @@ class BookCanvas(tk.Frame):
         self._image_refs = []
         self._group_hitboxes = {}
         self._group_page_bounds = {}
-        self._structure_group_row_bounds = {}
-        self._structure_group_page_bands = {}
-        self._structure_scroll_track_hitboxes = {}
-        self._structure_scroll_thumb_hitboxes = {}
         self._structure_page_line_bounds = None
         self._visual_indices = []
 
@@ -16107,113 +15102,112 @@ class BookCanvas(tk.Frame):
             y = max(margin + self.PAGE_NAME_H, (total_h - page_h - self.PAGE_LABEL_H + self.PAGE_NAME_H) / 2.0)
             self._draw_page(self._selected_index, x, y, page_w, page_h, scale)
         else:
-            if bool(getattr(self, "_structure_stacked_layout", False)):
-                total_w, total_h = self._render_structure_stacked(viewport_w, viewport_h, scale)
-            else:
-                specs: dict[int, tuple[float, float]] = {}
-                for index in range(len(self.items)):
-                    item = self.items[index]
-                    if self._is_automatic_page(item):
-                        deployed = self._structural_auto_is_deployed(index)
-                        width_factor = self.PAGE_AUTO_DEPLOY_W if deployed else self.PAGE_AUTO_REST_W
-                        height_factor = self.PAGE_AUTO_DEPLOY_H if deployed else self.PAGE_AUTO_REST_H
-                        specs[index] = (
-                            max(14, self.BASE_PAGE_W * scale * width_factor),
-                            max(30, self.BASE_PAGE_H * scale * height_factor),
-                        )
-                    else:
-                        factor = self._page_size_factor(index, active_group_id)
-                        single_w = max(16, self.BASE_PAGE_W * scale * factor)
-                        page_h = max(22, self.BASE_PAGE_H * scale * factor)
-                        if self._effective_double_page_rule(item):
-                            specs[index] = (single_w * 2.0, page_h)
-                        else:
-                            specs[index] = (single_w, page_h)
-
-                # Les pages auto et leur page source forment un seul bloc visuel.
-                # Aucun espace à l'intérieur du bloc ; l'espace normal reste entre les blocs.
-                group_layout: list[tuple[dict, list[list[int]], float]] = []
-                for group in self.groups:
-                    group_id = str(group.get("id", ""))
-                    blocks = self._page_blocks_in_group(group_id)
-                    if blocks:
-                        body_w = sum(sum(specs[i][0] for i in block) for block in blocks)
-                        body_w += gap * max(0, len(blocks) - 1)
-                    else:
-                        body_w = max(90, self.EMPTY_SLOT_W * scale)
-                    min_header = max(150, min(300, 174 + max(len(self._group_name(group)), len(self._group_part_title(group))) * 2))
-                    group_layout.append((group, blocks, max(body_w, min_header)))
-
-                content_w = sum(width for _g, _i, width in group_layout) + group_gap * max(0, len(group_layout) - 1)
-                # Aux deux extrémités, Début/Fin peuvent arriver exactement au centre
-                # du champ visible. Cela évite une fin de parcours coincée sur un bord.
-                if group_layout and content_w + margin * 2 > viewport_w:
-                    first_w = group_layout[0][2]
-                    last_w = group_layout[-1][2]
-                    left_pad = max(margin, viewport_w / 2.0 - first_w / 2.0)
-                    right_pad = max(margin, viewport_w / 2.0 - last_w / 2.0)
-                    x = left_pad
+            active_group_id = self._active_group_id()
+            specs: dict[int, tuple[float, float]] = {}
+            for index in range(len(self.items)):
+                item = self.items[index]
+                if self._is_automatic_page(item):
+                    deployed = self._structural_auto_is_deployed(index)
+                    width_factor = self.PAGE_AUTO_DEPLOY_W if deployed else self.PAGE_AUTO_REST_W
+                    height_factor = self.PAGE_AUTO_DEPLOY_H if deployed else self.PAGE_AUTO_REST_H
+                    specs[index] = (
+                        max(14, self.BASE_PAGE_W * scale * width_factor),
+                        max(30, self.BASE_PAGE_H * scale * height_factor),
+                    )
                 else:
-                    # Quand toute la structure tient dans B, on la centre visuellement
-                    # au lieu de la plaquer à gauche. On conserve une petite respiration
-                    # de navigation sans provoquer un déplacement brutal.
-                    nav_pad = max(margin, min(150.0, viewport_w * 0.09)) if len(group_layout) >= 4 else margin
-                    centered_pad = max(0.0, (viewport_w - content_w) / 2.0)
-                    left_pad = right_pad = max(nav_pad, centered_pad)
-                    x = left_pad
-                group_y1 = margin
-                group_y2 = group_y1 + self.GROUP_H
-
-                max_page_h = max((h for _w, h in specs.values()), default=self.BASE_PAGE_H * scale)
-                row_needed = self.PAGE_NAME_H + max_page_h + self.PAGE_LABEL_H
-                available_top = group_y2 + self.GROUP_TO_PAGE
-                available_h = max(0, viewport_h - available_top - margin)
-                page_row_top = available_top + max(0, (available_h - row_needed) / 2.0)
-                page_bottom = page_row_top + row_needed
-
-                # Seule cette bande est une zone de dépôt de page. Le petit débord
-                # permet de viser confortablement entre deux cartes sans transformer
-                # tout B en surface d'insertion.
-                line_y1 = page_row_top + self.PAGE_NAME_H - 10.0
-                line_y2 = page_row_top + self.PAGE_NAME_H + max_page_h + 10.0
-                self._structure_page_line_bounds = (line_y1, line_y2)
-
-                for group_pos, (group, blocks, group_width) in enumerate(group_layout):
-                    group_id = str(group.get("id", ""))
-                    start_x = x
-                    cursor_x = start_x
-                    if blocks:
-                        for block_pos, block in enumerate(blocks):
-                            # Le bloc [Auto Avant + source + Auto Après] est dessiné bord à bord.
-                            for index in block:
-                                self._visual_indices.append(index)
-                                page_w, page_h = specs[index]
-                                page_y = page_row_top + self.PAGE_NAME_H + (max_page_h - page_h)
-                                self._draw_page(index, cursor_x, page_y, page_w, page_h, scale)
-                                cursor_x += page_w
-                            if block_pos < len(blocks) - 1:
-                                cursor_x += gap
+                    factor = self._page_size_factor(index, active_group_id)
+                    single_w = max(16, self.BASE_PAGE_W * scale * factor)
+                    page_h = max(22, self.BASE_PAGE_H * scale * factor)
+                    if self._effective_double_page_rule(item):
+                        specs[index] = (single_w * 2.0, page_h)
                     else:
-                        empty_w = max(90, self.EMPTY_SLOT_W * scale)
-                        if group_id not in {self.START_GROUP_ID, self.END_GROUP_ID}:
-                            slot_h = min(max_page_h, max(100, self.BASE_PAGE_H * scale * self.PAGE_SIZE_AUTO))
-                            slot_y = page_row_top + self.PAGE_NAME_H + (max_page_h - slot_h)
-                            self._draw_waiting_slot(cursor_x, slot_y, cursor_x + empty_w, slot_y + slot_h, group)
-                        cursor_x += empty_w
+                        specs[index] = (single_w, page_h)
 
-                    end_x = start_x + group_width
-                    self._group_hitboxes[group_id] = (start_x, group_y1, end_x, group_y2)
-                    self._group_page_bounds[group_id] = (start_x, end_x)
-                    self._draw_group_header(group, start_x, end_x, group_y1, group_y2)
-                    x = end_x
-                    if group_pos < len(group_layout) - 1:
-                        separator_x = x + group_gap / 2.0
-                        self.canvas.create_line(separator_x, group_y1 + 4, separator_x, page_row_top + max_page_h, fill=theme.BORDER_SOFT, width=1, dash=(3, 5))
-                        x += group_gap
+            # Les pages auto et leur page source forment un seul bloc visuel.
+            # Aucun espace à l'intérieur du bloc ; l'espace normal reste entre les blocs.
+            group_layout: list[tuple[dict, list[list[int]], float]] = []
+            for group in self.groups:
+                group_id = str(group.get("id", ""))
+                blocks = self._page_blocks_in_group(group_id)
+                if blocks:
+                    body_w = sum(sum(specs[i][0] for i in block) for block in blocks)
+                    body_w += gap * max(0, len(blocks) - 1)
+                else:
+                    body_w = max(90, self.EMPTY_SLOT_W * scale)
+                min_header = max(150, min(300, 174 + max(len(self._group_name(group)), len(self._group_part_title(group))) * 2))
+                group_layout.append((group, blocks, max(body_w, min_header)))
 
-                total_w = max(viewport_w, content_w + left_pad + right_pad)
-                required_h = page_bottom + margin
-                total_h = viewport_h if required_h <= viewport_h + 1 else required_h
+            content_w = sum(width for _g, _i, width in group_layout) + group_gap * max(0, len(group_layout) - 1)
+            # Aux deux extrémités, Début/Fin peuvent arriver exactement au centre
+            # du champ visible. Cela évite une fin de parcours coincée sur un bord.
+            if group_layout and content_w + margin * 2 > viewport_w:
+                first_w = group_layout[0][2]
+                last_w = group_layout[-1][2]
+                left_pad = max(margin, viewport_w / 2.0 - first_w / 2.0)
+                right_pad = max(margin, viewport_w / 2.0 - last_w / 2.0)
+                x = left_pad
+            else:
+                # Quand toute la structure tient dans B, on la centre visuellement
+                # au lieu de la plaquer à gauche. On conserve une petite respiration
+                # de navigation sans provoquer un déplacement brutal.
+                nav_pad = max(margin, min(150.0, viewport_w * 0.09)) if len(group_layout) >= 4 else margin
+                centered_pad = max(0.0, (viewport_w - content_w) / 2.0)
+                left_pad = right_pad = max(nav_pad, centered_pad)
+                x = left_pad
+            group_y1 = margin
+            group_y2 = group_y1 + self.GROUP_H
+
+            max_page_h = max((h for _w, h in specs.values()), default=self.BASE_PAGE_H * scale)
+            row_needed = self.PAGE_NAME_H + max_page_h + self.PAGE_LABEL_H
+            available_top = group_y2 + self.GROUP_TO_PAGE
+            available_h = max(0, viewport_h - available_top - margin)
+            page_row_top = available_top + max(0, (available_h - row_needed) / 2.0)
+            page_bottom = page_row_top + row_needed
+
+            # Seule cette bande est une zone de dépôt de page. Le petit débord
+            # permet de viser confortablement entre deux cartes sans transformer
+            # tout B en surface d'insertion.
+            line_y1 = page_row_top + self.PAGE_NAME_H - 10.0
+            line_y2 = page_row_top + self.PAGE_NAME_H + max_page_h + 10.0
+            self._structure_page_line_bounds = (line_y1, line_y2)
+
+            for group_pos, (group, blocks, group_width) in enumerate(group_layout):
+                group_id = str(group.get("id", ""))
+                start_x = x
+                cursor_x = start_x
+                if blocks:
+                    for block_pos, block in enumerate(blocks):
+                        # Le bloc [Auto Avant + source + Auto Après] est dessiné bord à bord.
+                        for index in block:
+                            self._visual_indices.append(index)
+                            page_w, page_h = specs[index]
+                            page_y = page_row_top + self.PAGE_NAME_H + (max_page_h - page_h)
+                            self._draw_page(index, cursor_x, page_y, page_w, page_h, scale)
+                            cursor_x += page_w
+                        if block_pos < len(blocks) - 1:
+                            cursor_x += gap
+                else:
+                    empty_w = max(90, self.EMPTY_SLOT_W * scale)
+                    if group_id not in {self.START_GROUP_ID, self.END_GROUP_ID}:
+                        slot_h = min(max_page_h, max(100, self.BASE_PAGE_H * scale * self.PAGE_SIZE_AUTO))
+                        slot_y = page_row_top + self.PAGE_NAME_H + (max_page_h - slot_h)
+                        self._draw_waiting_slot(cursor_x, slot_y, cursor_x + empty_w, slot_y + slot_h, group)
+                    cursor_x += empty_w
+
+                end_x = start_x + group_width
+                self._group_hitboxes[group_id] = (start_x, group_y1, end_x, group_y2)
+                self._group_page_bounds[group_id] = (start_x, end_x)
+                self._draw_group_header(group, start_x, end_x, group_y1, group_y2)
+                x = end_x
+                if group_pos < len(group_layout) - 1:
+                    separator_x = x + group_gap / 2.0
+                    self.canvas.create_line(separator_x, group_y1 + 4, separator_x, page_row_top + max_page_h, fill=theme.BORDER_SOFT, width=1, dash=(3, 5))
+                    x += group_gap
+
+            total_w = max(viewport_w, content_w + left_pad + right_pad)
+            required_h = page_bottom + margin
+            total_h = viewport_h if required_h <= viewport_h + 1 else required_h
+
         self.canvas.configure(scrollregion=(0, 0, total_w, total_h))
         self._update_scrollbars(total_w, total_h)
 
@@ -16236,8 +15230,6 @@ class BookCanvas(tk.Frame):
         self._structure_update_recto_verso_visuals()
         self._structure_update_common_rule_actions()
         self._structure_update_auto_counter()
-        if str(getattr(self, "_work_mode", "") or "") == "structure":
-            self._render_gabarit_inspector_overlay(force=True)
         self._structure_restore_view_anchor(structure_view_snapshot)
         self.after_idle(self._update_visible_part_marker)
 
@@ -16356,9 +15348,6 @@ class BookCanvas(tk.Frame):
     def _visible_group_id(self) -> str:
         if not self._group_page_bounds or self._page_focus:
             return self._active_group_id()
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            center_y = self.canvas.canvasy(max(1, self.canvas.winfo_height()) / 2.0)
-            return self._structure_group_id_at_point(0.0, center_y)
         center_x = self.canvas.canvasx(max(1, self.canvas.winfo_width()) / 2.0)
         return self._group_id_at_x(center_x)
 
@@ -16769,17 +15758,12 @@ class BookCanvas(tk.Frame):
     def _refresh_drag_target(self):
         if not self._dragging or self._drag_pointer_xy is None:
             return
-        pointer_x, pointer_y = self._drag_pointer_xy
+        pointer_x, _pointer_y = self._drag_pointer_xy
         canvas_x = self.canvas.canvasx(pointer_x)
-        canvas_y = self.canvas.canvasy(pointer_y)
         if self._drag_kind == "group":
-            self._drag_group_target = (
-                self._target_movable_group_index_y(canvas_y)
-                if bool(getattr(self, "_structure_stacked_layout", False))
-                else self._target_movable_group_index(canvas_x)
-            )
+            self._drag_group_target = self._target_movable_group_index(canvas_x)
         elif self._drag_kind == "page" and self._drag_start_index is not None:
-            group_id = self._structure_group_id_at_point(canvas_x, canvas_y)
+            group_id = self._group_id_at_x(canvas_x)
             self._drag_target_group_id = group_id
             self._drag_target_local_pos = self._target_local_pos_from_x(
                 canvas_x,
@@ -16949,9 +15933,6 @@ class BookCanvas(tk.Frame):
         if getattr(self, "_title_editor", None) is not None:
             self._close_title_editor(commit=True)
 
-        if getattr(self, "_work_mode", "structure") == "structure":
-            if self._structure_scroll_press(event):
-                return "break"
         if getattr(self, "_work_mode", "structure") == "structure" and getattr(self, "_structure_page_auto_mode", None):
             self.structure_cancel_page_auto_mode(silent=True)
         if getattr(self, "_work_mode", "structure") == "structure" and getattr(self, "_structure_action_mode", None):
@@ -17123,8 +16104,6 @@ class BookCanvas(tk.Frame):
     def _on_drag(self, event):
         if getattr(self, "_work_mode", "structure") == "gabarits":
             return self._gabarit_drag(event)
-        if self._structure_scroll_drag_group:
-            return self._structure_scroll_motion(event)
         if self._selection_box_start is not None and self._drag_kind is None:
             if self._drag_start_xy is None:
                 return "break"
@@ -17171,16 +16150,6 @@ class BookCanvas(tk.Frame):
         self.render()
         return "break"
 
-    def _target_movable_group_index_y(self, canvas_y: float) -> int:
-        ids = self._movable_group_ids()
-        if not ids:
-            return 0
-        for pos, group_id in enumerate(ids):
-            box = getattr(self, "_structure_group_row_bounds", {}).get(group_id) or self._group_hitboxes.get(group_id)
-            if box and canvas_y < (box[1] + box[3]) / 2.0:
-                return pos
-        return len(ids)
-
     def _target_movable_group_index(self, canvas_x: float) -> int:
         ids = self._movable_group_ids()
         if not ids:
@@ -17210,17 +16179,6 @@ class BookCanvas(tk.Frame):
 
     def _draw_group_drop_indicator(self, target: int):
         ids = self._movable_group_ids()
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            if not ids:
-                return
-            if target >= len(ids):
-                box = getattr(self, "_structure_group_row_bounds", {}).get(ids[-1])
-                y = (box[3] + 5) if box else 0
-            else:
-                box = getattr(self, "_structure_group_row_bounds", {}).get(ids[target])
-                y = (box[1] - 5) if box else 0
-            self.canvas.create_line(18, y, max(40, self.canvas.winfo_width()-18), y, fill=self.GOLD, width=4, tags=("drop_indicator",))
-            return
         if not ids:
             return
         if target >= len(ids):
@@ -17243,15 +16201,8 @@ class BookCanvas(tk.Frame):
             index for index in self._group_items(group_id)
             if index not in excluded and not self._is_automatic_page(self.items[index])
         ]
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            band = getattr(self, "_structure_group_page_bands", {}).get(group_id)
-            if band:
-                y1, y2 = band[0], band[1]
-            else:
-                y1, y2 = self.MARGIN + self.GROUP_H, self.MARGIN + self.GROUP_H + 100
-        else:
-            y1 = min((box[1] for box in self._page_hitboxes.values()), default=self.MARGIN + self.GROUP_H)
-            y2 = max((box[3] for box in self._page_hitboxes.values()), default=y1 + 100)
+        y1 = min((box[1] for box in self._page_hitboxes.values()), default=self.MARGIN + self.GROUP_H)
+        y2 = max((box[3] for box in self._page_hitboxes.values()), default=y1 + 100)
         if local_pos < len(source_indexes) and source_indexes[local_pos] in self._page_hitboxes:
             x = self._page_hitboxes[source_indexes[local_pos]][0] - 7
         elif source_indexes and source_indexes[-1] in self._page_hitboxes:
@@ -17353,9 +16304,6 @@ class BookCanvas(tk.Frame):
     def _on_release(self, _event):
         if getattr(self, "_work_mode", "structure") == "gabarits":
             return self._gabarit_release(_event)
-        if self._structure_scroll_drag_group:
-            self._structure_scroll_drag_group = ""
-            return "break"
         if self._selection_box_start is not None:
             start = self._selection_box_start
             current = self._selection_box_current or start
@@ -17493,14 +16441,7 @@ class BookCanvas(tk.Frame):
                 self._gabarit_clamp_pan(self.canvas.winfo_width(), self.canvas.winfo_height(), page_w, page_h)
                 self.render()
             return "break"
-        if bool(getattr(self, "_structure_stacked_layout", False)):
-            cy = self.canvas.canvasy(event.y)
-            gid = self._structure_group_id_at_point(self.canvas.canvasx(event.x), cy)
-            current = float(getattr(self, "_structure_group_scroll", {}).get(gid, 0.0))
-            step = -0.10 if event.delta > 0 else 0.10
-            self._structure_group_scroll[gid] = max(0.0, min(1.0, current + step))
-            self.render()
-        elif self._h_scroll_needed:
+        if self._h_scroll_needed:
             delta = -1 if event.delta > 0 else 1
             self.canvas.xview_scroll(delta * 4, "units")
             self.after_idle(self._update_visible_part_marker)
@@ -17522,7 +16463,7 @@ class BookCanvas(tk.Frame):
         delta = -1 if event.delta > 0 else 1
         if self._v_scroll_needed:
             self.canvas.yview_scroll(delta * 4, "units")
-        elif self._h_scroll_needed and not bool(getattr(self, "_structure_stacked_layout", False)):
+        elif self._h_scroll_needed:
             self.canvas.xview_scroll(delta * 4, "units")
             self.after_idle(self._update_visible_part_marker)
         return "break"
