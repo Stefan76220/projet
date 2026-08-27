@@ -230,17 +230,8 @@ class TomeLineaV3(tk.Tk):
     """TomeLinea V3 — espace projet continu A/B/C."""
 
     # DEMARRAGE_ATOMIQUE_V3_WINDOWS_V2
-    def __init__(self, *, startup_progress: Callable[[str, str], None] | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
-
-        # La fenêtre de préparation existe encore pendant le préchauffage.
-        # TomeLinea doit donc devenir explicitement la racine Tk par défaut
-        # pour que toutes ses PhotoImage et variables Tk appartiennent au
-        # bon interpréteur.
-        try:
-            tk._default_root = self
-        except Exception:
-            pass
 
         # Sous Windows, on construit toute la V3 hors écran.
         # On n'affiche la fenêtre qu'une fois Accueil + espace A/B/C prêts.
@@ -299,8 +290,6 @@ class TomeLineaV3(tk.Tk):
         self.viewer3d_overlay = Viewer3DOverlay(
             self.stack,
             on_return=self._return_from_viewer,
-            on_action=self._viewer_action,
-            on_navigate=self._navigate_from_viewer,
             bg=theme.WINDOW_DEEP,
         )
         self.bind_all("<Control-z>", self._workspace_keyboard_undo, add="+")
@@ -311,35 +300,7 @@ class TomeLineaV3(tk.Tk):
         # Première passe de géométrie pendant que la fenêtre est cachée.
         self.update_idletasks()
 
-        # PRECHAUFFAGE_GLOBAL_TOMELINEA_V1
-        # La fenêtre de préparation ne sert plus seulement au Visionneur :
-        # elle réalise aussi, hors écran, les géométries des quatre bureaux.
-        # Au clic, on bascule donc vers des panneaux déjà construits et mesurés.
-        if callable(startup_progress):
-            try:
-                self.geometry("1280x800+-16000+-16000")
-                self.deiconify()
-                self.update_idletasks()
-                self.update()
-
-                startup_progress("Bureaux", "Préparation de Structure, Gabarits, Production et Sortie…")
-                self._prewarm_workspace_shells()
-
-                startup_progress("Visionneur", "Préparation du moteur intégré…")
-                self.viewer3d_overlay.prewarm(
-                    timeout_ms=12000,
-                    progress=startup_progress,
-                )
-                self.withdraw()
-                startup_progress("TomeLinea est prêt", "Ouverture du logiciel…")
-            except Exception:
-                try:
-                    self.withdraw()
-                except Exception:
-                    pass
-
-        # Affichage seulement quand la structure existe déjà et que le
-        # Visionneur a eu l'occasion de se préchauffer.
+        # Affichage seulement quand la structure existe déjà.
         self.deiconify()
         # CONSERVER_BARRE_TACHES_WINDOWS_V3_V5
         # Fenêtre TomeLinea sans barre de titre Windows, mais limitée à la
@@ -1099,7 +1060,7 @@ class TomeLineaV3(tk.Tk):
             # V104 — le bandeau porteur des onglets reste AU-DESSUS de la surface
             # de travail en Structure/Gabarits. Pour Production/Sortie, C conserve
             # son rôle de panneau de commandes sous B.
-            compact_tabs = active_tab in {"gabarits", "structure", "production"}
+            compact_tabs = active_tab in {"gabarits", "structure"}
             if compact_tabs:
                 c_h = 48
                 c_y = margin_y + a_h + gap
@@ -1125,22 +1086,14 @@ class TomeLineaV3(tk.Tk):
                 toolbar_h = 48
                 toolbar_x = margin_x + max(0, (inner_w - toolbar_w) // 2)
                 toolbar_y = b_y + focus_b_h - toolbar_h - 14
-                viewer = getattr(self, "viewer3d_overlay", None)
-                viewer_active = bool(getattr(viewer, "active", False)) if viewer is not None else False
-                if viewer_active:
-                    # Une WebView native ne doit jamais être recouverte par la
-                    # barre flottante Tk de la page, même après un Configure.
-                    self.focus_toolbar.place_forget()
-                else:
-                    self.focus_toolbar.place(
-                        x=toolbar_x,
-                        y=toolbar_y,
-                        width=toolbar_w,
-                        height=toolbar_h,
-                    )
+                self.focus_toolbar.place(
+                    x=toolbar_x,
+                    y=toolbar_y,
+                    width=toolbar_w,
+                    height=toolbar_h,
+                )
                 self.zone_b.tk.call("raise", self.zone_b._w)
-                if not viewer_active:
-                    self.focus_toolbar.tk.call("raise", self.focus_toolbar._w)
+                self.focus_toolbar.tk.call("raise", self.focus_toolbar._w)
                 self.zone_a.tk.call("raise", self.zone_a._w)
             else:
                 self.focus_toolbar.place_forget()
@@ -1153,69 +1106,6 @@ class TomeLineaV3(tk.Tk):
         screen.bind("<Configure>", layout, add="+")
         self._build_zone_a()
         self._build_zone_c()
-
-    def _prewarm_workspace_shells(self) -> None:
-        """Réalise une fois les quatre bureaux pendant la préouverture.
-
-        Aucun projet n'est nécessaire ici : on prépare uniquement les widgets,
-        géométries et panneaux persistants. Les données du livre restent chargées
-        normalement quand l'utilisateur ouvre son projet.
-        """
-        canvas = getattr(self, "book_canvas", None)
-        previous_suspend = bool(getattr(canvas, "_transition_render_suspended", False)) if canvas is not None else False
-        if canvas is not None:
-            canvas._transition_render_suspended = True
-
-        previous_tab = str(getattr(self, "active_tab", "structure") or "structure")
-        try:
-            workspace = self._screens.get("workspace")
-            if workspace is not None:
-                workspace.tkraise()
-
-            layout = getattr(self, "_workspace_layout_callback", None)
-            for key, _label in theme.TAB_NAMES:
-                self.active_tab = key
-                frame = self.tab_frames.get(key)
-                if frame is not None:
-                    frame.tkraise()
-                try:
-                    if key in {"gabarits", "production"}:
-                        self.tab_host.grid_remove()
-                    else:
-                        self.tab_host.grid()
-                except Exception:
-                    pass
-                if callable(layout):
-                    layout(None)
-                self.update_idletasks()
-
-            self.active_tab = previous_tab if previous_tab in self.tab_frames else "structure"
-            self.tab_frames[self.active_tab].tkraise()
-            try:
-                if self.active_tab in {"gabarits", "production"}:
-                    self.tab_host.grid_remove()
-                else:
-                    self.tab_host.grid()
-            except Exception:
-                pass
-            if callable(layout):
-                layout(None)
-            self.update_idletasks()
-        finally:
-            if canvas is not None:
-                # Supprime une éventuelle demande de rendu héritée d'un Configure
-                # survenu juste avant la suspension, puis rend la main normalement.
-                pending = getattr(canvas, "_render_pending", None)
-                if pending is not None:
-                    try:
-                        canvas.after_cancel(pending)
-                    except Exception:
-                        pass
-                    canvas._render_pending = None
-                canvas._transition_render_suspended = previous_suspend
-            home = self._screens.get("home")
-            if home is not None:
-                home.tkraise()
 
     def _set_book_page_focus(self, active: bool):
         active = bool(active)
@@ -2372,21 +2262,20 @@ class TomeLineaV3(tk.Tk):
         self.after_idle(refresh_gabarit_tools)
 
     def _build_production_tab(self, parent):
-        """Production partage désormais le même atelier plein B que Gabarits.
-
-        Ce Frame reste uniquement un repli technique : les commandes visibles
-        de Production sont portées par le rail latéral persistant de BookCanvas.
-        Cela évite de reconstruire un deuxième poste de travail et garantit les
-        mêmes repères, zooms et transitions.
-        """
-        parent.configure(bg=theme.PANEL)
-        tk.Label(
+        self._build_tool_tab(
             parent,
-            text="Production — atelier commun avec Gabarits",
-            bg=theme.PANEL,
-            fg=theme.MUTED,
-            font=(theme.FONT_UI, 8),
-        ).pack(anchor="w", padx=12, pady=12)
+            title="Production",
+            intro="Insérer le contenu de l’auteur et produire les pages.",
+            groups=[
+                ("Production", ["Page sélectionnée", "Produire en lot", "Mettre à jour", "Marquer comme prêt"]),
+                ("Contenu", ["Contenu de l’auteur", "Images", "Ressources", "Éléments non affectés"]),
+            ],
+            info_title="État de production",
+            info_text=(
+                "Une même mécanique servira à la page unique et aux lots. À mesure que les pages sont produites, "
+                "la zone B remplace les emplacements de structure par leur rendu réel."
+            ),
+        )
 
     def _build_sortie_tab(self, parent):
         self._build_tool_tab(
@@ -2716,69 +2605,32 @@ class TomeLineaV3(tk.Tk):
             return
         if key == "gabarits" and not self._ensure_gabarit_format_for_session():
             return
-
-        previous = str(getattr(self, "active_tab", "structure") or "structure")
-        if key == previous:
-            # Un clic sur le bureau déjà actif ne doit jamais provoquer un rendu,
-            # mais on synchronise quand même l'état visuel des onglets (notamment
-            # pendant la construction initiale de l'interface).
-            focus_toolbar = getattr(self, "focus_toolbar", None)
-            if focus_toolbar is not None:
-                focus_toolbar.set_active_tab(key)
-            for tab_key, button in self.tab_buttons.items():
-                if tab_key == key:
-                    button.configure(bg=theme.ACCENT_DARK, fg=theme.WHITE)
-                else:
-                    button.configure(bg=theme.PANEL_SOFT, fg=theme.INK)
-            return
-
+        self.active_tab = key
+        self.tab_frames[key].tkraise()
         book_canvas = getattr(self, "book_canvas", None)
-        if book_canvas is not None:
-            book_canvas._transition_render_suspended = True
-            pending = getattr(book_canvas, "_render_pending", None)
-            if pending is not None:
+        if book_canvas is not None and hasattr(book_canvas, "set_work_mode"):
+            book_canvas.set_work_mode(key)
+        tab_host = getattr(self, "tab_host", None)
+        if tab_host is not None:
+            try:
+                if key == "gabarits":
+                    tab_host.grid_remove()
+                else:
+                    tab_host.grid()
+            except Exception:
+                pass
+        if key == "gabarits":
+            refresher = getattr(self, "_refresh_gabarit_panel", None)
+            if callable(refresher):
                 try:
-                    book_canvas.after_cancel(pending)
+                    refresher()
                 except Exception:
                     pass
-                book_canvas._render_pending = None
-
-        try:
-            # TRANSITIONS_PRECHAUFFEES_V1
-            # 1) On place d'abord le bureau demandé dans sa géométrie FINALE.
-            # 2) Le Canvas ne rend qu'une seule fois, une fois cette géométrie fixée.
-            # Ainsi aucune étape intermédiaire n'est peinte à l'écran.
-            self.active_tab = key
-            self.tab_frames[key].tkraise()
-
-            tab_host = getattr(self, "tab_host", None)
-            if tab_host is not None:
-                try:
-                    if key in {"gabarits", "production"}:
-                        tab_host.grid_remove()
-                    else:
-                        tab_host.grid()
-                except Exception:
-                    pass
-
-            layout = getattr(self, "_workspace_layout_callback", None)
-            if callable(layout):
-                layout(None)
-
-            if book_canvas is not None and hasattr(book_canvas, "set_work_mode"):
-                book_canvas.set_work_mode(key)
-
-            if key == "gabarits":
-                refresher = getattr(self, "_refresh_gabarit_panel", None)
-                if callable(refresher):
-                    try:
-                        refresher()
-                    except Exception:
-                        pass
-        finally:
-            if book_canvas is not None:
-                book_canvas._transition_render_suspended = False
-
+        # Le changement de bureau peut changer complètement la géométrie B/C.
+        # On recalcule donc immédiatement la place disponible.
+        layout = getattr(self, "_workspace_layout_callback", None)
+        if callable(layout):
+            self.after_idle(lambda: layout(None))
         focus_toolbar = getattr(self, "focus_toolbar", None)
         if focus_toolbar is not None:
             focus_toolbar.set_active_tab(key)
@@ -2810,424 +2662,17 @@ class TomeLineaV3(tk.Tk):
         items = list(getattr(canvas, "items", []) or []) if canvas is not None else []
         return max(1, len(items))
 
-    def _viewer_pages_info(self) -> list[dict]:
-        """Données des deux panneaux « Règles appliquées » du Visionneur.
-
-        Le dessin reprend le panneau validé du prototype autonome V4.21 ; ici,
-        contrairement au prototype, les valeurs sont alimentées par l'état réel
-        de Structure et de Gabarits.
-        """
-        canvas = getattr(self, "book_canvas", None)
-        items = list(getattr(canvas, "items", []) or []) if canvas is not None else []
-        groups = list(getattr(canvas, "groups", []) or []) if canvas is not None else []
-        if canvas is None or not items:
-            return []
-
-        group_by_id = {
-            str(group.get("id") or ""): group
-            for group in groups
-            if isinstance(group, dict)
-        }
-        number_by_id = {
-            str(item.get("id") or ""): index + 1
-            for index, item in enumerate(items)
-            if isinstance(item, dict) and str(item.get("id") or "")
-        }
-
-        def _type_label(type_key: str) -> str:
-            key = str(type_key or "").strip()
-            if not key:
-                return ""
-            try:
-                definition = canvas._structure_type_definition(key)
-                label = str(definition.get("short_label") or definition.get("label") or "").strip()
-                if label:
-                    return label
-            except Exception:
-                pass
-            return key.replace("_", " ").strip().capitalize()
-
-        infos: list[dict] = []
-        for index, item in enumerate(items):
-            if not isinstance(item, dict):
-                item = {}
-            page_number = index + 1
-            physical_side = "recto" if index % 2 == 0 else "verso"
-
-            try:
-                page_type = str(canvas._page_type_label(item, index) or "Page")
-            except Exception:
-                page_type = str(item.get("type") or item.get("kind") or "Page").replace("_", " ").strip().capitalize()
-
-            try:
-                page_name = str(canvas._page_display_name(item, index) or "")
-            except Exception:
-                page_name = str(item.get("page_name") or item.get("display_name") or "").strip()
-
-            try:
-                group_id = str(canvas._item_group_id(item) or "")
-            except Exception:
-                group_id = str(item.get("plan_group") or item.get("group_id") or "")
-            group = group_by_id.get(group_id, {})
-            try:
-                part_name = str(canvas._group_name(group) or "") if group else ""
-                part_title = str(canvas._group_part_title(group) or "") if group else ""
-            except Exception:
-                part_name = str(group.get("title") or group.get("name") or "").strip() if group else ""
-                part_title = str(group.get("part_title") or group.get("titre_partie") or "").strip() if group else ""
-            if part_title in {"", "Titre à définir"}:
-                part_text = part_name
-            elif part_name:
-                part_text = f"{part_name} — {part_title}"
-            else:
-                part_text = part_title
-
-            source_type = ""
-            try:
-                source_type = str(canvas._type_of(item) or "")
-            except Exception:
-                source_type = str(item.get("type") or item.get("kind") or "")
-
-            # Recto / Verso : côté physique + éventuelle règle imposée.
-            try:
-                effective_side = str(canvas._effective_recto_verso_rule(item) or "")
-                general_side = str(canvas.structure_get_recto_verso_type_rule(source_type) or "") if source_type else ""
-                rv_override = canvas._recto_verso_override_value(item)
-            except Exception:
-                effective_side = str(item.get("structure_side") or "").strip().lower()
-                general_side = ""
-                rv_override = item.get("recto_verso_override") if "recto_verso_override" in item else None
-            rv_rule = effective_side if effective_side in {"recto", "verso"} else ""
-            rv_exception = bool(general_side in {"recto", "verso"} and rv_override == "__none__")
-
-            # Pages automatiques AV / AP : valeur réelle de la règle et exceptions locales.
-            auto_rows = {}
-            auto_exceptions: list[str] = []
-            for position, code in (("before", "AV"), ("after", "AP")):
-                try:
-                    general_target = str(canvas.structure_get_page_auto_type_rule(source_type, position) or "") if source_type else ""
-                    override = canvas._page_auto_override_value(item, position)
-                    effective_target = str(canvas._structure_page_auto_type(item, position) or "")
-                except Exception:
-                    general_target = ""
-                    override = item.get(f"page_auto_{position}_override") if f"page_auto_{position}_override" in item else None
-                    effective_target = "" if override == "__none__" else str(override or "")
-                excluded = bool(general_target and override == "__none__")
-                if excluded:
-                    auto_exceptions.append(code)
-                auto_rows[code] = {
-                    "target": _type_label(effective_target),
-                    "excluded": excluded,
-                    "general": _type_label(general_target),
-                }
-
-            # Double page : paire réelle, rôle gauche/droite et ancienne exception si rencontrée.
-            try:
-                pair_id = str(canvas._double_page_pair_id(item) or "")
-                pair_role = str(canvas._double_page_pair_role(item) or "")
-                dp_general = bool(canvas.structure_get_double_page_type_rule(source_type)) if source_type else False
-                dp_override = canvas._double_page_override_value(item)
-            except Exception:
-                pair_id = str(item.get("double_page_pair_id") or "")
-                pair_role = str(item.get("double_page_role") or "")
-                dp_general = False
-                dp_override = item.get("double_page_override") if "double_page_override" in item else None
-            double_page = bool(pair_id)
-            dp_exception = bool(dp_general and dp_override == "__none__")
-
-            # Gabarit : état, portée et exception locale réelle.
-            try:
-                gabarit_status = str(canvas._gabarit_status(item) or "non_commence")
-                gabarit_scope = str(canvas._gabarit_item_last_scope(item) or "")
-                gabarit_exception = bool(canvas._gabarit_is_local_exception(item, index))
-            except Exception:
-                gabarit_status = str(item.get("gabarit_status") or "non_commence")
-                gabarit_scope = str(item.get("gabarit_scope_last") or "")
-                gabarit_exception = bool(item.get("gabarit_local_override"))
-            status_labels = {"termine": "Terminé", "en_cours": "En cours", "non_commence": "Non commencé"}
-            scope_labels = {"type": "Toutes du type", "page": "Cette page"}
-            gabarit_text = page_type
-            if gabarit_scope in scope_labels:
-                gabarit_text = f"{gabarit_text} · {scope_labels[gabarit_scope]}"
-            elif gabarit_status == "non_commence":
-                gabarit_text = "Non défini"
-
-            exceptions: list[str] = []
-            if rv_exception:
-                exceptions.append("Recto / Verso")
-            exceptions.extend(f"Page auto {code}" for code in auto_exceptions)
-            if dp_exception:
-                exceptions.append("Double page")
-            if gabarit_exception:
-                exceptions.append("Gabarit local")
-
-            # Cas particulier d'une page matérielle générée automatiquement.
-            try:
-                is_auto = bool(canvas._is_automatic_page(item))
-                auto_roles = list(canvas._automatic_roles(item)) if is_auto else []
-            except Exception:
-                is_auto = bool(item.get("automatic") or item.get("auto_generated") or item.get("automatic_recto_verso"))
-                auto_roles = list(item.get("automatic_roles") or []) if isinstance(item.get("automatic_roles"), list) else []
-
-            automatic_origin = ""
-            automatic_reason = ""
-            if is_auto:
-                role_labels: list[str] = []
-                source_numbers: list[int] = []
-                for role in auto_roles:
-                    if not isinstance(role, dict):
-                        continue
-                    code = str(role.get("code") or "").upper()
-                    if code and code not in role_labels:
-                        role_labels.append(code)
-                    source_no = number_by_id.get(str(role.get("source_id") or ""))
-                    if source_no and source_no not in source_numbers:
-                        source_numbers.append(source_no)
-                readable_roles = {
-                    "AV": "Page auto avant", "AP": "Page auto après",
-                    "R": "Recto", "V": "Verso", "DP": "Double page",
-                }
-                automatic_origin = " + ".join(readable_roles.get(code, code) for code in role_labels) or "Règle structurelle"
-                if source_numbers:
-                    target_text = ", ".join(f"page {n}" for n in source_numbers)
-                    automatic_reason = f"Créée automatiquement pour {target_text} afin de respecter {automatic_origin.lower()}."
-                else:
-                    automatic_reason = f"Créée automatiquement afin de respecter {automatic_origin.lower()}."
-
-            badges: list[str] = []
-            if rv_rule:
-                badges.append("R" if rv_rule == "recto" else "V")
-            if double_page:
-                badges.append("2P")
-            for code in ("AV", "AP"):
-                if auto_rows[code]["target"]:
-                    badges.append(code)
-            if is_auto:
-                badges.append("AUTO")
-            badges = list(dict.fromkeys(badges))
-
-            infos.append({
-                "number": page_number,
-                "physicalSide": physical_side,
-                "type": page_type,
-                "name": page_name,
-                "part": part_text,
-                "badges": badges,
-                "rectoVersoRule": rv_rule,
-                "rectoVersoException": rv_exception,
-                "autoBefore": auto_rows["AV"],
-                "autoAfter": auto_rows["AP"],
-                "doublePage": double_page,
-                "doublePageRole": pair_role,
-                "exceptions": exceptions,
-                "gabarit": gabarit_text,
-                "gabaritStatus": status_labels.get(gabarit_status, gabarit_status.replace("_", " ").capitalize()),
-                "gabaritException": gabarit_exception,
-                "automatic": is_auto,
-                "automaticOrigin": automatic_origin,
-                "automaticReason": automatic_reason,
-            })
-        return infos
-
     def open_viewer3d(self) -> None:
         if self.context is None:
             return
         viewer = getattr(self, "viewer3d_overlay", None)
         if viewer is None:
             return
-
-        # Une WebView native peut passer sous certains widgets Tk déjà mappés.
-        # On masque explicitement les surimpressions de page pendant le
-        # Visionneur, puis on les restaure seulement lors d'un Retour normal.
-        canvas = getattr(self, "book_canvas", None)
-        self._viewer_restore_page_overlay = False
-        if canvas is not None:
-            overlay_frame = getattr(canvas, "page_overlay_frame", None)
-            overlay_active = bool(getattr(canvas, "_overlay_active", False))
-            overlay_mapped = False
-            if overlay_frame is not None:
-                try:
-                    overlay_mapped = bool(overlay_frame.winfo_ismapped())
-                except Exception:
-                    overlay_mapped = False
-            self._viewer_restore_page_overlay = bool(overlay_active and overlay_mapped)
-            if self._viewer_restore_page_overlay and overlay_frame is not None:
-                try:
-                    overlay_frame.place_forget()
-                except Exception:
-                    pass
-
-        focus_toolbar = getattr(self, "focus_toolbar", None)
-        if focus_toolbar is not None:
-            try:
-                focus_toolbar.place_forget()
-            except Exception:
-                pass
-
-        # Annuler dans le Visionneur ne doit jamais remonter dans l'historique
-        # d'une action réalisée auparavant dans Structure/Gabarits. La session
-        # commence donc avec zéro action locale annulable.
-        self._viewer_session_undo_steps = 0
-        self._viewer_session_redo_steps = 0
         viewer.show(
             origin_tab=str(getattr(self, "active_tab", "structure") or "structure"),
             page=self._viewer_current_page_number(),
             page_count=self._viewer_page_count(),
-            pages_info=self._viewer_pages_info(),
-            can_undo=False,
-            can_redo=False,
         )
-
-    def _viewer_action(self, action: str, page_number: int) -> dict:
-        canvas = getattr(self, "book_canvas", None)
-        if canvas is None or self.context is None:
-            return {"ok": False, "message": "Aucun projet actif."}
-
-        items = list(getattr(canvas, "items", []) or [])
-        if not items:
-            return {"ok": False, "message": "Le livre ne contient aucune page."}
-        try:
-            index = max(0, min(len(items) - 1, int(page_number) - 1))
-        except Exception:
-            index = 0
-
-        ok = False
-        message = ""
-        target_index = index
-
-        if action in {"insert_blank_before", "insert_blank_after"}:
-            # L'ajout AV/AP conserve la page source affichée. Si l'insertion est
-            # faite avant, son numéro physique change mais pas la page suivie.
-            source_id = str(items[index].get("id") or "") if 0 <= index < len(items) else ""
-            position = "before" if action.endswith("before") else "after"
-            result = canvas.viewer_insert_blank_relative(index, position)
-            ok = bool(result.get("ok"))
-            message = str(result.get("message") or "")
-            if ok:
-                self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
-            if ok and source_id:
-                target_index = next(
-                    (
-                        i for i, candidate in enumerate(getattr(canvas, "items", []) or [])
-                        if str(candidate.get("id") or "") == source_id
-                    ),
-                    index,
-                )
-            else:
-                try:
-                    target_index = int(result.get("page_index", index))
-                except Exception:
-                    target_index = index
-
-        elif action == "delete_page":
-            info = next((row for row in self._viewer_pages_info() if int(row.get("number") or 0) == index + 1), {})
-            label = str(info.get("type") or "Page")
-            if bool(info.get("automatic")):
-                label += " · automatique"
-            confirmed = messagebox.askyesno(
-                "Supprimer la page",
-                f"Supprimer la page {index + 1} — {label} ?\n\n"
-                "TomeLinea recalculera immédiatement la Structure, les pages automatiques et les Gabarits.\n"
-                "Tu pourras utiliser Annuler dans le Visionneur si nécessaire.",
-                parent=self,
-            )
-            if not confirmed:
-                return {
-                    "ok": False,
-                    "message": "Suppression annulée.",
-                    "page": index + 1,
-                    "page_count": len(items),
-                    "pages_info": self._viewer_pages_info(),
-                    "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
-                }
-            result = canvas.viewer_delete_physical_page(index)
-            ok = bool(result.get("ok"))
-            message = str(result.get("message") or "")
-            if ok:
-                self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
-            if ok:
-                # Seule une suppression fait reculer automatiquement d'une page.
-                target_index = max(0, index - 1)
-            else:
-                try:
-                    target_index = int(result.get("page_index", index))
-                except Exception:
-                    target_index = index
-
-        elif action == "undo":
-            steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0)
-            if steps <= 0:
-                return {
-                    "ok": False,
-                    "message": "Rien à annuler dans cette session du Visionneur.",
-                    "page": index + 1,
-                    "page_count": len(items),
-                    "pages_info": self._viewer_pages_info(),
-                    "can_undo": False,
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
-                }
-            ok = bool(canvas.structure_undo())
-            if ok:
-                self._viewer_session_undo_steps = max(0, steps - 1)
-                self._viewer_session_redo_steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0) + 1
-            message = "Dernière modification du Visionneur annulée." if ok else "Impossible d’annuler cette modification."
-            target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
-
-        elif action == "redo":
-            steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0)
-            if steps <= 0:
-                return {
-                    "ok": False,
-                    "message": "Rien à rétablir dans cette session du Visionneur.",
-                    "page": index + 1,
-                    "page_count": len(items),
-                    "pages_info": self._viewer_pages_info(),
-                    "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": False,
-                }
-            ok = bool(canvas.structure_redo())
-            if ok:
-                self._viewer_session_redo_steps = max(0, steps - 1)
-                self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-            message = "Dernière modification du Visionneur rétablie." if ok else "Impossible de rétablir cette modification."
-            target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
-        else:
-            return {"ok": False, "message": "Action inconnue."}
-
-        # Le même modèle alimente Structure, Gabarits et Visionneur. Après
-        # l'action, on renvoie simplement l'état central recalculé au WebView.
-        self._refresh_workspace_state()
-        self._update_history_buttons()
-        page_count = self._viewer_page_count()
-        if page_count > 0:
-            target_index = max(0, min(page_count - 1, target_index))
-            try:
-                canvas._set_single_page_selection(target_index)
-            except Exception:
-                pass
-        return {
-            "ok": ok,
-            "message": message or ("Action effectuée." if ok else "Action impossible."),
-            "page": target_index + 1 if page_count else 1,
-            "page_count": max(1, page_count),
-            "pages_info": self._viewer_pages_info(),
-            "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-            "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
-        }
-
-    def _navigate_from_viewer(self, target_tab: str, page_number: int) -> None:
-        """Quitte le Visionneur vers la page exacte dans le bureau demandé."""
-        self._viewer_restore_page_overlay = False
-        canvas = getattr(self, "book_canvas", None)
-        if canvas is not None and bool(getattr(canvas, "_overlay_active", False)):
-            try:
-                canvas.close_page_overlay()
-            except Exception:
-                pass
-        self._return_from_viewer(str(target_tab or "structure"), int(page_number or 1))
 
     def _return_from_viewer(self, origin_tab: str, page_number: int) -> None:
         # Le retour rétablit le bureau d'origine puis sélectionne la page
@@ -3250,41 +2695,19 @@ class TomeLineaV3(tk.Tk):
         except Exception:
             index = 0
 
-        selected = False
         if origin_tab == "gabarits" and hasattr(canvas, "gabarit_select_index"):
             try:
-                selected = bool(canvas.gabarit_select_index(index, preserve_zoom=True))
-            except Exception:
-                selected = False
-
-        if not selected:
-            try:
-                canvas._set_single_page_selection(index)
-                canvas.render()
-                canvas.after_idle(canvas.center_selected)
-                selected = True
-            except Exception:
-                selected = False
-
-        if bool(getattr(self, "_viewer_restore_page_overlay", False)) and selected:
-            overlay_frame = getattr(canvas, "page_overlay_frame", None)
-            if overlay_frame is not None and bool(getattr(canvas, "_overlay_active", False)):
-                try:
-                    canvas._overlay_page_index = index
-                    overlay_frame.place(x=0, y=0, relwidth=1, relheight=1)
-                    overlay_frame.tk.call("raise", overlay_frame._w)
-                    canvas._schedule_overlay_render()
-                except Exception:
-                    pass
-        self._viewer_restore_page_overlay = False
-
-        # La barre flottante de page ne revient qu'après disparition de la WebView.
-        layout = getattr(self, "_workspace_layout_callback", None)
-        if callable(layout):
-            try:
-                self.after_idle(lambda: layout(None))
+                canvas.gabarit_select_index(index, preserve_zoom=True)
+                return
             except Exception:
                 pass
+
+        try:
+            canvas._set_single_page_selection(index)
+            canvas.render()
+            canvas.after_idle(canvas.center_selected)
+        except Exception:
+            pass
 
     def destroy(self) -> None:
         viewer = getattr(self, "viewer3d_overlay", None)

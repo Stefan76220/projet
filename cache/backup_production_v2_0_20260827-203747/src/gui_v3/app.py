@@ -1099,7 +1099,7 @@ class TomeLineaV3(tk.Tk):
             # V104 — le bandeau porteur des onglets reste AU-DESSUS de la surface
             # de travail en Structure/Gabarits. Pour Production/Sortie, C conserve
             # son rôle de panneau de commandes sous B.
-            compact_tabs = active_tab in {"gabarits", "structure", "production"}
+            compact_tabs = active_tab in {"gabarits", "structure"}
             if compact_tabs:
                 c_h = 48
                 c_y = margin_y + a_h + gap
@@ -1179,7 +1179,7 @@ class TomeLineaV3(tk.Tk):
                 if frame is not None:
                     frame.tkraise()
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         self.tab_host.grid_remove()
                     else:
                         self.tab_host.grid()
@@ -1192,7 +1192,7 @@ class TomeLineaV3(tk.Tk):
             self.active_tab = previous_tab if previous_tab in self.tab_frames else "structure"
             self.tab_frames[self.active_tab].tkraise()
             try:
-                if self.active_tab in {"gabarits", "production"}:
+                if self.active_tab == "gabarits":
                     self.tab_host.grid_remove()
                 else:
                     self.tab_host.grid()
@@ -2372,21 +2372,20 @@ class TomeLineaV3(tk.Tk):
         self.after_idle(refresh_gabarit_tools)
 
     def _build_production_tab(self, parent):
-        """Production partage désormais le même atelier plein B que Gabarits.
-
-        Ce Frame reste uniquement un repli technique : les commandes visibles
-        de Production sont portées par le rail latéral persistant de BookCanvas.
-        Cela évite de reconstruire un deuxième poste de travail et garantit les
-        mêmes repères, zooms et transitions.
-        """
-        parent.configure(bg=theme.PANEL)
-        tk.Label(
+        self._build_tool_tab(
             parent,
-            text="Production — atelier commun avec Gabarits",
-            bg=theme.PANEL,
-            fg=theme.MUTED,
-            font=(theme.FONT_UI, 8),
-        ).pack(anchor="w", padx=12, pady=12)
+            title="Production",
+            intro="Insérer le contenu de l’auteur et produire les pages.",
+            groups=[
+                ("Production", ["Page sélectionnée", "Produire en lot", "Mettre à jour", "Marquer comme prêt"]),
+                ("Contenu", ["Contenu de l’auteur", "Images", "Ressources", "Éléments non affectés"]),
+            ],
+            info_title="État de production",
+            info_text=(
+                "Une même mécanique servira à la page unique et aux lots. À mesure que les pages sont produites, "
+                "la zone B remplace les emplacements de structure par leur rendu réel."
+            ),
+        )
 
     def _build_sortie_tab(self, parent):
         self._build_tool_tab(
@@ -2754,7 +2753,7 @@ class TomeLineaV3(tk.Tk):
             tab_host = getattr(self, "tab_host", None)
             if tab_host is not None:
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         tab_host.grid_remove()
                     else:
                         tab_host.grid()

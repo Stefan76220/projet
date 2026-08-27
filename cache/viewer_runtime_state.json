@@ -1,0 +1,9 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.13.14",
+  "tkwry": true,
+  "three": true,
+  "webview2": true,
+  "errors": [],
+  "viewer_ready": true
+}

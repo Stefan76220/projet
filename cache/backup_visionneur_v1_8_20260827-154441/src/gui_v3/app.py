@@ -300,7 +300,6 @@ class TomeLineaV3(tk.Tk):
             self.stack,
             on_return=self._return_from_viewer,
             on_action=self._viewer_action,
-            on_navigate=self._navigate_from_viewer,
             bg=theme.WINDOW_DEEP,
         )
         self.bind_all("<Control-z>", self._workspace_keyboard_undo, add="+")
@@ -1099,7 +1098,7 @@ class TomeLineaV3(tk.Tk):
             # V104 — le bandeau porteur des onglets reste AU-DESSUS de la surface
             # de travail en Structure/Gabarits. Pour Production/Sortie, C conserve
             # son rôle de panneau de commandes sous B.
-            compact_tabs = active_tab in {"gabarits", "structure", "production"}
+            compact_tabs = active_tab in {"gabarits", "structure"}
             if compact_tabs:
                 c_h = 48
                 c_y = margin_y + a_h + gap
@@ -1125,22 +1124,14 @@ class TomeLineaV3(tk.Tk):
                 toolbar_h = 48
                 toolbar_x = margin_x + max(0, (inner_w - toolbar_w) // 2)
                 toolbar_y = b_y + focus_b_h - toolbar_h - 14
-                viewer = getattr(self, "viewer3d_overlay", None)
-                viewer_active = bool(getattr(viewer, "active", False)) if viewer is not None else False
-                if viewer_active:
-                    # Une WebView native ne doit jamais être recouverte par la
-                    # barre flottante Tk de la page, même après un Configure.
-                    self.focus_toolbar.place_forget()
-                else:
-                    self.focus_toolbar.place(
-                        x=toolbar_x,
-                        y=toolbar_y,
-                        width=toolbar_w,
-                        height=toolbar_h,
-                    )
+                self.focus_toolbar.place(
+                    x=toolbar_x,
+                    y=toolbar_y,
+                    width=toolbar_w,
+                    height=toolbar_h,
+                )
                 self.zone_b.tk.call("raise", self.zone_b._w)
-                if not viewer_active:
-                    self.focus_toolbar.tk.call("raise", self.focus_toolbar._w)
+                self.focus_toolbar.tk.call("raise", self.focus_toolbar._w)
                 self.zone_a.tk.call("raise", self.zone_a._w)
             else:
                 self.focus_toolbar.place_forget()
@@ -1179,7 +1170,7 @@ class TomeLineaV3(tk.Tk):
                 if frame is not None:
                     frame.tkraise()
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         self.tab_host.grid_remove()
                     else:
                         self.tab_host.grid()
@@ -1192,7 +1183,7 @@ class TomeLineaV3(tk.Tk):
             self.active_tab = previous_tab if previous_tab in self.tab_frames else "structure"
             self.tab_frames[self.active_tab].tkraise()
             try:
-                if self.active_tab in {"gabarits", "production"}:
+                if self.active_tab == "gabarits":
                     self.tab_host.grid_remove()
                 else:
                     self.tab_host.grid()
@@ -2372,21 +2363,20 @@ class TomeLineaV3(tk.Tk):
         self.after_idle(refresh_gabarit_tools)
 
     def _build_production_tab(self, parent):
-        """Production partage désormais le même atelier plein B que Gabarits.
-
-        Ce Frame reste uniquement un repli technique : les commandes visibles
-        de Production sont portées par le rail latéral persistant de BookCanvas.
-        Cela évite de reconstruire un deuxième poste de travail et garantit les
-        mêmes repères, zooms et transitions.
-        """
-        parent.configure(bg=theme.PANEL)
-        tk.Label(
+        self._build_tool_tab(
             parent,
-            text="Production — atelier commun avec Gabarits",
-            bg=theme.PANEL,
-            fg=theme.MUTED,
-            font=(theme.FONT_UI, 8),
-        ).pack(anchor="w", padx=12, pady=12)
+            title="Production",
+            intro="Insérer le contenu de l’auteur et produire les pages.",
+            groups=[
+                ("Production", ["Page sélectionnée", "Produire en lot", "Mettre à jour", "Marquer comme prêt"]),
+                ("Contenu", ["Contenu de l’auteur", "Images", "Ressources", "Éléments non affectés"]),
+            ],
+            info_title="État de production",
+            info_text=(
+                "Une même mécanique servira à la page unique et aux lots. À mesure que les pages sont produites, "
+                "la zone B remplace les emplacements de structure par leur rendu réel."
+            ),
+        )
 
     def _build_sortie_tab(self, parent):
         self._build_tool_tab(
@@ -2754,7 +2744,7 @@ class TomeLineaV3(tk.Tk):
             tab_host = getattr(self, "tab_host", None)
             if tab_host is not None:
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         tab_host.grid_remove()
                     else:
                         tab_host.grid()
@@ -3035,47 +3025,16 @@ class TomeLineaV3(tk.Tk):
         viewer = getattr(self, "viewer3d_overlay", None)
         if viewer is None:
             return
-
-        # Une WebView native peut passer sous certains widgets Tk déjà mappés.
-        # On masque explicitement les surimpressions de page pendant le
-        # Visionneur, puis on les restaure seulement lors d'un Retour normal.
-        canvas = getattr(self, "book_canvas", None)
-        self._viewer_restore_page_overlay = False
-        if canvas is not None:
-            overlay_frame = getattr(canvas, "page_overlay_frame", None)
-            overlay_active = bool(getattr(canvas, "_overlay_active", False))
-            overlay_mapped = False
-            if overlay_frame is not None:
-                try:
-                    overlay_mapped = bool(overlay_frame.winfo_ismapped())
-                except Exception:
-                    overlay_mapped = False
-            self._viewer_restore_page_overlay = bool(overlay_active and overlay_mapped)
-            if self._viewer_restore_page_overlay and overlay_frame is not None:
-                try:
-                    overlay_frame.place_forget()
-                except Exception:
-                    pass
-
-        focus_toolbar = getattr(self, "focus_toolbar", None)
-        if focus_toolbar is not None:
-            try:
-                focus_toolbar.place_forget()
-            except Exception:
-                pass
-
         # Annuler dans le Visionneur ne doit jamais remonter dans l'historique
         # d'une action réalisée auparavant dans Structure/Gabarits. La session
         # commence donc avec zéro action locale annulable.
         self._viewer_session_undo_steps = 0
-        self._viewer_session_redo_steps = 0
         viewer.show(
             origin_tab=str(getattr(self, "active_tab", "structure") or "structure"),
             page=self._viewer_current_page_number(),
             page_count=self._viewer_page_count(),
             pages_info=self._viewer_pages_info(),
             can_undo=False,
-            can_redo=False,
         )
 
     def _viewer_action(self, action: str, page_number: int) -> dict:
@@ -3096,29 +3055,16 @@ class TomeLineaV3(tk.Tk):
         target_index = index
 
         if action in {"insert_blank_before", "insert_blank_after"}:
-            # L'ajout AV/AP conserve la page source affichée. Si l'insertion est
-            # faite avant, son numéro physique change mais pas la page suivie.
-            source_id = str(items[index].get("id") or "") if 0 <= index < len(items) else ""
             position = "before" if action.endswith("before") else "after"
             result = canvas.viewer_insert_blank_relative(index, position)
             ok = bool(result.get("ok"))
             message = str(result.get("message") or "")
             if ok:
                 self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
-            if ok and source_id:
-                target_index = next(
-                    (
-                        i for i, candidate in enumerate(getattr(canvas, "items", []) or [])
-                        if str(candidate.get("id") or "") == source_id
-                    ),
-                    index,
-                )
-            else:
-                try:
-                    target_index = int(result.get("page_index", index))
-                except Exception:
-                    target_index = index
+            try:
+                target_index = int(result.get("page_index", index))
+            except Exception:
+                target_index = index
 
         elif action == "delete_page":
             info = next((row for row in self._viewer_pages_info() if int(row.get("number") or 0) == index + 1), {})
@@ -3140,22 +3086,16 @@ class TomeLineaV3(tk.Tk):
                     "page_count": len(items),
                     "pages_info": self._viewer_pages_info(),
                     "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
                 }
             result = canvas.viewer_delete_physical_page(index)
             ok = bool(result.get("ok"))
             message = str(result.get("message") or "")
             if ok:
                 self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
-            if ok:
-                # Seule une suppression fait reculer automatiquement d'une page.
-                target_index = max(0, index - 1)
-            else:
-                try:
-                    target_index = int(result.get("page_index", index))
-                except Exception:
-                    target_index = index
+            try:
+                target_index = int(result.get("page_index", index))
+            except Exception:
+                target_index = index
 
         elif action == "undo":
             steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0)
@@ -3167,32 +3107,11 @@ class TomeLineaV3(tk.Tk):
                     "page_count": len(items),
                     "pages_info": self._viewer_pages_info(),
                     "can_undo": False,
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
                 }
             ok = bool(canvas.structure_undo())
             if ok:
                 self._viewer_session_undo_steps = max(0, steps - 1)
-                self._viewer_session_redo_steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0) + 1
             message = "Dernière modification du Visionneur annulée." if ok else "Impossible d’annuler cette modification."
-            target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
-
-        elif action == "redo":
-            steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0)
-            if steps <= 0:
-                return {
-                    "ok": False,
-                    "message": "Rien à rétablir dans cette session du Visionneur.",
-                    "page": index + 1,
-                    "page_count": len(items),
-                    "pages_info": self._viewer_pages_info(),
-                    "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": False,
-                }
-            ok = bool(canvas.structure_redo())
-            if ok:
-                self._viewer_session_redo_steps = max(0, steps - 1)
-                self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-            message = "Dernière modification du Visionneur rétablie." if ok else "Impossible de rétablir cette modification."
             target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
         else:
             return {"ok": False, "message": "Action inconnue."}
@@ -3215,19 +3134,7 @@ class TomeLineaV3(tk.Tk):
             "page_count": max(1, page_count),
             "pages_info": self._viewer_pages_info(),
             "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-            "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
         }
-
-    def _navigate_from_viewer(self, target_tab: str, page_number: int) -> None:
-        """Quitte le Visionneur vers la page exacte dans le bureau demandé."""
-        self._viewer_restore_page_overlay = False
-        canvas = getattr(self, "book_canvas", None)
-        if canvas is not None and bool(getattr(canvas, "_overlay_active", False)):
-            try:
-                canvas.close_page_overlay()
-            except Exception:
-                pass
-        self._return_from_viewer(str(target_tab or "structure"), int(page_number or 1))
 
     def _return_from_viewer(self, origin_tab: str, page_number: int) -> None:
         # Le retour rétablit le bureau d'origine puis sélectionne la page
@@ -3250,41 +3157,19 @@ class TomeLineaV3(tk.Tk):
         except Exception:
             index = 0
 
-        selected = False
         if origin_tab == "gabarits" and hasattr(canvas, "gabarit_select_index"):
             try:
-                selected = bool(canvas.gabarit_select_index(index, preserve_zoom=True))
-            except Exception:
-                selected = False
-
-        if not selected:
-            try:
-                canvas._set_single_page_selection(index)
-                canvas.render()
-                canvas.after_idle(canvas.center_selected)
-                selected = True
-            except Exception:
-                selected = False
-
-        if bool(getattr(self, "_viewer_restore_page_overlay", False)) and selected:
-            overlay_frame = getattr(canvas, "page_overlay_frame", None)
-            if overlay_frame is not None and bool(getattr(canvas, "_overlay_active", False)):
-                try:
-                    canvas._overlay_page_index = index
-                    overlay_frame.place(x=0, y=0, relwidth=1, relheight=1)
-                    overlay_frame.tk.call("raise", overlay_frame._w)
-                    canvas._schedule_overlay_render()
-                except Exception:
-                    pass
-        self._viewer_restore_page_overlay = False
-
-        # La barre flottante de page ne revient qu'après disparition de la WebView.
-        layout = getattr(self, "_workspace_layout_callback", None)
-        if callable(layout):
-            try:
-                self.after_idle(lambda: layout(None))
+                canvas.gabarit_select_index(index, preserve_zoom=True)
+                return
             except Exception:
                 pass
+
+        try:
+            canvas._set_single_page_selection(index)
+            canvas.render()
+            canvas.after_idle(canvas.center_selected)
+        except Exception:
+            pass
 
     def destroy(self) -> None:
         viewer = getattr(self, "viewer3d_overlay", None)

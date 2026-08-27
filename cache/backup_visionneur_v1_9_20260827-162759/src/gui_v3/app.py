@@ -1099,7 +1099,7 @@ class TomeLineaV3(tk.Tk):
             # V104 — le bandeau porteur des onglets reste AU-DESSUS de la surface
             # de travail en Structure/Gabarits. Pour Production/Sortie, C conserve
             # son rôle de panneau de commandes sous B.
-            compact_tabs = active_tab in {"gabarits", "structure", "production"}
+            compact_tabs = active_tab in {"gabarits", "structure"}
             if compact_tabs:
                 c_h = 48
                 c_y = margin_y + a_h + gap
@@ -1179,7 +1179,7 @@ class TomeLineaV3(tk.Tk):
                 if frame is not None:
                     frame.tkraise()
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         self.tab_host.grid_remove()
                     else:
                         self.tab_host.grid()
@@ -1192,7 +1192,7 @@ class TomeLineaV3(tk.Tk):
             self.active_tab = previous_tab if previous_tab in self.tab_frames else "structure"
             self.tab_frames[self.active_tab].tkraise()
             try:
-                if self.active_tab in {"gabarits", "production"}:
+                if self.active_tab == "gabarits":
                     self.tab_host.grid_remove()
                 else:
                     self.tab_host.grid()
@@ -2372,21 +2372,20 @@ class TomeLineaV3(tk.Tk):
         self.after_idle(refresh_gabarit_tools)
 
     def _build_production_tab(self, parent):
-        """Production partage désormais le même atelier plein B que Gabarits.
-
-        Ce Frame reste uniquement un repli technique : les commandes visibles
-        de Production sont portées par le rail latéral persistant de BookCanvas.
-        Cela évite de reconstruire un deuxième poste de travail et garantit les
-        mêmes repères, zooms et transitions.
-        """
-        parent.configure(bg=theme.PANEL)
-        tk.Label(
+        self._build_tool_tab(
             parent,
-            text="Production — atelier commun avec Gabarits",
-            bg=theme.PANEL,
-            fg=theme.MUTED,
-            font=(theme.FONT_UI, 8),
-        ).pack(anchor="w", padx=12, pady=12)
+            title="Production",
+            intro="Insérer le contenu de l’auteur et produire les pages.",
+            groups=[
+                ("Production", ["Page sélectionnée", "Produire en lot", "Mettre à jour", "Marquer comme prêt"]),
+                ("Contenu", ["Contenu de l’auteur", "Images", "Ressources", "Éléments non affectés"]),
+            ],
+            info_title="État de production",
+            info_text=(
+                "Une même mécanique servira à la page unique et aux lots. À mesure que les pages sont produites, "
+                "la zone B remplace les emplacements de structure par leur rendu réel."
+            ),
+        )
 
     def _build_sortie_tab(self, parent):
         self._build_tool_tab(
@@ -2754,7 +2753,7 @@ class TomeLineaV3(tk.Tk):
             tab_host = getattr(self, "tab_host", None)
             if tab_host is not None:
                 try:
-                    if key in {"gabarits", "production"}:
+                    if key == "gabarits":
                         tab_host.grid_remove()
                     else:
                         tab_host.grid()
@@ -3068,14 +3067,12 @@ class TomeLineaV3(tk.Tk):
         # d'une action réalisée auparavant dans Structure/Gabarits. La session
         # commence donc avec zéro action locale annulable.
         self._viewer_session_undo_steps = 0
-        self._viewer_session_redo_steps = 0
         viewer.show(
             origin_tab=str(getattr(self, "active_tab", "structure") or "structure"),
             page=self._viewer_current_page_number(),
             page_count=self._viewer_page_count(),
             pages_info=self._viewer_pages_info(),
             can_undo=False,
-            can_redo=False,
         )
 
     def _viewer_action(self, action: str, page_number: int) -> dict:
@@ -3105,7 +3102,6 @@ class TomeLineaV3(tk.Tk):
             message = str(result.get("message") or "")
             if ok:
                 self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
             if ok and source_id:
                 target_index = next(
                     (
@@ -3140,14 +3136,12 @@ class TomeLineaV3(tk.Tk):
                     "page_count": len(items),
                     "pages_info": self._viewer_pages_info(),
                     "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
                 }
             result = canvas.viewer_delete_physical_page(index)
             ok = bool(result.get("ok"))
             message = str(result.get("message") or "")
             if ok:
                 self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-                self._viewer_session_redo_steps = 0
             if ok:
                 # Seule une suppression fait reculer automatiquement d'une page.
                 target_index = max(0, index - 1)
@@ -3167,32 +3161,11 @@ class TomeLineaV3(tk.Tk):
                     "page_count": len(items),
                     "pages_info": self._viewer_pages_info(),
                     "can_undo": False,
-                    "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
                 }
             ok = bool(canvas.structure_undo())
             if ok:
                 self._viewer_session_undo_steps = max(0, steps - 1)
-                self._viewer_session_redo_steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0) + 1
             message = "Dernière modification du Visionneur annulée." if ok else "Impossible d’annuler cette modification."
-            target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
-
-        elif action == "redo":
-            steps = int(getattr(self, "_viewer_session_redo_steps", 0) or 0)
-            if steps <= 0:
-                return {
-                    "ok": False,
-                    "message": "Rien à rétablir dans cette session du Visionneur.",
-                    "page": index + 1,
-                    "page_count": len(items),
-                    "pages_info": self._viewer_pages_info(),
-                    "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-                    "can_redo": False,
-                }
-            ok = bool(canvas.structure_redo())
-            if ok:
-                self._viewer_session_redo_steps = max(0, steps - 1)
-                self._viewer_session_undo_steps = int(getattr(self, "_viewer_session_undo_steps", 0) or 0) + 1
-            message = "Dernière modification du Visionneur rétablie." if ok else "Impossible de rétablir cette modification."
             target_index = max(0, min(index, max(0, len(getattr(canvas, "items", []) or []) - 1)))
         else:
             return {"ok": False, "message": "Action inconnue."}
@@ -3215,7 +3188,6 @@ class TomeLineaV3(tk.Tk):
             "page_count": max(1, page_count),
             "pages_info": self._viewer_pages_info(),
             "can_undo": bool(getattr(self, "_viewer_session_undo_steps", 0)),
-            "can_redo": bool(getattr(self, "_viewer_session_redo_steps", 0)),
         }
 
     def _navigate_from_viewer(self, target_tab: str, page_number: int) -> None:

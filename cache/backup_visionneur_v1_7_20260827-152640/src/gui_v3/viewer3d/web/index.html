@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>TomeLinea — Visionneur 3D test visuel</title>
+<style>
+  :root{
+    --bg:#171b20; --panel:#252b32; --panel2:#303640; --line:#47515c;
+    --text:#eef2f2; --muted:#9fa9ad; --teal:#85b9ad; --gold:#c4a35a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#222831;font-family:Segoe UI,Arial,sans-serif;color:var(--text)}
+  #app{position:fixed;inset:0;background:#222831 url("assets/fond_tomelinea.png") center center/cover no-repeat}
+  #app::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(14,28,37,.10),rgba(8,18,25,.18));pointer-events:none;z-index:0}
+  canvas{display:block;width:100%;height:100%}
+  .topbar{position:absolute;left:0;right:0;top:0;height:58px;display:flex;align-items:center;gap:16px;padding:0 18px;background:linear-gradient(180deg,rgba(11,46,60,.92),rgba(16,39,49,.88));border-bottom:1px solid rgba(133,193,181,.48);box-shadow:0 8px 26px rgba(0,0,0,.18);backdrop-filter:blur(10px);z-index:4;user-select:none}
+  .brand{display:flex;align-items:center;gap:11px;min-width:250px}.mark{width:34px;height:34px;border:1px solid #6c7882;border-radius:9px;display:grid;place-items:center;color:var(--gold);font-weight:700;letter-spacing:-1px;background:#20262c}.brand strong{letter-spacing:.11em;font-size:14px}.brand small{display:block;color:var(--muted);letter-spacing:.04em;font-size:10px;margin-top:2px}
+  .status{flex:1;text-align:center;color:#d8dfdf;font-size:13px}.status b{color:var(--teal);font-weight:600}
+  .controls{display:flex;align-items:center;gap:10px}
+  .btn{height:35px;min-width:104px;padding:0 16px;border:1px solid rgba(196,163,90,.80);border-radius:7px;background:linear-gradient(180deg,#2b6470,#1d4351);color:#f3f4f2;display:grid;place-items:center;font-size:12px;font-weight:600;letter-spacing:.02em;box-shadow:inset 0 1px rgba(255,255,255,.05),0 4px 12px rgba(0,0,0,.18);cursor:pointer;opacity:.96;user-select:none}.btn:hover{filter:brightness(1.12)}.btn:active{transform:translateY(1px)}.btn.return{border-color:rgba(133,193,181,.74);background:linear-gradient(180deg,#36545b,#263d45)}
+  .hint{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:4;padding:8px 13px;border-radius:999px;background:rgba(11,38,48,.78);border:1px solid rgba(133,193,181,.42);color:#e1ebeb;font-size:12px;white-space:nowrap;pointer-events:none;backdrop-filter:blur(8px)}
+  .corner{position:absolute;bottom:18px;right:18px;z-index:4;color:#7f8b90;font-size:11px;text-align:right;pointer-events:none}.corner b{color:#a9b4b7;font-weight:500}
+  .pagehud{position:absolute;left:50%;top:72px;transform:translateX(-50%);z-index:3;color:#9aa5a9;font-size:11px;letter-spacing:.08em;text-transform:uppercase;pointer-events:none}
+  /* Panneaux récupérés du prototype autonome V4.21 : mêmes matières,
+     mêmes lignes, mêmes pastilles ; simplement dédoublés gauche / droite. */
+  .rulesPanel{position:absolute;top:76px;width:330px;max-height:calc(100vh - 118px);z-index:3;padding:15px 15px 14px;border-radius:13px;background:linear-gradient(180deg,rgba(17,36,45,.94),rgba(14,28,36,.92));border:1px solid rgba(126,181,171,.36);box-shadow:0 16px 42px rgba(0,0,0,.30),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(12px);pointer-events:none;transition:opacity .18s ease}
+  .rulesPanel.left{left:18px}.rulesPanel.right{right:18px}.rulesPanel.empty{opacity:.20}
+  .rulesHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid rgba(126,181,171,.18)}
+  .rulesHead strong{display:block;font-size:12px;letter-spacing:.10em;color:#edf4f2;text-transform:uppercase}.rulesHead small{display:block;margin-top:4px;font-size:10px;color:#8fa1a4;letter-spacing:.025em}
+  .rulesState{font-size:10px;color:#94c7bd;border:1px solid rgba(126,181,171,.34);border-radius:999px;padding:4px 7px;white-space:nowrap;background:rgba(58,110,111,.12)}
+  .pageRule{margin-top:12px;padding:12px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055)}
+  .pageRuleTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:9px}.pageRuleTitle b{font-size:12px;color:#f0f2ed}.pageRuleTitle span{font-size:10px;color:#d1ad69;text-align:right;max-width:132px;line-height:1.2}
+  .ruleRow{display:grid;grid-template-columns:96px 1fr;gap:9px;padding:5px 0;border-top:1px solid rgba(255,255,255,.04);font-size:11px;line-height:1.25}.ruleRow:first-of-type{border-top:0}.ruleRow label{color:#829498}.ruleRow div{color:#d9e0df}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}.chip{display:inline-flex;align-items:center;min-height:20px;padding:2px 7px;border-radius:999px;font-size:10px;border:1px solid rgba(126,181,171,.24);background:rgba(70,121,120,.10);color:#bdd4d0}.chip.gold{border-color:rgba(196,163,90,.30);background:rgba(196,163,90,.08);color:#d8bf8b}.chip.red{border-color:rgba(178,89,78,.34);background:rgba(178,89,78,.08);color:#d7aaa3}.chip.muted{border-color:rgba(140,151,155,.22);background:rgba(115,126,131,.07);color:#9aa7a9}
+  .autoReason{margin-top:9px;padding:9px 10px;border-left:2px solid rgba(196,163,90,.58);background:rgba(196,163,90,.055);color:#b9c5c4;font-size:10px;line-height:1.35}
+  .rulesFoot{margin-top:11px;color:#7f9094;font-size:10px;line-height:1.35;text-align:center}
+  @media(max-width:1380px){.rulesPanel{width:292px}.ruleRow{grid-template-columns:86px 1fr}}
+  @media(max-width:1160px){.rulesPanel{width:246px;padding:12px}.rulesPanel.left{left:10px}.rulesPanel.right{right:10px}.ruleRow{grid-template-columns:72px 1fr;gap:6px;font-size:10px}.pageRule{padding:9px}.rulesHead strong{font-size:11px}}
+  .dragline{position:absolute;top:58px;bottom:0;width:1px;background:linear-gradient(transparent,rgba(133,185,173,.35),transparent);display:none;pointer-events:none;z-index:2}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand"><div class="mark">TL</div><div><strong>TOMELINEA</strong><small>Visionneur 3D intégré · livre photoréaliste</small></div></div>
+    <div class="status">État actuel du livre · <b id="spreadStatus">pages 1–2</b></div>
+    <div class="controls">
+      <div class="btn" id="prevBtn">◀&nbsp;&nbsp;Précédent</div>
+      <div class="btn" id="nextBtn">Suivant&nbsp;&nbsp;▶</div>
+      <div class="btn return" id="returnBtn">Retour TomeLinea</div>
+    </div>
+  </div>
+  <div class="pagehud">vue lecteur · livre photoréaliste</div>
+  <div class="rulesPanel left empty" id="leftRulesPanel" aria-hidden="true">
+    <div class="rulesHead">
+      <div><strong>Règles appliquées</strong><small>Page gauche · état réel</small></div>
+      <div class="rulesState">VERSO</div>
+    </div>
+    <div class="pageRule"></div>
+    <div class="rulesFoot">Structure · Gabarits · page affichée</div>
+  </div>
+  <div class="rulesPanel right empty" id="rightRulesPanel" aria-hidden="true">
+    <div class="rulesHead">
+      <div><strong>Règles appliquées</strong><small>Page droite · état réel</small></div>
+      <div class="rulesState">RECTO</div>
+    </div>
+    <div class="pageRule"></div>
+    <div class="rulesFoot">Structure · Gabarits · page affichée</div>
+  </div>
+  <div class="hint">Clic à droite/gauche · molette · ← → · ou tirer le bord d’une page</div>
+  <div class="corner"><b>Visionneur intégré · TomeLinea</b><br>moteur 3D local · aucune fenêtre navigateur externe</div>
+  <div class="dragline" id="dragline"></div>
+</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const app = document.getElementById('app');
+const spreadStatus = document.getElementById('spreadStatus');
+const dragline = document.getElementById('dragline');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const returnBtn = document.getElementById('returnBtn');
+const leftRulesPanel = document.getElementById('leftRulesPanel');
+const rightRulesPanel = document.getElementById('rightRulesPanel');
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.03;
+app.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = null;
+
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+const roomEnvironment = new RoomEnvironment();
+const envMap = pmremGenerator.fromScene(roomEnvironment, 0.03).texture;
+scene.environment = envMap;
+scene.environmentIntensity = 0.58;
+
+const camera = new THREE.PerspectiveCamera(36,innerWidth/innerHeight,.05,60);
+camera.position.set(0.08,3.04,7.00);
+camera.lookAt(0,-0.02,0.02);
+
+const hemi = new THREE.HemisphereLight(0xe7ece8,0x17232a,.82); scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffefd8,4.75); key.position.set(-4.6,6.6,4.0); key.castShadow=true; key.shadow.mapSize.set(2048,2048); key.shadow.camera.left=-7; key.shadow.camera.right=7; key.shadow.camera.top=6; key.shadow.camera.bottom=-6; key.shadow.bias=-0.00024; key.shadow.radius = 4; scene.add(key);
+const fill = new THREE.DirectionalLight(0x8abbb2,.48); fill.position.set(4.8,2.2,6.8); scene.add(fill);
+const warmFill = new THREE.PointLight(0xd5aa67,2.25,14,2); warmFill.position.set(-.9,3.2,3.6); scene.add(warmFill);
+const rim = new THREE.PointLight(0xc6a25d,7.5,12,2); rim.position.set(-2.4,4.6,2.0); scene.add(rim);
+
+const floorMat = new THREE.ShadowMaterial({color:0x000000,opacity:.34});
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(28,20),floorMat);
+floor.rotation.x=-Math.PI/2;
+floor.position.set(0,-2.14,0.80);
+floor.receiveShadow=true;
+scene.add(floor);
+
+const backMat = new THREE.MeshPhysicalMaterial({color:0x173542,roughness:.72,metalness:.03,envMapIntensity:.34});
+const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(24,15),backMat);
+backdrop.position.set(0,2.4,-5.8);
+backdrop.receiveShadow=true;
+backdrop.visible=false;
+scene.add(backdrop);
+
+// Socle discret sous le livre : très léger, uniquement pour asseoir l'objet dans la scène.
+const matPlate = new THREE.MeshPhysicalMaterial({color:0x1a3e4b,roughness:.68,metalness:.04,clearcoat:.18,clearcoatRoughness:.54,envMapIntensity:.44});
+const plate = new THREE.Mesh(new THREE.BoxGeometry(9.2,6.45,.11,4,4,1),matPlate); plate.position.z=-.73; plate.rotation.z=.003; plate.receiveShadow=true; plate.castShadow=true; plate.visible=false; scene.add(plate);
+
+const book = new THREE.Group();
+// Vue lecteur : le livre n'est ni vertical comme un écran, ni vu du dessus.
+book.rotation.x=-0.835;   // pages ≈ 28° au-dessus de l'horizontale
+book.rotation.y=0.020;    // très léger biais naturel
+book.rotation.z=-0.003;
+book.position.y=0.42;
+book.position.z=0.08;
+book.scale.setScalar(0.70);
+scene.add(book);
+
+const PAGE_W=3.15, PAGE_H=4.55, GUTTER=.010, THICK=.018;
+let TOTAL_PAGES=72;
+let PAGE_INFOS=[];
+let sheetCount = Math.ceil(TOTAL_PAGES/2);
+
+function makeNoiseTexture(size=512, options={}){
+  const {base='#173542', accent='#274958', strength=.22} = options;
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  g.fillStyle=base; g.fillRect(0,0,size,size);
+  for(let i=0;i<9000;i++){
+    const x=Math.random()*size, y=Math.random()*size, w=1+Math.random()*3, h=.6+Math.random()*2.2;
+    const a=.015+Math.random()*strength*.05;
+    g.fillStyle=`rgba(255,255,255,${a})`; g.fillRect(x,y,w,h);
+  }
+  g.globalAlpha=.18;
+  for(let i=0;i<220;i++){
+    g.strokeStyle=accent; g.lineWidth=.5+Math.random()*1.1;
+    const x=Math.random()*size, y=Math.random()*size, l=12+Math.random()*54;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+l*.7,y+l*.06); g.stroke();
+  }
+  g.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(2.2,2.2);
+  t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+function makeRoughnessTexture(size=512){
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  const img=g.createImageData(size,size);
+  for(let i=0;i<img.data.length;i+=4){
+    const v=150+Math.floor(Math.random()*70);
+    img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=255;
+  }
+  g.putImageData(img,0,0);
+  for(let i=0;i<260;i++){
+    g.fillStyle=`rgba(255,255,255,${0.02+Math.random()*0.03})`;
+    g.fillRect(Math.random()*size,Math.random()*size,18+Math.random()*52,1+Math.random()*2);
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(2,2);
+  return t;
+}
+
+function makeEdgeTexture(size=1024){
+  const c=document.createElement('canvas'); c.width=128; c.height=size; const g=c.getContext('2d');
+  g.fillStyle='#ddd7ca'; g.fillRect(0,0,c.width,c.height);
+  for(let y=0;y<size;y+=3){
+    const v=210+Math.floor(Math.random()*30);
+    g.fillStyle=`rgb(${v},${v-3},${v-10})`;
+    g.fillRect(0,y,c.width,1);
+  }
+  for(let i=0;i<220;i++){
+    g.fillStyle=`rgba(125,110,83,${0.018+Math.random()*0.02})`;
+    g.fillRect(Math.random()*c.width,Math.random()*c.height,1,6+Math.random()*18);
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(1,1);
+  t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+function makeContactShadowTexture(w=1024,h=768){
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d');
+  const rg=g.createRadialGradient(w*.5,h*.52,20,w*.5,h*.52,w*.42);
+  rg.addColorStop(0,'rgba(0,0,0,0.62)');
+  rg.addColorStop(.45,'rgba(0,0,0,0.32)');
+  rg.addColorStop(.78,'rgba(0,0,0,0.12)');
+  rg.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=rg; g.fillRect(0,0,w,h);
+  return new THREE.CanvasTexture(c);
+}
+
+function makeCoverDecorTexture(side='right', size=1024){
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  const grad=g.createLinearGradient(0,0,size,size);
+  grad.addColorStop(0,'#5a2429'); grad.addColorStop(.44,'#7a3436'); grad.addColorStop(1,'#173542');
+  g.fillStyle=grad; g.fillRect(0,0,size,size);
+
+  // Grain textile très fin : couleur visible, sans aplat plastique.
+  for(let i=0;i<15000;i++){
+    const x=Math.random()*size, y=Math.random()*size;
+    const a=.018+Math.random()*.035;
+    g.fillStyle=Math.random()>.52?`rgba(226,200,152,${a})`:`rgba(33,17,20,${a})`;
+    g.fillRect(x,y,.7+Math.random()*1.6,.5+Math.random()*1.4);
+  }
+
+  // Décor TomeLinea : lignes éditoriales or pâle, volontairement discret.
+  const gold='#d3ab63';
+  g.strokeStyle=gold; g.globalAlpha=.72; g.lineWidth=3;
+  g.strokeRect(34,34,size-68,size-68);
+  g.globalAlpha=.34; g.lineWidth=1;
+  for(let i=0;i<5;i++){
+    const yy=size*(.22+i*.105);
+    g.beginPath();
+    if(side==='right') { g.moveTo(size*.52,yy); g.lineTo(size*.88,yy); }
+    else { g.moveTo(size*.12,yy); g.lineTo(size*.48,yy); }
+    g.stroke();
+  }
+  g.globalAlpha=.74;
+  const cx=side==='right'?size*.72:size*.28, cy=size*.72;
+  g.beginPath(); g.arc(cx,cy,7,0,Math.PI*2); g.fillStyle=gold; g.fill();
+  g.beginPath(); g.moveTo(cx-78,cy); g.lineTo(cx-12,cy); g.moveTo(cx+12,cy); g.lineTo(cx+78,cy); g.stroke();
+  g.globalAlpha=.22; g.fillStyle='#a33c3f';
+  if(side==='right'){ g.fillRect(size*.08,size*.10,size*.08,size*.80); } else { g.fillRect(size*.84,size*.10,size*.08,size*.80); }
+  g.globalAlpha=1;
+
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+  return t;
+}
+
+function makePaperSurfaceTexture(size=512){
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  g.fillStyle='#cbbfa8'; g.fillRect(0,0,size,size);
+  for(let i=0;i<24000;i++){
+    const v=172+Math.floor(Math.random()*58);
+    const a=.16+Math.random()*.18;
+    g.fillStyle=`rgba(${v},${v},${v},${a})`;
+    g.fillRect(Math.random()*size,Math.random()*size,1,1);
+  }
+  g.globalAlpha=.25;
+  for(let i=0;i<420;i++){
+    const y=Math.random()*size, x=Math.random()*size, l=6+Math.random()*24;
+    g.strokeStyle=Math.random()>.5?'#ded9cc':'#8e897f';
+    g.lineWidth=.35;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+l,y+(Math.random()-.5)*.8); g.stroke();
+  }
+  g.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2.4,2.4);
+  return t;
+}
+
+const coverDecorLeft = makeCoverDecorTexture('left');
+const coverDecorRight = makeCoverDecorTexture('right');
+const paperSurfaceMap = makePaperSurfaceTexture();
+const coverColorMap = makeNoiseTexture(768,{base:'#7a2f33',accent:'#173542',strength:.24});
+const coverRoughnessMap = makeRoughnessTexture(768);
+const spineColorMap = makeNoiseTexture(768,{base:'#5e272b',accent:'#173542',strength:.20});
+const pageEdgeMap = makeEdgeTexture();
+const contactShadowMap = makeContactShadowTexture();
+
+function paperCanvas(pageNo, variant=0){
+  const c=document.createElement('canvas'); c.width=1024; c.height=1470; const g=c.getContext('2d');
+  const grd=g.createLinearGradient(0,0,c.width,0); grd.addColorStop(0,'#d6c4a2'); grd.addColorStop(.08,'#ebdcc0'); grd.addColorStop(.58,'#f3e7cf'); grd.addColorStop(1,'#dcc8a9'); g.fillStyle=grd; g.fillRect(0,0,c.width,c.height);
+  // subtle fibres
+  const seed=(pageNo*7919+variant*1237)%9973; let s=seed; const rnd=()=>{s=(s*9301+49297)%233280; return s/233280};
+  g.globalAlpha=.07; for(let i=0;i<520;i++){const x=rnd()*c.width,y=rnd()*c.height,l=3+rnd()*18;g.strokeStyle=rnd()>.6?'#9a8a71':'#ccb793';g.beginPath();g.moveTo(x,y);g.lineTo(x+l,y+(rnd()-.5)*1.4);g.stroke()} g.globalAlpha=1;
+  // page content, intentionally editorial and neutral
+  const accent = ['#2c7f8a','#b18342','#5f9072','#7f6494'][pageNo%4];
+  g.fillStyle='#43382d';g.font='600 34px Georgia'; g.fillText(pageNo===1?'TOMELINEA — LIVRE EN COURS':`Chapitre ${Math.floor((pageNo-1)/8)+1}`,80,112);
+  g.fillStyle=accent; g.fillRect(80,145,250,5);
+  if(pageNo%5===0){
+    const rg=g.createLinearGradient(80,240,860,870); rg.addColorStop(0,accent); rg.addColorStop(1,'#d1d8d5'); g.fillStyle=rg; g.fillRect(80,240,864,560);
+    g.fillStyle='rgba(255,255,255,.9)'; g.font='700 52px Georgia'; g.fillText(pageNo%10===0?'OUVERTURE':'ILLUSTRATION',122,730);
+  }else{
+    g.fillStyle='#625447';g.font='28px Georgia'; g.fillText(pageNo===1?'La ligne éditoriale jusqu’au livre':'Une page du livre rendue en temps réel',80,225);
+    let y=310; g.fillStyle='#766759'; g.font='22px Georgia';
+    const lines=['Le contenu réel de TomeLinea remplacera cette matière de démonstration.','Le visionneur conserve la géométrie du livre, la pagination et les doubles pages.','Chaque face devient une texture de la feuille physique correspondante.','La courbure, les ombres et la reliure évoluent pendant le feuilletage.'];
+    for(let block=0;block<4;block++){
+      for(let k=0;k<lines.length;k++){g.fillText(lines[(k+block)%lines.length],80,y);y+=44}
+      y+=38;
+      if(block===1){g.fillStyle=accent;g.fillRect(80,y,864,2);y+=55;g.fillStyle='#606467'}
+    }
+  }
+  g.fillStyle='#8a7b6a';g.font='18px Segoe UI';g.textAlign='center';g.fillText(String(pageNo),512,1410);g.textAlign='left';
+  return c;
+}
+const textureCache=new Map();
+function pageTexture(n){
+  if(n<1||n>TOTAL_PAGES) return null;
+  if(!textureCache.has(n)){
+    const t=new THREE.CanvasTexture(paperCanvas(n)); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy()); textureCache.set(n,t);
+  }
+  return textureCache.get(n);
+}
+
+const paperBase={roughness:.78,roughnessMap:paperSurfaceMap,bumpMap:paperSurfaceMap,bumpScale:.010,metalness:0,clearcoat:.08,clearcoatRoughness:.90,envMapIntensity:.08,side:THREE.FrontSide};
+function pageMaterial(n, side=THREE.FrontSide){return new THREE.MeshPhysicalMaterial({...paperBase,map:pageTexture(n),side,shadowSide:THREE.DoubleSide});}
+
+function gutterWidthAtY(y){
+  const yn=Math.min(1,Math.abs(y)/(PAGE_H/2));
+  // Reliure réelle : l'ouverture du cahier est plus large au milieu,
+  // puis se resserre naturellement vers tête et pied.
+  return GUTTER + .012*(1-yn*yn);
+}
+
+function staticSurfacePoint(side,d,y){
+  const sign=side==='right'?1:-1;
+  const u=d/PAGE_W;
+  const yn=y/(PAGE_H/2);
+  // Toutes les feuilles partagent exactement le même axe de reliure.
+  // d=0 => x=0, sans ouverture géométrique variable au centre.
+  const x=sign*d;
+  // Vallée de gouttière : très basse au mors, puis la feuille remonte
+  // sur le bloc papier avant de redescendre très légèrement au bord.
+  const rise=.205*(1-Math.exp(-d/.58));
+  const outerSag=-.025*u*u;
+  const crown=.024*(1-yn*yn)*Math.sin(Math.PI*Math.min(1,u*.92));
+  const z=-.010 + rise + outerSag + crown;
+  return [x,y,z];
+}
+
+function makeStaticPage(side='right'){
+  const segX=44, segY=14;
+  const geo=new THREE.PlaneGeometry(PAGE_W,PAGE_H,segX,segY);
+  const pos=geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const rawX=pos.getX(i)+(side==='right'?PAGE_W/2:-PAGE_W/2);
+    const d=Math.abs(rawX);
+    const [x,y,z]=staticSurfacePoint(side,d,pos.getY(i));
+    pos.setXYZ(i,x,y,z);
+  }
+  geo.computeVertexNormals();
+  const mesh=new THREE.Mesh(geo,pageMaterial(1));
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  return mesh;
+}
+const leftPage=makeStaticPage('left'), rightPage=makeStaticPage('right');
+book.add(leftPage,rightPage);
+
+// Gouttière physique : une gorge courbe, plus ouverte au centre qu'aux extrémités.
+function makeGutter(){
+  const seg=44;
+  const verts=[];
+  const idx=[];
+  for(let i=0;i<=seg;i++){
+    const y=-PAGE_H/2 + (PAGE_H*i/seg);
+    const w=gutterWidthAtY(y);
+    const yn=y/(PAGE_H/2);
+    const z=-.050 - .008*(1-yn*yn);
+    verts.push(-w*.48,y,z,  w*.48,y,z);
+    if(i<seg){
+      const a=i*2,b=a+1,c=a+2,d=a+3;
+      idx.push(a,b,c,b,d,c);
+    }
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setIndex(idx); geo.computeVertexNormals();
+  const mat=new THREE.MeshPhysicalMaterial({
+    color:0x5e594f,roughness:.96,metalness:0,side:THREE.DoubleSide
+  });
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.receiveShadow=true;
+  return mesh;
+}
+const gutterMesh=makeGutter();
+gutterMesh.visible=false;
+book.add(gutterMesh);
+
+// Trait de reliure fixe : il ne bouge jamais pendant la rotation et masque
+// visuellement la jonction de la feuille mobile avec le dos.
+const seamGeo=new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0,-PAGE_H/2,-.032),
+  new THREE.Vector3(0, PAGE_H/2,-.032)
+]);
+const seamMat=new THREE.LineBasicMaterial({
+  color:0x514a40,transparent:true,opacity:.82,depthTest:true,depthWrite:false
+});
+const seamLine=new THREE.Line(seamGeo,seamMat);
+seamLine.renderOrder=0;
+book.add(seamLine);
+
+// Ombres internes du mors : elles donnent la profondeur de reliure au repos.
+function makeGutterShadow(side){
+  const seg=44, width=.075, verts=[], idx=[];
+  const sign=side==='right'?1:-1;
+  for(let i=0;i<=seg;i++){
+    const y=-PAGE_H/2 + PAGE_H*i/seg;
+    const gap=gutterWidthAtY(y)*.5;
+    const p0=staticSurfacePoint(side,0,y);
+    const p1=staticSurfacePoint(side,width,y);
+    verts.push(p0[0],y,p0[2]+.006, p1[0],y,p1[2]+.006);
+    if(i<seg){const a=i*2,b=a+1,c=a+2,d=a+3; idx.push(a,b,c,b,d,c);}
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geo.setIndex(idx);
+  const mat=new THREE.MeshBasicMaterial({
+    color:0x2b2822,transparent:true,opacity:.22,side:THREE.DoubleSide,
+    depthWrite:false
+  });
+  return new THREE.Mesh(geo,mat);
+}
+book.add(makeGutterShadow('left'),makeGutterShadow('right'));
+
+// Couvertures et blocs papier : texture toile/carton, léger grain, reflets contrôlés.
+const coverMat=new THREE.MeshPhysicalMaterial({
+  color:0xffffff,
+  map:coverColorMap,
+  bumpMap:coverRoughnessMap,
+  bumpScale:.024,
+  roughnessMap:coverRoughnessMap,
+  roughness:.58,metalness:.02,
+  clearcoat:.16,clearcoatRoughness:.60,
+  sheen:.28,sheenColor:new THREE.Color(0x8b4d4b),
+  envMapIntensity:.30
+});
+const edgeMat=new THREE.MeshPhysicalMaterial({
+  color:0xe5d1ae,map:pageEdgeMap,roughness:.96,metalness:0,envMapIntensity:.025
+});
+const spineMat=new THREE.MeshPhysicalMaterial({
+  color:0xffffff,map:spineColorMap,bumpMap:coverRoughnessMap,bumpScale:.024,
+  roughnessMap:coverRoughnessMap,roughness:.72,metalness:.02,
+  clearcoat:.12,clearcoatRoughness:.62,sheen:.22,sheenColor:new THREE.Color(0x7f4a49),envMapIntensity:.26
+});
+
+function coverBoard(side){
+  const sign=side==='right'?1:-1;
+  const g=new THREE.Group();
+  const board=new THREE.Mesh(new THREE.BoxGeometry(PAGE_W+.22,PAGE_H+.24,.16),coverMat);
+  // petit angle de chevalet : le bord extérieur descend légèrement
+  board.rotation.y=sign*0.038;
+  board.position.x=sign*(PAGE_W/2+.07);
+  board.position.z=-.405;
+  board.castShadow=true; board.receiveShadow=true;
+  g.add(board);
+  // filet de tranche pour détacher la couverture du bloc papier
+  const trimMat=new THREE.MeshBasicMaterial({color:0x8a7048,transparent:true,opacity:.55});
+  const trim=new THREE.Mesh(new THREE.BoxGeometry(PAGE_W+.24,.018,.018),trimMat);
+  trim.position.set(sign*(PAGE_W/2+.07),-PAGE_H/2-.125,-.33);
+  g.add(trim);
+  return g;
+}
+const leftCover=coverBoard('left'), rightCover=coverBoard('right');
+book.add(leftCover,rightCover);
+
+function makeEndpaper(side){
+  const sign=side==='right'?1:-1;
+  const tex=side==='right'?coverDecorRight:coverDecorLeft;
+  const mat=new THREE.MeshPhysicalMaterial({
+    map:tex,color:0xffffff,roughness:.82,metalness:0,envMapIntensity:.08,
+    side:THREE.DoubleSide
+  });
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(PAGE_W+.14,PAGE_H+.16),mat);
+  mesh.position.set(sign*(PAGE_W/2+.07),0,-.316);
+  mesh.rotation.y=sign*0.038;
+  mesh.castShadow=false; mesh.receiveShadow=true;
+  return mesh;
+}
+book.add(makeEndpaper('left'),makeEndpaper('right'));
+
+// Dos arrondi sous la gouttière.
+const spine=new THREE.Mesh(
+  new THREE.CylinderGeometry(.23,.23,PAGE_H+.22,32,1,false),
+  spineMat
+);
+spine.position.set(0,0,-.43);
+spine.castShadow=true; spine.receiveShadow=true;
+book.add(spine);
+
+function makePageBlock(side){
+  const sign=side==='right'?1:-1;
+  const geo=new THREE.BoxGeometry(PAGE_W-.03,PAGE_H-.10,.50,4,4,1);
+  const mesh=new THREE.Mesh(geo,edgeMat);
+  mesh.position.set(sign*(PAGE_W/2+.035),0,-.185);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  return mesh;
+}
+const leftBlock=makePageBlock('left'), rightBlock=makePageBlock('right');
+book.add(leftBlock,rightBlock);
+
+// Chants feuilletés : lignes latérales, inférieures et extérieures.
+// Elles restent visibles même sans tourner une page et donnent l'épaisseur du livre.
+const edgeGroup=new THREE.Group(); book.add(edgeGroup);
+const edgeLineMatA=new THREE.LineBasicMaterial({color:0xbeb7a9,transparent:true,opacity:.42});
+const edgeLineMatB=new THREE.LineBasicMaterial({color:0xeee9de,transparent:true,opacity:.36});
+function addSheetEdge(side,zOffset,i){
+  const sign=side==='right'?1:-1;
+  const mat=i%3===0?edgeLineMatA:edgeLineMatB;
+  // bord inférieur
+  const pts=[
+    new THREE.Vector3(sign*(gutterWidthAtY(-PAGE_H/2)*.5),-PAGE_H/2+.05,zOffset),
+    new THREE.Vector3(sign*(PAGE_W-.03),-PAGE_H/2+.05,zOffset)
+  ];
+  edgeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),mat));
+  // bord extérieur vertical
+  const pts2=[
+    new THREE.Vector3(sign*(PAGE_W-.03),-PAGE_H/2+.05,zOffset),
+    new THREE.Vector3(sign*(PAGE_W-.03),PAGE_H/2-.05,zOffset)
+  ];
+  edgeGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts2),mat));
+}
+for(let i=0;i<28;i++){
+  const z=-.035-i*.0105;
+  addSheetEdge('left',z,i); addSheetEdge('right',z,i);
+}
+
+// Ombre de contact douce, plus photographique que la plaque noire uniforme.
+const contactMat=new THREE.MeshBasicMaterial({map:contactShadowMap,color:0x11100e,transparent:true,opacity:.54,depthWrite:false});
+const contactShadow=new THREE.Mesh(new THREE.PlaneGeometry(7.8,5.7),contactMat);
+contactShadow.rotation.x=-Math.PI/2;
+contactShadow.position.set(0,-2.08,.42);
+scene.add(contactShadow);
+
+const contactCoreMat=new THREE.MeshBasicMaterial({map:contactShadowMap,color:0x090807,transparent:true,opacity:.26,depthWrite:false});
+const contactCore=new THREE.Mesh(new THREE.PlaneGeometry(4.2,2.2),contactCoreMat);
+contactCore.rotation.x=-Math.PI/2;
+contactCore.position.set(0,-2.075,.33);
+scene.add(contactCore);
+
+function setStaticGeometry(mesh,side){
+  // materials updated separately
+  mesh.visible=true;
+}
+
+let spreadLeft=0; // 0 means left blank, right page 1. then left 2, right 3...
+let focalPage=1;
+function currentLeftNo(){return spreadLeft===0?null:spreadLeft;}
+function currentRightNo(){return spreadLeft+1<=TOTAL_PAGES?spreadLeft+1:null;}
+function esc(value){
+  return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function chip(text,kind=''){
+  const cls=kind?`chip ${kind}`:'chip';
+  return `<span class="${cls}">${esc(text)}</span>`;
+}
+function pageInfoFor(pageNo){
+  if(!pageNo)return null;
+  const raw=PAGE_INFOS.find(p=>Number(p&&p.number)===Number(pageNo));
+  return raw&&typeof raw==='object'?raw:null;
+}
+function autoRuleHtml(label,row){
+  const data=row&&typeof row==='object'?row:{};
+  if(data.excluded){
+    const general=data.general?` · ${data.general}`:'';
+    return chip(`${label} : exception${general}`,'red');
+  }
+  if(data.target)return chip(`${label} : ${data.target}`);
+  return chip(`${label} : aucune`,'muted');
+}
+function renderRulesPanel(panel,pageNo,defaultSide){
+  const ruleBox=panel.querySelector('.pageRule');
+  const state=panel.querySelector('.rulesState');
+  if(!pageNo){
+    panel.classList.add('empty');
+    state.textContent=String(defaultSide||'').toUpperCase();
+    ruleBox.innerHTML=`<div class="pageRuleTitle"><b>Aucune page</b><span>Hors du livre</span></div><div class="ruleRow"><label>État</label><div>—</div></div>`;
+    return;
+  }
+  panel.classList.remove('empty');
+  const info=pageInfoFor(pageNo)||{};
+  const physical=String(info.physicalSide||defaultSide||'').toLowerCase();
+  state.textContent=physical==='verso'?'VERSO':'RECTO';
+  const subtitle=String(info.name||info.part||'').trim();
+  const rvRule=String(info.rectoVersoRule||'').toLowerCase();
+  let rvHtml=chip(physical==='verso'?'Verso':'Recto','muted');
+  if(rvRule==='recto'||rvRule==='verso')rvHtml+=chip(`${rvRule==='recto'?'Recto':'Verso'} imposé`,'gold');
+  if(info.rectoVersoException)rvHtml+=chip('Exception','red');
+
+  const dpRole=String(info.doublePageRole||'').toLowerCase();
+  const dpText=info.doublePage?`Oui${dpRole?` · ${dpRole==='left'?'gauche':dpRole==='right'?'droite':dpRole}`:''}`:'Non';
+  const exceptions=Array.isArray(info.exceptions)?info.exceptions.filter(Boolean):[];
+  const exceptionHtml=exceptions.length?`<div class="chips">${exceptions.map(v=>chip(v,'red')).join('')}</div>`:'Aucune';
+  const gabarit=String(info.gabarit||'Non défini');
+  const gStatus=String(info.gabaritStatus||'');
+
+  let autoContext='';
+  if(info.automatic){
+    const origin=String(info.automaticOrigin||'Règle structurelle');
+    const reason=String(info.automaticReason||'Page créée automatiquement par la Structure.');
+    autoContext=`
+      <div class="ruleRow"><label>Statut</label><div>${chip('Page automatique','red')}</div></div>
+      <div class="ruleRow"><label>Origine</label><div>${esc(origin)}</div></div>
+      <div class="autoReason">${esc(reason)}</div>`;
+  }
+
+  ruleBox.innerHTML=`
+    <div class="pageRuleTitle"><b>Page ${Number(pageNo)} · ${physical==='verso'?'Verso':'Recto'}</b><span>${esc(subtitle||String(info.type||'Page'))}</span></div>
+    <div class="ruleRow"><label>Type</label><div>${esc(info.type||'Page')}</div></div>
+    <div class="ruleRow"><label>Recto / Verso</label><div class="chips">${rvHtml}</div></div>
+    <div class="ruleRow"><label>Pages auto</label><div class="chips">${autoRuleHtml('AV',info.autoBefore)}${autoRuleHtml('AP',info.autoAfter)}</div></div>
+    <div class="ruleRow"><label>Double page</label><div>${esc(dpText)}</div></div>
+    <div class="ruleRow"><label>Exception</label><div>${exceptionHtml}</div></div>
+    <div class="ruleRow"><label>Gabarit</label><div>${esc(gabarit)}${gStatus?` · ${chip(gStatus,info.gabaritException?'red':'')}`:''}</div></div>
+    ${info.part?`<div class="ruleRow"><label>Partie</label><div>${esc(info.part)}</div></div>`:''}
+    ${autoContext}`;
+}
+function updatePageInfos(){
+  renderRulesPanel(leftRulesPanel,currentLeftNo(),'verso');
+  renderRulesPanel(rightRulesPanel,currentRightNo(),'recto');
+}
+function setBlockSheetCounts(leftSheetsFloat){
+  const ls=Math.max(0,Math.min(sheetCount,leftSheetsFloat));
+  const rs=Math.max(0,sheetCount-ls);
+  const lRatio=Math.max(.06,ls/sheetCount), rRatio=Math.max(.06,rs/sheetCount);
+  leftBlock.scale.z=lRatio; rightBlock.scale.z=rRatio;
+  const fullDepth=.50;
+  leftBlock.position.z=-.050-(fullDepth*lRatio)/2;
+  rightBlock.position.z=-.050-(fullDepth*rRatio)/2;
+}
+function updateBlocksDuringTurn(p,dir){
+  const baseLeft=Math.max(0,Math.floor(spreadLeft/2));
+  // Une feuille physique migre progressivement d'un bloc vers l'autre.
+  // À p=1, l'épaisseur est déjà exactement celle de l'état final.
+  setBlockSheetCounts(baseLeft + (dir>0?p:-p));
+}
+function postToTomeLinea(payload){
+  try{
+    if(window.ipc && typeof window.ipc.postMessage==='function') window.ipc.postMessage(JSON.stringify(payload));
+  }catch{}
+}
+function currentPhysicalPage(){
+  return Math.max(1,Math.min(TOTAL_PAGES,Math.round(Number(focalPage)||1)));
+}
+function notifyPosition(){
+  postToTomeLinea({type:'page',left:currentLeftNo()||0,right:currentRightNo()||0,current:currentPhysicalPage()});
+}
+function requestReturn(){
+  postToTomeLinea({type:'return',page:currentPhysicalPage()});
+}
+function spreadForPage(page){
+  const p=Math.max(1,Math.min(TOTAL_PAGES,Math.round(Number(page)||1)));
+  if(p<=1)return 0;
+  return 2*Math.floor(p/2);
+}
+function applyStatic(){
+  const ln=currentLeftNo(),rn=currentRightNo();
+  leftPage.material.dispose(); rightPage.material.dispose();
+  leftPage.material=ln?pageMaterial(ln):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
+  rightPage.material=rn?pageMaterial(rn):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
+  leftPage.visible=!!ln; rightPage.visible=!!rn;
+  setBlockSheetCounts(Math.max(0,Math.floor(spreadLeft/2)));
+  const label=ln?`pages ${ln}${rn?`–${rn}`:''}`:`page ${rn??1}`; spreadStatus.textContent=label;
+  updatePageInfos();
+  notifyPosition();
+}
+window.tomeLineaViewerConfigure=function(options={}){
+  const requestedCount=Math.max(1,Math.round(Number(options.pageCount)||TOTAL_PAGES));
+  TOTAL_PAGES=requestedCount;
+  PAGE_INFOS=Array.isArray(options.pages)?options.pages:[];
+  sheetCount=Math.max(1,Math.ceil(TOTAL_PAGES/2));
+  textureCache.forEach(t=>{try{t.dispose()}catch{}});
+  textureCache.clear();
+  focalPage=Math.max(1,Math.min(TOTAL_PAGES,Math.round(Number(options.startPage)||1)));
+  spreadLeft=spreadForPage(focalPage);
+  const maxSpread=2*Math.floor(TOTAL_PAGES/2);
+  spreadLeft=Math.max(0,Math.min(maxSpread,spreadLeft));
+  applyStatic();
+  return true;
+};
+window.tomeLineaViewerSetPage=function(page){
+  focalPage=Math.max(1,Math.min(TOTAL_PAGES,Math.round(Number(page)||1)));
+  spreadLeft=spreadForPage(focalPage);
+  const maxSpread=2*Math.floor(TOTAL_PAGES/2);
+  spreadLeft=Math.max(0,Math.min(maxSpread,spreadLeft));
+  applyStatic();
+  return currentPhysicalPage();
+};
+applyStatic();
+
+// Très léger parallaxe : donne du volume au livre sans gêner la lecture.
+let pointerTarget={x:0,y:0}, pointerCurrent={x:0,y:0};
+window.addEventListener('pointermove',e=>{
+  pointerTarget.x=(e.clientX/innerWidth-.5);
+  pointerTarget.y=(e.clientY/innerHeight-.5);
+});
+
+// Turning sheet: two faces sharing deformed positions.
+const turnGeo=new THREE.PlaneGeometry(PAGE_W,PAGE_H,44,14);
+const turnOriginal=Float32Array.from(turnGeo.attributes.position.array);
+const turnFront=new THREE.Mesh(turnGeo,new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.FrontSide}));
+const turnBack=new THREE.Mesh(turnGeo,new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.BackSide}));
+turnFront.castShadow=turnBack.castShadow=true; turnFront.receiveShadow=turnBack.receiveShadow=true;
+const turnGroup=new THREE.Group(); turnGroup.add(turnFront,turnBack); turnGroup.visible=false; book.add(turnGroup);
+
+// Fine tranche visible de la feuille mobile : elle permet de lire la profondeur
+// et la rotation même lorsque la feuille est presque de profil.
+const edgePoints=new Float32Array((14+1)*3);
+const turningEdgeGeo=new THREE.BufferGeometry();
+turningEdgeGeo.setAttribute('position',new THREE.BufferAttribute(edgePoints,3));
+const turningEdgeMat=new THREE.LineBasicMaterial({color:0xded8ca,transparent:true,opacity:.82});
+const turningEdge=new THREE.Line(turningEdgeGeo,turningEdgeMat);
+turnGroup.add(turningEdge);
+
+function updateTurningEdge(){
+  const pos=turnGeo.attributes.position;
+  const cols=44+1, rows=14+1;
+  const out=turningEdgeGeo.attributes.position;
+  for(let row=0;row<rows;row++){
+    const idx=row*cols+(cols-1);
+    out.setXYZ(row,pos.getX(idx),pos.getY(idx),pos.getZ(idx)+.004);
+  }
+  out.needsUpdate=true;
+}
+
+function setTurnTextures(frontNo,backNo){
+  [turnFront.material,turnBack.material].forEach(m=>m.dispose());
+  turnFront.material=frontNo?pageMaterial(frontNo,THREE.FrontSide):new THREE.MeshPhysicalMaterial({...paperBase,color:0xf0e1c3,side:THREE.FrontSide});
+  // Back texture needs horizontal flip because we view the reverse face.
+  let tex=backNo?pageTexture(backNo):null;
+  if(tex){tex=tex.clone();tex.wrapS=THREE.RepeatWrapping;tex.repeat.x=-1;tex.offset.x=1;tex.needsUpdate=true;}
+  turnBack.material=new THREE.MeshPhysicalMaterial({...paperBase,map:tex,color:tex?0xffffff:0xf3f0e9,side:THREE.BackSide});
+}
+
+let anim={active:false,dir:1,p:0,target:1,start:0,duration:780,raf:0,drag:false};
+function ease(t){return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;}
+function deformTurn(p,dir){
+  const pos=turnGeo.attributes.position;
+  const baseAngle=Math.PI*p;
+  const phase=Math.sin(Math.PI*p);
+  const startSide=dir>0?'right':'left';
+  const endSide=dir>0?'left':'right';
+  const hingeZ=-.022;
+
+  // smoothstep helper: the first 14% of the sheet stays mechanically
+  // attached to the spine instead of floating away from it.
+  const smooth01=t=>t*t*(3-2*t);
+
+  for(let i=0;i<pos.count;i++){
+    const ox=turnOriginal[i*3], oy=turnOriginal[i*3+1];
+    const d=ox+PAGE_W/2;
+    const u=d/PAGE_W;
+
+    const start=staticSurfacePoint(startSide,d,oy);
+    const end=staticSurfacePoint(endSide,d,oy);
+
+    // Resting geometry at both ends of the animation.
+    const restX=start[0]*(1-p)+end[0]*p;
+    const restZ=start[2]*(1-p)+end[2]*p;
+
+    // Physical turn around ONE fixed central hinge.
+    const curlAngle=phase*.70*Math.sin(Math.PI*u)*(.30+.70*u);
+    const theta=baseAngle+curlAngle;
+    const arcX=dir*d*Math.cos(theta);
+
+    const yNorm=oy/(PAGE_H/2);
+    const crown=phase*.42*Math.sin(Math.PI*u)*(1-.48*yNorm*yNorm);
+    const twist=phase*.11*yNorm*u;
+    const arcZ=hingeZ + d*.72*Math.sin(theta) + crown + twist;
+
+    // Phase blends the true resting surface with the flying sheet.
+    let x=restX*(1-phase)+arcX*phase;
+    let z=restZ*(1-phase)+arcZ*phase;
+
+    // Mechanical attachment at the spine ONLY while the sheet is moving.
+    // phase=0 at both ends, so the page returns exactly to static geometry
+    // before the moving mesh is replaced: no widening and no landing snap.
+    const attach=smooth01(Math.min(1,u/.14));
+    const pin=phase*(1-attach);
+    x=x*(1-pin);
+    z=z*(1-pin)+hingeZ*pin;
+
+    // Tiny torsion in Y only away from the hinge.
+    const y=oy + phase*.018*yNorm*Math.sin(Math.PI*u)*attach;
+
+    pos.setXYZ(i,x,y,z);
+  }
+  pos.needsUpdate=true;
+  turnGeo.computeVertexNormals();
+  updateTurningEdge();
+  updateBlocksDuringTurn(p,dir);
+}
+function setStaticFace(mesh,pageNo){
+  mesh.material.dispose();
+  mesh.material=pageNo?pageMaterial(pageNo):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
+  mesh.visible=!!pageNo;
+}
+function prepareFlip(dir){
+  if(dir>0){
+    if(!currentRightNo() || spreadLeft+2>TOTAL_PAGES) return false;
+    setTurnTextures(currentRightNo(),spreadLeft+2);
+    // Sous la feuille droite qui se lève, on affiche déjà la prochaine page droite.
+    const futureRight=spreadLeft+3<=TOTAL_PAGES?spreadLeft+3:null;
+    setStaticFace(rightPage,futureRight);
+  }else{
+    if(spreadLeft<=0) return false;
+    setTurnTextures(currentLeftNo(),spreadLeft-1>0?spreadLeft-1:null);
+    // Sous la feuille gauche qui se lève, on retrouve la page gauche précédente.
+    const futureLeft=spreadLeft-2>0?spreadLeft-2:null;
+    setStaticFace(leftPage,futureLeft);
+  }
+  anim.dir=dir;
+  turnGroup.position.x=0;
+  turnGroup.visible=true;
+  [turnFront.material,turnBack.material].forEach(mat=>{mat.transparent=false;mat.opacity=1;});
+  deformTurn(0,dir);
+  return true;
+}
+function finishFlip(committed){
+  if(committed) spreadLeft += anim.dir>0?2:-2;
+  spreadLeft=Math.max(0,Math.min(2*Math.floor(TOTAL_PAGES/2),spreadLeft));
+  if(committed){
+    focalPage=anim.dir>0?(currentRightNo()||currentLeftNo()||1):(currentLeftNo()||currentRightNo()||1);
+  }
+
+  // La feuille mobile reste à sa géométrie finale pendant que l'état fixe
+  // est installé dessous. Il n'y a donc aucun changement spatial brutal.
+  deformTurn(committed?1:0,anim.dir);
+  applyStatic();
+
+  // À cet instant, feuille mobile, page fixe et épaisseur des blocs coïncident.
+  // On échange les meshes dans le même cycle de rendu : aucun palier final.
+  turnGroup.visible=false;
+  anim.active=false;anim.drag=false;
+}
+function animateTo(target,duration=900){
+  anim.active=true;anim.start=performance.now();anim.target=target;anim.from=anim.p;anim.duration=duration;
+  const tick=(now)=>{
+    const t=Math.min(1,(now-anim.start)/anim.duration); anim.p=anim.from+(target-anim.from)*ease(t); deformTurn(anim.p,anim.dir);
+    if(t<1) anim.raf=requestAnimationFrame(tick); else finishFlip(target>.5);
+  }; anim.raf=requestAnimationFrame(tick);
+}
+function flip(dir){
+  if(anim.active||anim.drag) return;
+  anim.p=0;
+  if(!prepareFlip(dir))return;
+  animateTo(1,1220);
+}
+
+// Drag from the outer edge. Screen-based interaction keeps the gesture forgiving.
+let pointerStart=0;
+renderer.domElement.addEventListener('pointerdown',e=>{
+  if(e.clientY<58||anim.active)return;
+  const rightZone=e.clientX>innerWidth*.64, leftZone=e.clientX<innerWidth*.36;
+  if(!rightZone&&!leftZone)return;
+  const dir=rightZone?1:-1; anim.p=0;if(!prepareFlip(dir))return; anim.drag=true;pointerStart=e.clientX; renderer.domElement.setPointerCapture(e.pointerId); dragline.style.display='block';dragline.style.left=e.clientX+'px';
+});
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!anim.drag)return; const travel=anim.dir>0?(pointerStart-e.clientX):(e.clientX-pointerStart); anim.p=Math.max(0,Math.min(1,travel/(innerWidth*.42))); deformTurn(anim.p,anim.dir);dragline.style.left=e.clientX+'px';
+});
+renderer.domElement.addEventListener('pointerup',e=>{
+  if(!anim.drag)return; dragline.style.display='none';try{renderer.domElement.releasePointerCapture(e.pointerId)}catch{} const target=anim.p>.30?1:0; anim.drag=false; animateTo(target,target?760:480);
+});
+
+// Click left/right keeps the historical TomeLinea interaction when it is not a drag.
+renderer.domElement.addEventListener('click',e=>{
+  if(e.clientY<58||anim.active||anim.drag)return;
+  // prevent click immediately after a drag
+  if(Math.abs(e.clientX-pointerStart)>8 && pointerStart!==0){pointerStart=0;return;} pointerStart=0;
+  flip(e.clientX>=innerWidth/2?1:-1);
+});
+let wheelLock=0;renderer.domElement.addEventListener('wheel',e=>{e.preventDefault();const now=performance.now();if(now-wheelLock<420)return;wheelLock=now;flip(e.deltaY>0?1:-1);},{passive:false});
+prevBtn.addEventListener('click',()=>flip(-1));
+nextBtn.addEventListener('click',()=>flip(1));
+returnBtn.addEventListener('click',requestReturn);
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='PageDown')flip(1);
+  if(e.key==='ArrowLeft'||e.key==='PageUp')flip(-1);
+  if(e.key==='Escape'){
+    if(document.fullscreenElement)document.exitFullscreen();
+    else requestReturn();
+  }
+});
+
+
+// Cadre vertical écran : on centre le livre DANS LA FENÊTRE, et non en coordonnées 3D arbitraires.
+// La cible +0.08 en NDC place le centre visuel légèrement au-dessus du milieu pour compenser le bandeau supérieur.
+function projectedBookCenterY(){
+  book.updateMatrixWorld(true);
+  camera.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(book);
+  const xs=[box.min.x,box.max.x], ys=[box.min.y,box.max.y], zs=[box.min.z,box.max.z];
+  let minY=Infinity,maxY=-Infinity;
+  for(const x of xs) for(const y of ys) for(const z of zs){
+    const v=new THREE.Vector3(x,y,z).project(camera);
+    minY=Math.min(minY,v.y); maxY=Math.max(maxY,v.y);
+  }
+  return (minY+maxY)/2;
+}
+function frameBookVertically(){
+  const target=-.054;
+  // Two small Newton-like corrections using the actual screen projection.
+  for(let k=0;k<2;k++){
+    const c0=projectedBookCenterY();
+    const oldY=book.position.y;
+    book.position.y=oldY+.10;
+    const c1=projectedBookCenterY();
+    book.position.y=oldY;
+    const slope=(c1-c0)/.10;
+    if(Math.abs(slope)>.0001) book.position.y += (target-c0)/slope;
+  }
+  book.updateMatrixWorld(true);
+}
+frameBookVertically();
+
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();frameBookVertically();}
+
+addEventListener('resize',resize);
+
+const clock=new THREE.Clock();
+function render(){requestAnimationFrame(render);const t=clock.getElapsedTime(); // almost imperceptible life in lighting
+  rim.intensity=7.4+Math.sin(t*.45)*.18; warmFill.intensity=2.2+Math.cos(t*.35)*.06; fill.intensity=.48+Math.sin(t*.22)*.018; pointerCurrent.x+=(pointerTarget.x-pointerCurrent.x)*.045;
+  pointerCurrent.y+=(pointerTarget.y-pointerCurrent.y)*.045;
+  camera.position.x=.08+pointerCurrent.x*.05;
+  camera.position.y=3.04-pointerCurrent.y*.040;
+  camera.position.z=7.00+pointerCurrent.y*.014;
+  camera.lookAt(0,-.02,.02);
+  renderer.render(scene,camera);
+}
+render();
+
+window.addEventListener('beforeunload',()=>{
+  roomEnvironment.dispose();
+  pmremGenerator.dispose();
+  envMap.dispose?.();
+});
+</script>
+</body>
+</html>

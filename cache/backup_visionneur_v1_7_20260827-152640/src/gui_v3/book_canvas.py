@@ -901,22 +901,6 @@ class BookCanvas(tk.Frame):
         self._gabarit_inline_geometry_window = None
         self._gabarit_inline_geometry_field: str = ""
         self._gabarit_inline_geometry_committing: bool = False
-
-        # PRODUCTION_V20 — Production réutilise le poste Gabarits comme atelier
-        # commun : même page, même zoom, même ligne de contexte et même rail.
-        # Les données métier restent distinctes ; seuls les mécanismes d'interface
-        # et de manipulation sont partagés.
-        self._production_thumbnail_cache: dict[tuple, object] = {}
-        self._production_status_border = {
-            "vierge": "#56636A",
-            "en_cours": "#C89A4A",
-            "validee": "#62A98E",
-        }
-        self._production_status_fill = {
-            "vierge": "#102633",
-            "en_cours": "#302719",
-            "validee": "#193128",
-        }
         self._structure_pending_kind = None
         self._structure_pending_payload = None
         self._structure_hover_target = None
@@ -2407,7 +2391,7 @@ class BookCanvas(tk.Frame):
 
     def _gabarit_visibility_watchdog(self) -> None:
         self._gabarit_visibility_watch_job = None
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "structure", "production"}:
+        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "structure"}:
             self._gabarit_hide_detached_hosts()
             return
 
@@ -2460,7 +2444,7 @@ class BookCanvas(tk.Frame):
         if not self._project_shell_visible:
             self._gabarit_hide_detached_hosts()
             return
-        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure", "production"}:
+        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure"}:
             self._gabarit_inspector_signature = None
             try:
                 self.after_idle(self._show_gabarit_inspector_host)
@@ -2473,7 +2457,7 @@ class BookCanvas(tk.Frame):
     def _gabarit_owner_mapped(self, _event=None):
         # Si on revient réellement sur le bureau Gabarits, la palette reprend
         # sa place ; sinon elle reste masquée.
-        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure", "production"}:
+        if str(getattr(self, "_work_mode", "")) in {"gabarits", "structure"}:
             try:
                 self.after_idle(self._show_gabarit_inspector_host)
             except Exception:
@@ -2630,7 +2614,7 @@ class BookCanvas(tk.Frame):
         if host is None or canvas is None:
             return
         current_mode = str(getattr(self, "_work_mode", "") or "")
-        if current_mode not in {"gabarits", "structure", "production"} or not self._gabarit_owner_is_visible():
+        if current_mode not in {"gabarits", "structure"} or not self._gabarit_owner_is_visible():
             try:
                 host.withdraw()
             except Exception:
@@ -2661,7 +2645,7 @@ class BookCanvas(tk.Frame):
         host = getattr(self, "gabarit_inspector_host", None)
         if host is None:
             return
-        if str(getattr(self, "_work_mode", "") or "") not in {"gabarits", "structure", "production"} or not self._gabarit_owner_is_visible():
+        if str(getattr(self, "_work_mode", "") or "") not in {"gabarits", "structure"} or not self._gabarit_owner_is_visible():
             self._hide_gabarit_inspector_host()
             return
         self._gabarit_inspector_signature = None
@@ -4122,339 +4106,9 @@ class BookCanvas(tk.Frame):
         except Exception:
             pass
 
-    def _production_inspector_signature_value(self):
-        if not self.items:
-            return ("production-empty",)
-        try:
-            self._gabarit_normalize_selected_index()
-            units, active_pos = self._gabarit_unit_position()
-            if not units:
-                return ("production-empty",)
-            unit=units[active_pos]
-            idx=int(unit["primary"])
-            item=self.items[idx]
-            group_id=self._item_group_id(item)
-            group=next((g for g in self.groups if str(g.get("id") or "")==group_id),{})
-            selected=tuple(
-                (
-                    str(info.get("id") or ""), str(info.get("kind") or ""),
-                    tuple(sorted((str(k),float(v)) for k,v in dict(info.get("rect_mm") or {}).items())),
-                    bool(info.get("locked",False)),
-                    str(info.get("assoc_group") or ""),
-                )
-                for info in self.gabarit_selected_zone_infos()
-            )
-            canvas=getattr(self,"gabarit_inspector_canvas",None)
-            w=int(canvas.winfo_width()) if canvas is not None else 0
-            h=int(canvas.winfo_height()) if canvas is not None else 0
-            return (
-                "production",w,h,idx,unit.get("number"),
-                self._page_type_label(item,idx),
-                self._group_name(group),self._group_part_title(group),
-                self._production_status(item),selected,
-                str(getattr(self,"_gabarit_inspector_active_band","") or ""),
-                str(getattr(self,"_gabarit_inspector_hover","") or ""),
-                str(getattr(self,"_gabarit_inspector_pressed","") or ""),
-                str(getattr(self,"_gabarit_inspector_tooltip_key","") or ""),
-                bool(self.can_undo()),bool(self.can_redo()),
-                self.gabarit_snap_preset() if self.gabarit_snap_enabled() else "none",
-                self._gabarit_tools_side(),
-            )
-        except Exception:
-            return ("production-error",id(self))
-
-    def _render_production_tools_overlay(self, *, force: bool = False):
-        """Atelier Production : même langage graphique, seulement les outils communs."""
-        target=getattr(self,"gabarit_inspector_canvas",None)
-        if target is None or not self.items:
-            return
-        if self._gabarit_inline_geometry_is_active():
-            return
-        try:
-            target.update_idletasks()
-            width=max(120.0,float(target.winfo_width()))
-            height=max(120.0,float(target.winfo_height()))
-        except Exception:
-            return
-        signature=self._production_inspector_signature_value()
-        if not force and signature==getattr(self,"_gabarit_inspector_signature",None):
-            return
-        self._gabarit_inspector_signature=signature
-        target.delete("all")
-        self._gabarit_inspector_hitboxes={}
-        self._gabarit_inspector_tooltips={}
-        self._gabarit_inspector_block_bounds={}
-
-        self._gabarit_normalize_selected_index()
-        units,active_pos=self._gabarit_unit_position()
-        if not units:
-            return
-        unit=units[active_pos]
-        idx=int(unit["primary"])
-        item=self.items[idx]
-        status=self._production_status(item)
-        selected_infos=self.gabarit_selected_zone_infos()
-        count=len(selected_infos)
-        info=selected_infos[-1] if selected_infos else {}
-        rect=dict(info.get("rect_mm") or {})
-        side=self._gabarit_tools_side()
-
-        rail_w=54.0
-        permanent_w=self._gabarit_permanent_tools_width()
-        if side=="left":
-            rail_x1=7.0; rail_x2=rail_x1+rail_w
-            permanent_left=7.0
-            permanent_right=min(width-8.0,permanent_left+permanent_w)
-        else:
-            rail_x2=width-7.0; rail_x1=rail_x2-rail_w
-            permanent_right=rail_x2
-            permanent_left=max(8.0,permanent_right-permanent_w)
-
-        # Informations de page : mêmes informations que Gabarits, adaptées à Production.
-        group_id=self._item_group_id(item)
-        group=next((g for g in self.groups if str(g.get("id") or "")==group_id),{})
-        part_title=self._group_part_title(group)
-        part_label=part_title if part_title and part_title!="Titre à définir" else self._group_name(group)
-        type_label=self._page_type_label(item,idx)
-        target.create_text(permanent_left,10,text="PRODUCTION",anchor="nw",fill="#DDE5E5",font=(theme.FONT_TITLE,9,"bold"))
-        target.create_text(permanent_left,27,text=f"Page {unit.get('number')} · {type_label}",anchor="nw",fill="#9FB0B3",font=(theme.FONT_UI,7,"bold"))
-        target.create_text(permanent_left,42,text=str(part_label),anchor="nw",fill="#758B91",font=(theme.FONT_UI,6))
-
-        # État visuel : même trio vierge / orange / vert décidé pour les miniatures.
-        state_y1=58.0; state_y2=91.0
-        state_color=self._production_status_border.get(status,"#56636A")
-        state_fill=self._production_status_fill.get(status,"#102633")
-        target.create_rectangle(permanent_left,state_y1,permanent_right,state_y2,fill=state_fill,outline=state_color,width=2)
-        target.create_text(permanent_left+8,(state_y1+state_y2)/2.0,text=self._production_status_label(status),anchor="w",fill="#EDF1EF",font=(theme.FONT_UI,8,"bold"))
-        validate_disabled=status=="vierge"
-        validate_label="Repasser en cours" if status=="validee" else "Valider"
-        validate_x1=max(permanent_left+70.0,permanent_right-82.0)
-        self._gabarit_inspector_control_box(
-            target,"production_validate",(validate_x1,state_y1+4.0,permanent_right-4.0,state_y2-4.0),
-            selected=status=="validee",disabled=validate_disabled,
-        )
-        target.create_text(
-            (validate_x1+permanent_right-4.0)/2.0,(state_y1+state_y2)/2.0,
-            text=validate_label,anchor="center",
-            fill="#C7D1D0" if not validate_disabled else "#65737A",
-            font=(theme.FONT_UI,6,"bold"),
-        )
-        self._gabarit_inspector_register_tooltip(
-            "production_validate",
-            "Valider cette page" if status!="validee" else "Repasser cette page en cours",
-        )
-
-        # Rail commun : accrochage / organiser / position & dimensions.
-        order=("snap","organize","geometry")
-        titles={"snap":"ACCROCHAGE","organize":"ORGANISER","geometry":"POSITION & DIMENSIONS"}
-        icons={"snap":"snap","organize":"organize","geometry":"geometry"}
-        active_band=str(getattr(self,"_gabarit_inspector_active_band","") or "")
-        quick_button=43.0; quick_gap=6.0
-        quick_y=max(150.0,height-quick_button-9.0)
-        quick_x=permanent_left
-        self._gabarit_inspector_premium_icon_button(target,"history_undo",(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),"undo",disabled=not self.can_undo(),tooltip="Annuler · Ctrl+Z")
-        quick_x+=quick_button+quick_gap
-        self._gabarit_inspector_premium_icon_button(target,"history_redo",(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),"redo",disabled=not self.can_redo(),tooltip="Rétablir · Ctrl+Y / Ctrl+Maj+Z")
-
-        rail_top=108.0; rail_bottom=quick_y-15.0
-        gap_y=8.0
-        available=max(1.0,rail_bottom-rail_top)
-        row_h=min(58.0,max(42.0,(available-gap_y*(len(order)-1))/len(order)))
-        total_h=len(order)*row_h+(len(order)-1)*gap_y
-        y=rail_top+max(0.0,(available-total_h)/2.0)
-        target.create_rectangle(rail_x1-2.0,y-4.0,rail_x2+1.0,min(rail_bottom+4.0,y+total_h+4.0),fill="#141E24",outline="#34464F",width=1)
-        rows={}
-        for name in order:
-            y1=y; y2=y1+row_h; rows[name]=(y1,y2)
-            self._gabarit_inspector_block_bounds[name]=(y1,y2)
-            is_active=name==active_band
-            hovered_band=self._gabarit_inspector_band_for_key(str(getattr(self,"_gabarit_inspector_hover","") or ""))==name
-            fill="#21353C" if is_active else ("#1E2D34" if hovered_band else "#19242B")
-            outline="#63BEB7" if is_active else ("#55747A" if hovered_band else "#34464F")
-            target.create_rectangle(rail_x1,y1,rail_x2,y2,fill=fill,outline=outline,width=2 if is_active else 1)
-            self._gabarit_inspector_draw_premium_icon(target,icons[name],(rail_x1+6,y1+6,rail_x2-6,y2-6),selected=is_active,hovered=hovered_band)
-            self._gabarit_inspector_hitboxes[f"dragblock_{name}"]=(rail_x1,y1,rail_x2,y2)
-            y+=row_h+gap_y
-
-        if active_band not in rows:
-            self._gabarit_inspector_draw_hover_tooltip(target,width,height)
-            return
-
-        ry1,ry2=rows[active_band]
-        if side=="left":
-            fly_left=rail_x2+9.0; fly_right=width-8.0
-        else:
-            fly_right=rail_x1-9.0; fly_left=8.0
-        title_h=27.0
-        content_h={"snap":134.0,"organize":362.0,"geometry":58.0}.get(active_band,70.0)
-        panel_h=title_h+content_h
-        fy1=(ry1+ry2)/2.0-panel_h/2.0
-        fy1=max(98.0,min(max(98.0,quick_y-10.0-panel_h),fy1))
-        fy2=fy1+panel_h
-        target.create_rectangle(fly_left,fy1,fly_right,fy2,fill="#111B21",outline="#58727A",width=1)
-        target.create_line(fly_left+8,fy1+title_h,fly_right-8,fy1+title_h,fill="#32474F",width=1)
-        target.create_text(fly_left+10,fy1+title_h/2,text=titles[active_band],anchor="w",fill="#B9C8CA",font=(theme.FONT_UI,8,"bold"))
-        self._gabarit_inspector_hitboxes[f"flyout_{active_band}"]=(fly_left,fy1,fly_right,fy2)
-        content_top=fy1+title_h+6.0
-
-        def icon_strip(items, *, button=40.0, gap=4.0, y_offset=0.0):
-            yy=content_top+y_offset
-            cell_h=46.0
-            usable_left=fly_left+12.0
-            usable_right=fly_right-12.0
-            usable_w=max(0.0,usable_right-usable_left)
-            used_gap=float(gap); cell_w=float(button)
-            if len(items)>1 and (len(items)*cell_w+(len(items)-1)*used_gap)>usable_w:
-                used_gap=max(2.0,(usable_w-len(items)*cell_w)/(len(items)-1))
-            for i,item_def in enumerate(items):
-                key,icon,selected,tip,danger=item_def[:5]
-                disabled=bool(item_def[5]) if len(item_def)>5 else False
-                x1=usable_left+i*(cell_w+used_gap)
-                label=self._gabarit_station_label(key,selected=selected,tooltip=tip)
-                self._gabarit_inspector_station_button(target,key,(x1,yy,x1+cell_w,yy+cell_h),label,selected=selected,danger=danger,disabled=disabled,tooltip=tip)
-            return cell_h
-
-        if active_band=="snap":
-            current=self.gabarit_snap_preset() if self.gabarit_snap_enabled() else "none"
-            row_h2=icon_strip((
-                ("snap_margins","snap_margins",current=="margins","Accrocher aux marges",False),
-                ("snap_page","snap_page",current=="page","Accrocher aux bords de page",False),
-                ("snap_center","snap_center",current=="center","Accrocher aux axes centraux",False),
-                ("snap_zones","snap_zones",current=="zones","Accrocher aux autres zones",False),
-                ("snap_none","snap_none",current=="none","Désactiver l’accrochage",False),
-            ))
-            sy=content_top+row_h2+8.0
-            target.create_text(fly_left+12,sy,text="VERROUILLAGE",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            selected_now=self._gabarit_selected_zone_dicts()
-            locked=all(bool(z.get("locked",False)) for z in selected_now) if selected_now else bool(info.get("locked",False))
-            any_locked=any(bool(z.get("locked",False)) for z in self._gabarit_active_zones())
-            icon_strip((
-                ("zone_lock","unlock" if locked else "lock",locked,"Déverrouiller la sélection" if locked else "Verrouiller la sélection",False,count==0),
-                ("zone_unlock_all","unlock",False,"Tout déverrouiller sur cette page",False,not any_locked),
-            ),y_offset=(sy-content_top)+10.0)
-
-        elif active_band=="organize":
-            yy=0.0; title_to_row=10.0; section_gap=6.0; label_x=fly_left+12.0
-            target.create_text(label_x,content_top+yy,text="ALIGNER",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            row=icon_strip((
-                ("align_left","align_left",False,"Aligner à gauche",False,count==0),
-                ("align_center","align_center",False,"Centrer horizontalement",False,count==0),
-                ("align_right","align_right",False,"Aligner à droite",False,count==0),
-                ("align_top","align_top",False,"Aligner en haut",False,count==0),
-                ("align_middle","align_middle",False,"Centrer verticalement",False,count==0),
-                ("align_bottom","align_bottom",False,"Aligner en bas",False,count==0),
-            ),y_offset=yy+title_to_row)
-            yy+=title_to_row+row+section_gap
-            target.create_text(label_x,content_top+yy,text="DISTRIBUER",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            row=icon_strip((
-                ("multi_distribute_h","distribute_h",False,"Distribuer horizontalement",False,count<3),
-                ("multi_distribute_v","distribute_v",False,"Distribuer verticalement",False,count<3),
-            ),y_offset=yy+title_to_row)
-            yy+=title_to_row+row+section_gap
-            target.create_text(label_x,content_top+yy,text="ÉGALISER",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            row=icon_strip((
-                ("multi_same_w","equal_width",False,"Même largeur",False,count<2),
-                ("multi_same_h","equal_height",False,"Même hauteur",False,count<2),
-                ("multi_same_size","equal_size",False,"Même taille",False,count<2),
-            ),y_offset=yy+title_to_row)
-            yy+=title_to_row+row+section_gap
-            groups={str(z.get("assoc_group") or "") for z in self._gabarit_selected_zone_dicts() if str(z.get("assoc_group") or "")}
-            target.create_text(label_x,content_top+yy,text="ASSOCIER",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            row=icon_strip((
-                ("associate_zones","associate",False,"Associer la sélection",False,count<2),
-                ("dissociate_zones","dissociate",False,"Dissocier le groupe",False,not groups),
-            ),y_offset=yy+title_to_row)
-            yy+=title_to_row+row+section_gap
-            target.create_text(label_x,content_top+yy,text="SUPERPOSITION",anchor="w",fill="#7F959A",font=(theme.FONT_UI,7,"bold"))
-            icon_strip((
-                ("layer_back","layer_back",False,"Placer tout derrière",False,count==0),
-                ("layer_backward","layer_backward",False,"Reculer d’un plan",False,count==0),
-                ("layer_forward","layer_forward",False,"Avancer d’un plan",False,count==0),
-                ("layer_front","layer_front",False,"Placer tout devant",False,count==0),
-            ),y_offset=yy+title_to_row)
-
-        elif active_band=="geometry":
-            fields=(("X","x","geom_x"),("Y","y","geom_y"),("L","w","geom_w"),("H","h","geom_h"))
-            gap=5.0; fly_w=max(120.0,fly_right-fly_left); bw=(fly_w-gap*3.0-20.0)/4.0; yy=content_top+4.0
-            for i,(lab,field,key) in enumerate(fields):
-                x1=fly_left+10+i*(bw+gap)
-                self._gabarit_inspector_control_box(target,key,(x1,yy,x1+bw,yy+34),disabled=count!=1)
-                target.create_text(x1+6,yy+17,text=lab,anchor="w",fill="#7F959A",font=(theme.FONT_UI,8,"bold"))
-                target.create_text(x1+bw-6,yy+17,text=f"{float(rect.get(field,0)):g}" if count==1 else "—",anchor="e",fill="#D8E0E1" if count==1 else "#65737A",font=(theme.FONT_UI,8,"bold"))
-
-        self._gabarit_inspector_draw_hover_tooltip(target,width,height)
-
-    def _production_tools_press(self, event):
-        self._gabarit_inspector_cancel_tooltip_job()
-        self._gabarit_inspector_tooltip_key=""
-        if self._gabarit_inline_geometry_is_active():
-            self._gabarit_finish_inline_geometry(commit=True)
-        key=self._gabarit_inspector_key_at(float(event.x),float(event.y))
-        if not key:
-            return "break"
-        if key.startswith("dragblock_") or key.startswith("flyout_"):
-            return "break"
-        self._gabarit_inspector_pressed=key
-        self._gabarit_inspector_hover=key
-        self._gabarit_inspector_signature=None
-        self._render_production_tools_overlay(force=True)
-
-        changed=False
-        if key=="production_validate":
-            self.production_toggle_validation()
-            return "break"
-        if key=="history_undo":
-            self.structure_undo(); return "break"
-        if key=="history_redo":
-            self.structure_redo(); return "break"
-        if key.startswith("snap_"):
-            self.gabarit_set_snap_preset(key.split("_",1)[1]); return "break"
-        if key=="zone_lock":
-            changed=self.gabarit_toggle_selected_zones_lock()
-        elif key=="zone_unlock_all":
-            changed=self.gabarit_unlock_all_zones()
-        elif key.startswith("align_"):
-            changed=self.gabarit_align_selected_zones(key.split("_",1)[1])
-        elif key=="multi_distribute_h":
-            changed=self.gabarit_distribute_selected_zones("horizontal")
-        elif key=="multi_distribute_v":
-            changed=self.gabarit_distribute_selected_zones("vertical")
-        elif key=="multi_same_w":
-            changed=self.gabarit_equalize_selected_zones("width")
-        elif key=="multi_same_h":
-            changed=self.gabarit_equalize_selected_zones("height")
-        elif key=="multi_same_size":
-            changed=self.gabarit_equalize_selected_zones("size")
-        elif key=="associate_zones":
-            changed=self.gabarit_associate_selected_zones()
-        elif key=="dissociate_zones":
-            changed=self.gabarit_dissociate_selected_zones()
-        elif key=="layer_back":
-            changed=self.gabarit_move_selected_zones_layer("back")
-        elif key=="layer_backward":
-            changed=self.gabarit_move_selected_zones_layer("backward")
-        elif key=="layer_forward":
-            changed=self.gabarit_move_selected_zones_layer("forward")
-        elif key=="layer_front":
-            changed=self.gabarit_move_selected_zones_layer("frontmost")
-        elif key.startswith("geom_"):
-            self._gabarit_start_inline_geometry(key.split("_",1)[1])
-            return "break"
-        if changed:
-            self._production_mark_current_in_progress()
-            self._save_order()
-            self._production_thumbnail_cache.clear()
-            self.render()
-        self._gabarit_inspector_signature=None
-        self._render_production_tools_overlay(force=True)
-        return "break"
-
     def _render_gabarit_inspector_overlay(self, *, force: bool = False):
-        mode = str(getattr(self, "_work_mode", "") or "")
-        if mode == "structure":
+        if str(getattr(self, "_work_mode", "") or "") == "structure":
             return self._render_structure_tools_overlay(force=force)
-        if mode == "production":
-            return self._render_production_tools_overlay(force=force)
         """Inspecteur Gabarits V81 : architecture permanente.
 
         La sélection ne change plus la structure de l'interface : Réglages, Ajouter,
@@ -4689,11 +4343,8 @@ class BookCanvas(tk.Frame):
             pass
 
     def _gabarit_inspector_press(self, event):
-        mode = str(getattr(self, "_work_mode", "") or "")
-        if mode == "structure":
+        if str(getattr(self, "_work_mode", "") or "") == "structure":
             return self._structure_tools_press(event)
-        if mode == "production":
-            return self._production_tools_press(event)
         self._gabarit_inspector_cancel_tooltip_job()
         self._gabarit_inspector_tooltip_key = ""
         # Un clic ailleurs termine une saisie X/Y/L/H : Entrée n'est jamais obligatoire.
@@ -4833,105 +4484,6 @@ class BookCanvas(tk.Frame):
         self._render_gabarit_inspector_overlay(force=True)
         return "break"
 
-    def _shared_page_workbench_mode(self) -> bool:
-        """True pour les deux bureaux qui partagent la même surface de page."""
-        return str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}
-
-    def _production_status(self, item: dict | None) -> str:
-        """État visuel simple de Production : vierge / en cours / validée."""
-        if not isinstance(item, dict):
-            return "vierge"
-        raw = str(item.get("production_status") or "").strip().lower()
-        if raw in {"validee", "validée", "valide", "validated", "done", "termine", "terminé"}:
-            return "validee"
-        if raw in {"en_cours", "encours", "progress", "in_progress", "partiel", "partielle"}:
-            return "en_cours"
-        if raw in {"vierge", "empty", "blank", "non_commence", "non commencé"}:
-            return "vierge"
-        if bool(item.get("production_validated", False)):
-            return "validee"
-
-        # Dès qu'un contenu réel ou un rendu de Production existe, la page n'est
-        # plus vierge. Les gabarits seuls ne suffisent pas à la faire passer en cours.
-        content_keys = (
-            "production_elements", "content_elements", "page_elements",
-            "production_preview", "production_thumbnail", "rendered_preview",
-            "content_preview", "page_render_path", "source_content_id",
-        )
-        for key in content_keys:
-            value = item.get(key)
-            if isinstance(value, (list, tuple, dict, set)) and value:
-                return "en_cours"
-            if isinstance(value, str) and value.strip():
-                return "en_cours"
-            if value not in (None, "", False, 0) and not isinstance(value, (list, tuple, dict, set, str)):
-                return "en_cours"
-        return "vierge"
-
-    def _production_mark_current_in_progress(self, item: dict | None = None) -> None:
-        """Toute correction d'une page validée la remet automatiquement en cours."""
-        if item is None:
-            item = self._gabarit_active_item()
-        if not isinstance(item, dict):
-            return
-        current = self._production_status(item)
-        # Dans Production, toute manipulation est une modification de composition.
-        # Dans Gabarits, seule une page déjà produite/validée doit être invalidée.
-        if str(getattr(self, "_work_mode", "") or "") == "production" or current == "validee":
-            item["production_status"] = "en_cours"
-            item["production_validated"] = False
-
-    def production_toggle_validation(self) -> bool:
-        """Valide la page active ou la remet volontairement en cours."""
-        item = self._gabarit_active_item()
-        if not isinstance(item, dict):
-            return False
-        current = self._production_status(item)
-        if current == "validee":
-            item["production_status"] = "en_cours"
-            item["production_validated"] = False
-            message = "Page repassée en cours"
-        else:
-            # Une page strictement vierge reste signalée : validation possible
-            # seulement si elle possède déjà un contenu/rendu de Production.
-            if current == "vierge":
-                self.status_var.set("Page vierge — importez d’abord son contenu.")
-                return False
-            item["production_status"] = "validee"
-            item["production_validated"] = True
-            message = "Page validée"
-        self._save_order()
-        self._production_thumbnail_cache.clear()
-        self._gabarit_inspector_signature = None
-        self.render()
-        self.status_var.set(message)
-        return True
-
-    def _production_status_label(self, status: str) -> str:
-        return {
-            "vierge": "VIERGE",
-            "en_cours": "EN COURS",
-            "validee": "VALIDÉE",
-        }.get(str(status or ""), "VIERGE")
-
-    def _production_unit_status(self, unit: dict) -> str:
-        indices = [int(v) for v in list(unit.get("indices") or ()) if isinstance(v, int) or str(v).isdigit()]
-        if not indices:
-            try:
-                indices = [int(unit.get("primary"))]
-            except Exception:
-                indices = []
-        states = [
-            self._production_status(self.items[idx])
-            for idx in indices
-            if 0 <= idx < len(self.items)
-        ]
-        if states and all(state == "validee" for state in states):
-            return "validee"
-        if any(state in {"en_cours", "validee"} for state in states):
-            return "en_cours"
-        return "vierge"
-
     def set_work_mode(self, mode: str):
         """Bascule entre les bureaux sur le Canvas unique stable.
 
@@ -4975,7 +4527,7 @@ class BookCanvas(tk.Frame):
 
         zoom_controls = getattr(self, "gabarit_zoom_controls", None)
         side_btn = getattr(self, "gabarit_tools_side_btn", None)
-        if mode in {"gabarits", "production"}:
+        if mode == "gabarits":
             self._update_gabarit_tools_side_button()
             if side_btn is not None:
                 try: side_btn.grid()
@@ -4987,7 +4539,7 @@ class BookCanvas(tk.Frame):
                 try: side_btn.grid_remove()
                 except Exception: pass
 
-        if mode in {"gabarits", "production"}:
+        if mode == "gabarits":
             self._hide_gabarit_tools_host()
             self._show_gabarit_inspector_host()
             self._ensure_gabarit_visibility_watchdog()
@@ -5010,10 +4562,10 @@ class BookCanvas(tk.Frame):
                 self._gabarit_raster_active = False
                 self._gabarit_raster_image_item = None
 
-        if mode not in {"gabarits", "production"} and getattr(self, "_gabarit_overlay_active", False):
+        if mode != "gabarits" and getattr(self, "_gabarit_overlay_active", False):
             self.close_gabarit_overlay()
 
-        if mode in {"gabarits", "production"}:
+        if mode == "gabarits":
             if previous != "gabarits" and not hasattr(self, "_gabarit_has_been_opened"):
                 self._gabarit_zoom = 100
                 self._gabarit_pan_x = 0.0
@@ -5030,7 +4582,7 @@ class BookCanvas(tk.Frame):
 
         self.render()
 
-        if mode in {"gabarits", "production"}:
+        if mode == "gabarits":
             self._place_gabarit_zoom_controls()
             self._emit_gabarit_page_changed()
 
@@ -6062,7 +5614,7 @@ class BookCanvas(tk.Frame):
                 self.status_var.set(f"Confirmer : étendre ce gabarit à {count} {noun} du même type{suffix}.")
             else:
                 self.status_var.set("Confirmer : conserver ce gabarit uniquement sur cette double page." if self._gabarit_active_is_spread() else "Confirmer : conserver ce gabarit uniquement sur cette page.")
-            if str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}:
+            if getattr(self, "_work_mode", "") == "gabarits":
                 self.render()
             return True
         return self._gabarit_validate_scope(requested)
@@ -6275,7 +5827,7 @@ class BookCanvas(tk.Frame):
         self._gabarit_zoom_anchor = None
         self._gabarit_zoom_ratio = (0.5, 0.5)
         self._gabarit_sync_zoom_widget()
-        if str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "") == "gabarits":
             self.render()
 
     def _schedule_gabarit_overlay_render(self, _event=None) -> None:
@@ -6495,7 +6047,7 @@ class BookCanvas(tk.Frame):
         """Place le zoom en bas à droite de la zone de travail."""
         zoom_controls = getattr(self, "gabarit_zoom_controls", None)
         canvas = getattr(self, "canvas", None)
-        if zoom_controls is None or canvas is None or str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
+        if zoom_controls is None or canvas is None or str(getattr(self, "_work_mode", "")) != "gabarits":
             return
         try:
             canvas.update_idletasks()
@@ -6588,157 +6140,11 @@ class BookCanvas(tk.Frame):
         target.create_rectangle(x-half,y1,x+half,y2,fill="#111B21",outline="#5D747B",width=1)
         target.create_text(x,(y1+y2)/2.0,text="\n".join(lines),anchor="center",fill="#DCE5E5",font=(theme.FONT_UI,7,"bold"))
 
-    def _production_thumbnail_source_image(self, item: dict, target_w: int, target_h: int):
-        """Miniature réelle si un rendu existe, sinon aperçu du gabarit courant."""
-        if Image is None or ImageDraw is None:
-            return None
-        target_w=max(12,int(target_w)); target_h=max(16,int(target_h))
-        page_id=str(item.get("id") or "")
-        path, stage = self._resolve_preview_path(item)
-        stamp = None
-        if path is not None:
-            try:
-                st=path.stat()
-                stamp=(str(path), int(st.st_mtime_ns), int(st.st_size))
-            except Exception:
-                stamp=(str(path),0,0)
-        zones=item.get("gabarit_zones") if isinstance(item,dict) else None
-        zone_sig=tuple(
-            (
-                str(z.get("id") or ""), str(z.get("kind") or ""),
-                round(float(z.get("x",0.0)),4), round(float(z.get("y",0.0)),4),
-                round(float(z.get("w",0.0)),4), round(float(z.get("h",0.0)),4),
-                round(float(z.get("rotation",0.0) or 0.0),2),
-            )
-            for z in (zones or []) if isinstance(z,dict)
-        )
-        key=(page_id,target_w,target_h,stamp,zone_sig)
-        cached=self._production_thumbnail_cache.get(key)
-        if cached is not None:
-            try:
-                return cached.copy()
-            except Exception:
-                return cached
-
-        canvas=Image.new("RGB",(target_w,target_h),"#F5F4EF")
-        draw=ImageDraw.Draw(canvas)
-        if path is not None:
-            try:
-                with Image.open(path) as src:
-                    im=src.convert("RGB")
-                    im.thumbnail((target_w,target_h),Image.Resampling.LANCZOS)
-                    ox=(target_w-im.width)//2
-                    oy=(target_h-im.height)//2
-                    canvas.paste(im,(ox,oy))
-            except Exception:
-                path=None
-
-        if path is None:
-            # Ce n'est pas une fausse page de contenu : on montre simplement le
-            # vrai dessin de gabarit disponible en attendant l'import Production.
-            colors={
-                "text":("#D7E8E5","#4C9D94"),
-                "image":("#DFE5EC","#728CAC"),
-                "document":("#ECE4D7","#AD8B56"),
-            }
-            for z in zones or []:
-                if not isinstance(z,dict):
-                    continue
-                kind=str(z.get("kind") or z.get("type") or "").lower()
-                fill,outline=colors.get(kind,("#E4E5E2","#8B9692"))
-                try:
-                    x1=int(round(float(z.get("x",0.0))*target_w))
-                    y1=int(round(float(z.get("y",0.0))*target_h))
-                    x2=int(round((float(z.get("x",0.0))+float(z.get("w",0.2)))*target_w))
-                    y2=int(round((float(z.get("y",0.0))+float(z.get("h",0.2)))*target_h))
-                    x1=max(1,min(target_w-2,x1)); y1=max(1,min(target_h-2,y1))
-                    x2=max(x1+1,min(target_w-2,x2)); y2=max(y1+1,min(target_h-2,y2))
-                    draw.rectangle((x1,y1,x2,y2),fill=fill,outline=outline,width=1)
-                except Exception:
-                    continue
-        draw.rectangle((0,0,target_w-1,target_h-1),outline="#C6C9C4",width=1)
-        self._production_thumbnail_cache[key]=canvas.copy()
-        # Cache borné : les 5 vignettes visibles suffisent en usage normal.
-        if len(self._production_thumbnail_cache)>160:
-            for old_key in list(self._production_thumbnail_cache.keys())[:80]:
-                self._production_thumbnail_cache.pop(old_key,None)
-        return canvas
-
-    def _production_draw_context_overlay(
-        self, units: list[dict], active_pos: int, viewport_w: float,
-        *, work_left: float = 12.0, work_right: float | None = None, target=None,
-    ) -> None:
-        """Production : vraies miniatures + état visible sans code supplémentaire."""
-        self._gabarit_context_hitboxes = {}
-        self._gabarit_context_marker_hitboxes = {}
-        target=target or self.canvas
-        if work_right is None:
-            work_right=viewport_w-12.0
-        span=max(160.0,float(work_right)-float(work_left))
-        positions=[float(work_left)+span*ratio for ratio in (0.10,0.30,0.50,0.70,0.90)]
-        target.create_line(positions[0],58,positions[-1],58,fill="#46545C",width=1)
-        window_start=active_pos-2
-        for slot,x in enumerate(positions):
-            pos=window_start+slot
-            if not (0<=pos<len(units)):
-                continue
-            unit=units[pos]
-            idx=int(unit["primary"])
-            item=self.items[idx]
-            active=pos==active_pos
-            spread=bool(unit.get("double"))
-            status=self._production_unit_status(unit)
-            border=self._production_status_border.get(status,"#56636A")
-            tint=self._production_status_fill.get(status,"#102633")
-            th=48 if active else 38
-            tw=(66 if spread else 34) if active else (52 if spread else 27)
-            outer_pad=4 if active else 3
-            ox1=x-tw/2-outer_pad; oy1=31-th/2-outer_pad
-            ox2=x+tw/2+outer_pad; oy2=31+th/2+outer_pad
-            target.create_rectangle(ox1,oy1,ox2,oy2,fill=tint,outline=border,width=2 if active else 1)
-
-            if hasattr(target,"image") and Image is not None:
-                if spread:
-                    indices=list(unit.get("indices") or (idx,))
-                    left=self._production_thumbnail_source_image(self.items[int(indices[0])],max(10,tw//2),th) if indices else None
-                    right=self._production_thumbnail_source_image(self.items[int(indices[1])],max(10,tw//2),th) if len(indices)>1 else None
-                    thumb=Image.new("RGB",(tw,th),"#F5F4EF")
-                    if left is not None: thumb.paste(left.resize((tw//2,th),Image.Resampling.LANCZOS),(0,0))
-                    if right is not None: thumb.paste(right.resize((tw-tw//2,th),Image.Resampling.LANCZOS),(tw//2,0))
-                    ImageDraw.Draw(thumb).line((tw//2,0,tw//2,th),fill="#8C918E",width=1)
-                else:
-                    thumb=self._production_thumbnail_source_image(item,tw,th)
-                if thumb is not None:
-                    try:
-                        target.image.paste(thumb,(int(round(x-tw/2)),int(round(31-th/2))))
-                    except Exception:
-                        pass
-            else:
-                target.create_rectangle(x-tw/2,31-th/2,x+tw/2,31+th/2,fill="#F3F2ED",outline="#C4C8C4",width=1)
-
-            label=str(unit.get("label") or self._page_type_label(item,idx) or "Page")
-            if len(label)>18: label=label[:16]+"…"
-            number=str(unit.get("number") or "")
-            target.create_text(x,61,text=number,anchor="center",fill="#EEF2F0" if active else "#9AA6A8",font=(theme.FONT_UI,7,"bold"))
-            target.create_text(x,74,text=label,anchor="center",fill="#DDE4E2" if active else "#8F9B9E",font=(theme.FONT_UI,6,"bold" if active else "normal"))
-            self._gabarit_context_hitboxes[idx]=(ox1-5,oy1-5,ox2+5,79)
-
-            marker_key=f"{idx}:production_state"
-            state_label=self._production_status_label(status)
-            self._gabarit_context_marker_hitboxes[marker_key]=((ox1-5,oy1-5,ox2+5,oy2+5),state_label)
-            if str(getattr(self,"_gabarit_hover_context_marker","") or "")==marker_key:
-                self._gabarit_draw_context_marker_tooltip(target,x,state_label)
-
     def _gabarit_draw_context_overlay(
         self, units: list[dict], active_pos: int, viewport_w: float,
         *, work_left: float = 12.0, work_right: float | None = None, target=None,
     ) -> None:
         """Ligne de contexte centrée sur la surface de travail, hors inspecteur."""
-        if str(getattr(self, "_work_mode", "") or "") == "production":
-            return self._production_draw_context_overlay(
-                units, active_pos, viewport_w,
-                work_left=work_left, work_right=work_right, target=target,
-            )
         self._gabarit_context_hitboxes = {}
         self._gabarit_context_marker_hitboxes = {}
         target = target or self.canvas
@@ -6881,7 +6287,7 @@ class BookCanvas(tk.Frame):
                 max(1.0, float(self.canvas.winfo_height())),
                 page_w, page_h,
             )
-        if str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "") == "gabarits":
             self.render()
 
     def gabarit_step_zoom(self, delta: int, *, anchor: tuple[float, float] | None = None) -> None:
@@ -8113,7 +7519,7 @@ class BookCanvas(tk.Frame):
 
     def _gabarit_delete_key(self, _event=None):
         """Touche Suppr : supprime la zone sélectionnée uniquement dans Gabarits."""
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
+        if str(getattr(self, "_work_mode", "")) != "gabarits":
             return None
         if not self._gabarit_selected_ids():
             return "break"
@@ -8124,20 +7530,20 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _gabarit_undo_key(self, _event=None):
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
+        if str(getattr(self, "_work_mode", "")) != "gabarits":
             return None
         self.structure_undo()
         return "break"
 
     def _gabarit_redo_key(self, _event=None):
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
+        if str(getattr(self, "_work_mode", "")) != "gabarits":
             return None
         self.structure_redo()
         return "break"
 
     def _gabarit_nudge_key(self, _event, dx_sign: int, dy_sign: int, step_mm: float):
         """Déplace la sélection de 0,1 / 1 / 10 mm sans casser les groupes."""
-        if str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
+        if str(getattr(self, "_work_mode", "")) != "gabarits":
             return None
         units = self._gabarit_selected_units()
         if not units:
@@ -8878,44 +8284,13 @@ class BookCanvas(tk.Frame):
                 pass
 
     def _gabarit_refresh_raster_only(self) -> None:
-        if str(getattr(self, "_work_mode", "") or "") not in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "") != "gabarits":
             return
         self._render_gabarit_workspace(
             max(300.0, float(self.canvas.winfo_width())),
             max(180.0, float(self.canvas.winfo_height())),
             update_inspector=False,
         )
-
-    def _production_draw_page_preview(self, target, x: float, y: float, w: float, h: float, item: dict) -> bool:
-        """Affiche le rendu Production réel dans la feuille, sans toucher au source."""
-        if str(getattr(self, "_work_mode", "") or "") != "production":
-            return False
-        if Image is None or not hasattr(target,"image"):
-            return False
-        path, stage=self._resolve_preview_path(item)
-        # En Production on accepte le rendu Production en priorité, puis le rendu
-        # de gabarit comme repli visuel. Aucun fichier source n'est réencodé.
-        if path is None:
-            return False
-        try:
-            with Image.open(path) as src:
-                im=src.convert("RGB")
-                tw=max(2,int(round(w))); th=max(2,int(round(h)))
-                im.thumbnail((tw,th),Image.Resampling.LANCZOS)
-                px=int(round(x+(w-im.width)/2.0))
-                py=int(round(y+(h-im.height)/2.0))
-                target.image.paste(im,(px,py))
-            return True
-        except Exception:
-            return False
-
-    def _production_draw_main_state_border(self, target, x1: float, y1: float, x2: float, y2: float, unit: dict) -> None:
-        if str(getattr(self, "_work_mode", "") or "") != "production":
-            return
-        status=self._production_unit_status(unit)
-        color=self._production_status_border.get(status,"#56636A")
-        # Un seul cadre discret autour de la vraie page : aucun pictogramme ajouté.
-        target.create_rectangle(x1-3,y1-3,x2+3,y2+3,fill="",outline=color,width=3)
 
     def _render_gabarit_workspace(self, viewport_w: float, viewport_h: float, *, update_inspector: bool = True) -> None:
         self._gabarit_hitboxes = {}
@@ -9007,19 +8382,6 @@ class BookCanvas(tk.Frame):
         else:
             self._gabarit_draw_sheet_guides(target, x1, y1, single_w, page_h, item=active_item)
 
-        # Production affiche, lorsqu'il existe, le vrai rendu de chaque page
-        # à l'intérieur du même cadre que Gabarits. La géométrie et les zones
-        # restent par-dessus afin de permettre les corrections de composition.
-        if str(getattr(self, "_work_mode", "") or "") == "production":
-            if spread:
-                unit_indices = list(active_unit.get("indices", (active_index,)))
-                left_item = self.items[unit_indices[0]] if unit_indices else active_item
-                right_item = self.items[unit_indices[1]] if len(unit_indices) > 1 else active_item
-                self._production_draw_page_preview(target, x1, y1, single_w, page_h, left_item)
-                self._production_draw_page_preview(target, x1 + single_w, y1, single_w, page_h, right_item)
-            else:
-                self._production_draw_page_preview(target, x1, y1, single_w, page_h, active_item)
-
         # Fond guide : construction uniquement. Il est composé dans B derrière
         # les zones puis les repères de page/marges/fond perdu sont redessinés
         # au-dessus pour rester parfaitement lisibles.
@@ -9033,13 +8395,11 @@ class BookCanvas(tk.Frame):
         else:
             self._gabarit_redraw_sheet_reference_lines(target,x1,y1,single_w,page_h,item=active_item)
 
-        self._production_draw_main_state_border(target, x1, y1, x2, y2, active_unit)
         self._gabarit_draw_zones(x1, y1, total_w, page_h, target=target)
         self._gabarit_draw_snap_visual(target)
         if scale >= 0.35 and not self._gabarit_active_zones():
             target.create_text(cx, cy, text=str(active_type), fill="#68706E", font=(theme.FONT_TITLE, max(10, int(13 * min(zoom_factor, 2.0))), "bold"), anchor="center")
-            hint = "En attente du gabarit" if str(getattr(self, "_work_mode", "") or "") == "production" else "Page prête pour le gabarit"
-            target.create_text(cx, cy + 22, text=hint, fill="#8B9290", font=(theme.FONT_UI, max(7, int(8 * min(zoom_factor, 1.6)))), anchor="center")
+            target.create_text(cx, cy + 22, text="Page prête pour le gabarit", fill="#8B9290", font=(theme.FONT_UI, max(7, int(8 * min(zoom_factor, 1.6)))), anchor="center")
 
         # Navigation précédente / suivante, dessinée dans le même bitmap.
         arrow_gap = 14.0
@@ -9837,7 +9197,7 @@ class BookCanvas(tk.Frame):
         if not str(getattr(self, "_gabarit_pressed_control", "") or ""):
             return
         self._gabarit_pressed_control = ""
-        if str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "") == "gabarits":
             self.render()
 
     def _gabarit_release(self, _event=None):
@@ -13880,143 +13240,6 @@ class BookCanvas(tk.Frame):
             return False
         return self._structure_insert_page("page_blanche", "Page blanche", group_id, local_pos) is not None
 
-    # ------------------------------------------------------------------
-    # Actions directes du Visionneur
-    # ------------------------------------------------------------------
-
-    def viewer_insert_blank_relative(self, physical_index: int, position: str) -> dict:
-        """Insère une page blanche autour du bloc physique affiché.
-
-        Le Visionneur ne possède aucune logique structurelle parallèle : on
-        passe par les mêmes blocs atomiques que Structure, puis on lance une
-        réconciliation complète AV/AP, Recto/Verso et 2P avant UNE seule
-        sauvegarde historique.
-        """
-        if self.project is None or not self.items:
-            return {"ok": False, "message": "Aucun livre actif."}
-        try:
-            index = max(0, min(len(self.items) - 1, int(physical_index)))
-        except Exception:
-            return {"ok": False, "message": "Page invalide."}
-
-        position = "before" if str(position or "").lower() == "before" else "after"
-        item = self.items[index]
-        source_id = str(item.get("id") or "")
-        group_id = self._item_group_id(item)
-        group_indexes = self._group_items(group_id)
-        if index not in group_indexes:
-            return {"ok": False, "message": "Impossible de localiser cette page dans la Structure."}
-
-        # Une insertion depuis le Visionneur se fait toujours autour du bloc
-        # structurel complet : jamais entre une page et son AV/AP, ni au milieu
-        # d'une vraie double page 2P.
-        block = next((list(b) for b in self._page_blocks_in_group(group_id) if index in b), [index])
-        local_by_index = {book_index: pos for pos, book_index in enumerate(group_indexes)}
-        local_members = [local_by_index[i] for i in block if i in local_by_index]
-        if not local_members:
-            return {"ok": False, "message": "Insertion impossible à cet endroit."}
-        local_pos = min(local_members) if position == "before" else max(local_members) + 1
-        valid = self._structure_valid_local_positions(group_id)
-        if local_pos not in valid:
-            return {"ok": False, "message": "Insertion impossible à cet endroit structurel."}
-
-        new_item = {
-            "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
-            "count": 1,
-            "done": False,
-            "plan_group": group_id,
-        }
-        self._structure_apply_type_metadata(new_item, "page_blanche", "Page blanche")
-        self.items.append(new_item)
-        self._move_page_to_group_position(new_item, group_id, local_pos)
-        new_id = str(new_item.get("id") or "")
-
-        # Recalcul central de toutes les pages automatiques avant sauvegarde.
-        self._sync_structural_automatic_pages()
-        self._save_order()
-
-        source_index = next(
-            (i for i, candidate in enumerate(self.items) if str(candidate.get("id") or "") == source_id),
-            None,
-        )
-        if source_index is None:
-            source_index = max(0, min(index, len(self.items) - 1))
-        self._set_single_page_selection(source_index)
-        self.render()
-        self.status_var.set("Page blanche ajoutée depuis le Visionneur.")
-        return {
-            "ok": True,
-            "page_index": int(source_index),
-            "inserted_page_id": new_id,
-            "message": "Page blanche ajoutée. Structure et Gabarits recalculés.",
-        }
-
-    def viewer_delete_physical_page(self, physical_index: int) -> dict:
-        """Supprime la page physique demandée puis laisse Structure réconcilier le livre.
-
-        Une 2P reste atomique conformément aux règles Structure. Une page auto
-        peut être supprimée physiquement ; si une règle active l'exige encore,
-        le moteur central la recrée aussitôt, ce qui est signalé au Visionneur.
-        """
-        if self.project is None or not self.items:
-            return {"ok": False, "message": "Aucun livre actif."}
-        try:
-            index = max(0, min(len(self.items) - 1, int(physical_index)))
-        except Exception:
-            return {"ok": False, "message": "Page invalide."}
-
-        original_count = len(self.items)
-        item = self.items[index]
-        was_auto = bool(self._is_automatic_page(item))
-
-        if was_auto:
-            # Suppression exacte de la page auto affichée. Le recalcul qui suit
-            # décide seul si elle peut réellement disparaître.
-            del self.items[index]
-        else:
-            source_index = self._source_index_for_index(index)
-            if source_index is None or not 0 <= source_index < len(self.items):
-                return {"ok": False, "message": "Page introuvable dans la Structure."}
-            unit_indices = self._structure_selection_unit_indices(source_index) or [source_index]
-            if any(self._is_locked_page(self.items[i]) for i in unit_indices if 0 <= i < len(self.items)):
-                return {
-                    "ok": False,
-                    "message": "Cette couverture fait partie de la structure minimale du livre et reste protégée.",
-                }
-            block: set[int] = set()
-            for source in unit_indices:
-                block.update(self._drag_block_indices(source))
-            self.items = [candidate for i, candidate in enumerate(self.items) if i not in block]
-
-        self._selected_page_ids.clear()
-        self._selected_index = None
-        self._structure_selection_kind = "page"
-
-        self._sync_structural_automatic_pages()
-        self._save_order()
-
-        if not self.items:
-            self.render()
-            return {"ok": True, "page_index": 0, "message": "Page supprimée. Livre recalculé."}
-
-        # Après suppression, le Visionneur recule d'une page physique.
-        target_index = max(0, min(index - 1, len(self.items) - 1))
-        self._set_single_page_selection(target_index)
-        self.render()
-
-        recreated = bool(was_auto and len(self.items) >= original_count)
-        if recreated:
-            message = "La page automatique a été supprimée puis recréée : une règle de Structure l’exige encore."
-        else:
-            message = "Page supprimée. Structure et Gabarits recalculés."
-        self.status_var.set(message)
-        return {
-            "ok": True,
-            "page_index": int(target_index),
-            "automatic_recreated": recreated,
-            "message": message,
-        }
-
     def set_project(self, project):
         if getattr(self, "_overlay_active", False):
             self.close_page_overlay()
@@ -16816,10 +16039,9 @@ class BookCanvas(tk.Frame):
             if int(getattr(self, "_book_zoom", structure_cap)) > structure_cap:
                 self._book_zoom = structure_cap
 
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
-            # Gabarits et Production partagent désormais le même viewport raster
-            # persistant. Le Canvas n'est jamais vidé pendant le zoom, le pan,
-            # le survol ou le drag : seul le contenu du bitmap est remplacé.
+        if str(getattr(self, "_work_mode", "structure") or "structure") == "gabarits":
+            # Gabarits possède désormais son viewport raster persistant. Le Canvas
+            # n'est jamais vidé pendant le zoom, le pan, le survol ou le drag.
             self._page_hitboxes = {}
             self._page_hitbox_ids = {}
             self._page_name_hitboxes = {}
@@ -17644,7 +16866,7 @@ class BookCanvas(tk.Frame):
         self._drag_autoscroll_job = self.after(self.AUTO_SCROLL_INTERVAL_MS, self._drag_autoscroll_tick)
 
     def _on_hover_motion(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             if self._gabarit_drag_origin is not None:
                 return
             x, y = float(event.x), float(event.y)
@@ -17708,7 +16930,7 @@ class BookCanvas(tk.Frame):
         self.render()
 
     def _on_hover_leave(self, _event=None):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             if self._gabarit_drag_origin is not None:
                 return
             needs_render=False
@@ -17744,7 +16966,7 @@ class BookCanvas(tk.Frame):
         self.render()
 
     def _on_press(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             return self._gabarit_press(event)
         if getattr(self, "_title_editor", None) is not None:
             self._close_title_editor(commit=True)
@@ -17921,7 +17143,7 @@ class BookCanvas(tk.Frame):
         return [str(group.get("id", "")) for group in self.groups if str(group.get("id", "")) not in {self.START_GROUP_ID, self.END_GROUP_ID}]
 
     def _on_drag(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             return self._gabarit_drag(event)
         if self._structure_scroll_drag_group:
             return self._structure_scroll_motion(event)
@@ -18151,7 +17373,7 @@ class BookCanvas(tk.Frame):
         return selected_ids
 
     def _on_release(self, _event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             return self._gabarit_release(_event)
         if self._structure_scroll_drag_group:
             self._structure_scroll_drag_group = ""
@@ -18254,7 +17476,7 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _on_double_click(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             # Double-clic = retour immédiat au plus grand affichage contenu dans B.
             self.gabarit_reset_zoom()
             return "break"
@@ -18274,7 +17496,7 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _on_ctrl_mousewheel(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             x, y = float(event.x), float(event.y)
             work_left, work_top, work_right, work_bottom = self._gabarit_work_rect()
             if work_left <= x <= work_right and work_top <= y <= work_bottom:
@@ -18286,7 +17508,7 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _on_shift_mousewheel(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             if int(getattr(self, "_gabarit_zoom", 100)) > 100:
                 self._gabarit_pan_x += 42.0 if event.delta > 0 else -42.0
                 page_w, page_h, _ = self._gabarit_dimensions_for_zoom()
@@ -18307,7 +17529,7 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def _on_mousewheel(self, event):
-        if str(getattr(self, "_work_mode", "structure") or "structure") in {"gabarits", "production"}:
+        if getattr(self, "_work_mode", "structure") == "gabarits":
             x, y = float(event.x), float(event.y)
             work_left, work_top, work_right, work_bottom = self._gabarit_work_rect()
             if work_left <= x <= work_right and work_top <= y <= work_bottom:
