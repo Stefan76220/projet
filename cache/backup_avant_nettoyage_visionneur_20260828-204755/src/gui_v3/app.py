@@ -18,6 +18,7 @@ from src.gui_v3.book_canvas import BookCanvas
 from src.gui_v3.focus_toolbar import FocusToolbar
 from src.gui_v3.hover import GlobalHoverManager
 from src.gui_v3.viewer3d_panel import Viewer3DOverlay
+from src.gui_v3.viewer_page_snapshot import build_page_snapshot
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -3018,6 +3019,10 @@ class TomeLineaV3(tk.Tk):
             badges = list(dict.fromkeys(badges))
 
 
+            try:
+                snapshot_url = build_page_snapshot(canvas, item, page_number)
+            except Exception:
+                snapshot_url = ""
 
             infos.append({
                 "number": page_number,
@@ -3039,6 +3044,7 @@ class TomeLineaV3(tk.Tk):
                 "productionStatus": production_status_labels.get(production_status, production_status.replace("_", " ").capitalize()),
                 "productionStatusKey": production_status,
                 "productionValidationException": production_validation_exception,
+                "snapshotUrl": snapshot_url,
                 "automatic": is_auto,
                 "automaticOrigin": automatic_origin,
                 "automaticReason": automatic_reason,

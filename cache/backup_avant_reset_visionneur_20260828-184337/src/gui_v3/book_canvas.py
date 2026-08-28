@@ -19,6 +19,8 @@ TOMELINEA_GABARITS_REPERES_ICONES_V79 = True
 # TOMELINEA_GABARITS_PALETTE_ORGANISER_GUIDE_V65
 
 import tkinter as tk
+import base64
+from io import BytesIO
 import tkinter.font as tkfont
 from tkinter import filedialog
 import math
@@ -911,6 +913,11 @@ class BookCanvas(tk.Frame):
         # Le cache conserve uniquement les sources décodées ; la géométrie reste
         # celle de la zone et n'altère jamais le fichier original.
         self._production_zone_content_cache: dict[str, object] = {}
+        # VISIONNEUR_PRODUCTION_V28 — textures des pages réelles envoyées au
+        # Visionneur. Le cache contient des data-URL PNG et est indexé sur la
+        # géométrie + le contenu afin de se renouveler automatiquement après
+        # toute correction de Production.
+        self._viewer_page_texture_cache: dict[tuple, str] = {}
         self._production_status_border = {
             "vierge": "#56636A",
             "en_cours": "#C89A4A",
@@ -9281,16 +9288,14 @@ class BookCanvas(tk.Frame):
             y = float(visual["y"]); x1 = float(visual.get("x1", 0.0)); x2 = float(visual.get("x2", x1))
             target.create_line(x1, y, x2, y, fill=color, width=2)
 
+    def _production_find_element_for_zone(self, item: dict | None, zone: dict | None) -> dict | None:
+        """Recherche le contenu réellement attaché à une zone, indépendamment du bureau.
 
-    def _production_element_for_zone(self, item: dict | None, zone: dict | None) -> dict | None:
-        """Retourne le contenu Production r?ellement attach? ? une zone.
-
-        Le lien stable est ``slot_key``. Le contenu ne porte donc pas sa propre
-        g?om?trie : d?placer/redimensionner la zone d?place/redimensionne son
-        contenu avec elle.
+        Production l'utilise pour dessiner dans B ; le Visionneur l'utilise aussi
+        lorsqu'il fabrique la texture finale d'une page. Le contenu appartient aux
+        données du livre et ne doit donc pas disparaître simplement parce que le
+        bureau actif n'est plus Production.
         """
-        if str(getattr(self, "_work_mode", "") or "") != "production":
-            return None
         if not isinstance(item, dict) or not isinstance(zone, dict):
             return None
         slot = str(zone.get("slot_key") or zone.get("id") or "").strip()
@@ -9303,15 +9308,16 @@ class BookCanvas(tk.Frame):
             for element in values:
                 if not isinstance(element, dict):
                     continue
-                target_slot = str(
-                    element.get("slot_key")
-                    or element.get("zone_slot")
-                    or element.get("zone_id")
-                    or ""
-                ).strip()
+                target_slot = str(element.get("slot_key") or element.get("zone_slot") or element.get("zone_id") or "").strip()
                 if target_slot == slot:
                     return element
         return None
+
+    def _production_element_for_zone(self, item: dict | None, zone: dict | None) -> dict | None:
+        """Retourne le contenu Production attaché à une zone dans l'atelier Production."""
+        if str(getattr(self, "_work_mode", "") or "") != "production":
+            return None
+        return self._production_find_element_for_zone(item, zone)
 
     def _production_resolve_content_path(self, value: str) -> Path | None:
         value = str(value or "").strip()
@@ -9357,6 +9363,238 @@ class BookCanvas(tk.Frame):
         except Exception:
             return None
 
+    def _viewer_page_texture_data_url(self, item: dict | None, *, page_index: int | None = None, width: int = 1100) -> str:
+        """Construit la texture réelle d'une page pour le Visionneur 3D.
+
+        Le Visionneur ne doit jamais dépendre du bitmap de démonstration pour une
+        page qui possède déjà du contenu Production. Deux sources sont acceptées :
+        un rendu Production complet, ou les contenus attachés aux zones du
+        gabarit. Le rendu est calculé hors écran avec Pillow et transmis localement
+        sous forme de data-URL PNG ; aucun navigateur ni service externe n'intervient.
+        """
+        if Image is None or ImageDraw is None or not isinstance(item, dict):
+            return ""
+
+        width = max(320, min(1200, int(width or 1100)))
+        try:
+            page_w_mm, page_h_mm = self._gabarit_page_mm()
+        except Exception:
+            page_w_mm, page_h_mm = 210.0, 297.0
+        page_w_mm = max(1.0, float(page_w_mm or 210.0))
+        page_h_mm = max(1.0, float(page_h_mm or 297.0))
+        height = max(320, min(1700, int(round(width * page_h_mm / page_w_mm))))
+
+        # Le Visionneur doit reproduire la page que Production sait réellement
+        # composer, et non maintenir une seconde définition du "contenu final".
+        # Production dessine d'abord le meilleur aperçu disponible (production,
+        # puis gabarit/type en repli), puis superpose les contenus attachés aux
+        # zones. Le Visionneur suit désormais exactement ce même ordre.
+        preview_path = None
+        preview_stage = ""
+        preview_stamp = None
+        try:
+            path, stage = self._resolve_preview_path(item)
+            if path is not None:
+                preview_path = path
+                preview_stage = str(stage or "")
+                st = path.stat()
+                preview_stamp = (preview_stage, str(path), int(st.st_mtime_ns), int(st.st_size))
+        except Exception:
+            preview_path = None
+            preview_stage = ""
+            preview_stamp = None
+
+        zones = item.get("gabarit_zones")
+        zones = zones if isinstance(zones, list) else []
+        element_sigs = []
+        has_zone_content = False
+        for zone in zones:
+            if not isinstance(zone, dict):
+                continue
+            element = self._production_find_element_for_zone(item, zone)
+            if not isinstance(element, dict):
+                continue
+            has_zone_content = True
+            source = str(element.get("source") or element.get("path") or element.get("image") or "").strip()
+            source_stamp = None
+            if source:
+                try:
+                    source_path = self._production_resolve_content_path(source)
+                    if source_path is not None:
+                        st = source_path.stat()
+                        source_stamp = (str(source_path), int(st.st_mtime_ns), int(st.st_size))
+                except Exception:
+                    source_stamp = source
+            element_sigs.append((
+                str(zone.get("slot_key") or zone.get("id") or ""),
+                round(float(zone.get("x", 0.0) or 0.0), 6),
+                round(float(zone.get("y", 0.0) or 0.0), 6),
+                round(float(zone.get("w", 0.0) or 0.0), 6),
+                round(float(zone.get("h", 0.0) or 0.0), 6),
+                round(float(zone.get("rotation", 0.0) or 0.0), 3),
+                str(zone.get("spread_position") or ""),
+                source_stamp,
+                str(element.get("text") or element.get("value") or ""),
+                str(element.get("fit") or "contain"),
+                str(element.get("font_family") or ""),
+                str(element.get("font_size_pt") or ""),
+                str(element.get("color") or ""),
+                repr(zone),
+                repr(element),
+            ))
+
+        if preview_path is None and not has_zone_content:
+            return ""
+
+        cache_key = (
+            str(item.get("id") or ""), int(page_index if page_index is not None else -1),
+            width, height, round(page_w_mm, 4), round(page_h_mm, 4),
+            preview_stamp, tuple(element_sigs),
+        )
+        cache = getattr(self, "_viewer_page_texture_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._viewer_page_texture_cache = cache
+        cached = cache.get(cache_key)
+        if isinstance(cached, str) and cached:
+            return cached
+
+        paper = Image.new("RGB", (width, height), "#F6F3EA")
+
+        # 1) Même fond/aperçu que Production. Il s'agit d'un socle visuel :
+        # les contenus de zones sont ensuite dessinés PAR-DESSUS, jamais en
+        # alternative. C'était la divergence qui pouvait rendre la page vide ou
+        # incomplète dans le Visionneur alors qu'elle était correcte dans B.
+        if preview_path is not None:
+            try:
+                with Image.open(preview_path) as src:
+                    rendered = src.convert("RGB")
+                    rendered.thumbnail((width, height), Image.Resampling.LANCZOS)
+                    ox = (width - rendered.width) // 2
+                    oy = (height - rendered.height) // 2
+                    paper.paste(rendered, (ox, oy))
+            except Exception:
+                # Un aperçu de repli illisible ne doit pas empêcher les contenus
+                # de zones réels d'être composés.
+                preview_path = None
+
+        # 2) Même seconde couche que Production : contenus réellement attachés
+        # aux zones du gabarit, quel que soit le type d'aperçu utilisé dessous.
+        draw = ImageDraw.Draw(paper)
+        try:
+            pair_role = str(self._double_page_pair_role(item) or "").strip().lower()
+        except Exception:
+            pair_role = str(item.get("double_page_role") or "").strip().lower()
+
+        for zone in zones:
+            if not isinstance(zone, dict):
+                continue
+            element = self._production_find_element_for_zone(item, zone)
+            if not isinstance(element, dict):
+                continue
+
+            # Une zone explicitement affectée à l'autre moitié d'une vraie 2P
+            # ne doit pas être recopiée sur cette page physique.
+            position = str(zone.get("spread_position") or "").strip().lower()
+            if pair_role in {"left", "right"} and position in {"left", "right"} and position != pair_role:
+                continue
+
+            try:
+                zx = float(zone.get("x", 0.0) or 0.0)
+                zy = float(zone.get("y", 0.0) or 0.0)
+                zw = float(zone.get("w", 0.0) or 0.0)
+                zh = float(zone.get("h", 0.0) or 0.0)
+            except Exception:
+                continue
+            x = int(round(zx * width))
+            y = int(round(zy * height))
+            w = max(1, int(round(zw * width)))
+            h = max(1, int(round(zh * height)))
+            if x >= width or y >= height or x + w <= 0 or y + h <= 0:
+                continue
+
+            source = str(element.get("source") or element.get("path") or element.get("image") or "").strip()
+            image = self._production_load_zone_image(source) if source else None
+            if image is not None:
+                try:
+                    fit = str(element.get("fit") or "contain").strip().lower()
+                    if fit == "cover":
+                        scale = max(w / max(1, image.width), h / max(1, image.height))
+                    else:
+                        scale = min(w / max(1, image.width), h / max(1, image.height))
+                    rw = max(1, int(round(image.width * scale)))
+                    rh = max(1, int(round(image.height * scale)))
+                    rendered = image.resize((rw, rh), Image.Resampling.LANCZOS)
+                    if fit == "cover" and (rw > w or rh > h):
+                        left = max(0, (rw - w) // 2)
+                        top = max(0, (rh - h) // 2)
+                        rendered = rendered.crop((left, top, left + w, top + h))
+                        rw, rh = rendered.size
+                    angle = float(zone.get("rotation", 0.0) or 0.0)
+                    if abs(angle) > 0.01:
+                        rendered = rendered.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC)
+                        rw, rh = rendered.size
+                    px = int(round(x + (w - rw) / 2.0))
+                    py = int(round(y + (h - rh) / 2.0))
+                    alpha = rendered.getchannel("A") if rendered.mode == "RGBA" else None
+                    paper.paste(rendered.convert("RGB"), (px, py), alpha)
+                except Exception:
+                    continue
+                continue
+
+            text = str(element.get("text") or element.get("value") or "").strip()
+            if not text:
+                continue
+            try:
+                font_pt = max(5.0, float(element.get("font_size_pt", 10) or 10))
+            except Exception:
+                font_pt = 10.0
+            dpi = width / max(0.1, page_w_mm / 25.4)
+            font_px = max(7, int(round(font_pt * dpi / 72.0)))
+            family = str(element.get("font_family") or theme.FONT_UI)
+            font = _PILCanvasTarget._font((family, max(6, int(round(font_px / 1.18))), "normal"))
+            color = str(element.get("color") or "#1D2724")
+            pad = max(2, int(round(min(w, h) * 0.035)))
+            max_text_w = max(1, w - 2 * pad)
+            words = text.replace("\r", "").split()
+            lines = []
+            line = ""
+            for word in words:
+                candidate = word if not line else f"{line} {word}"
+                try:
+                    candidate_w = draw.textlength(candidate, font=font)
+                except Exception:
+                    candidate_w = len(candidate) * max(4, font_px * 0.55)
+                if line and candidate_w > max_text_w:
+                    lines.append(line)
+                    line = word
+                else:
+                    line = candidate
+            if line:
+                lines.append(line)
+            line_h = max(font_px + 2, int(round(font_px * 1.22)))
+            ty = y + pad
+            for line in lines:
+                if ty + line_h > y + h:
+                    break
+                try:
+                    draw.text((x + pad, ty), line, fill=color, font=font)
+                except Exception:
+                    break
+                ty += line_h
+
+        try:
+            output = BytesIO()
+            paper.save(output, format="PNG", optimize=False)
+            data_url = "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+        except Exception:
+            return ""
+
+        cache[cache_key] = data_url
+        if len(cache) > 96:
+            for old_key in list(cache.keys())[:48]:
+                cache.pop(old_key, None)
+        return data_url
 
     def _production_draw_zone_content(
         self, target, zone: dict, item: dict | None,

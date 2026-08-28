@@ -3017,7 +3017,10 @@ class TomeLineaV3(tk.Tk):
                 badges.append("AUTO")
             badges = list(dict.fromkeys(badges))
 
-
+            try:
+                viewer_texture = str(canvas._viewer_page_texture_data_url(item, page_index=index) or "")
+            except Exception:
+                viewer_texture = ""
 
             infos.append({
                 "number": page_number,
@@ -3039,6 +3042,7 @@ class TomeLineaV3(tk.Tk):
                 "productionStatus": production_status_labels.get(production_status, production_status.replace("_", " ").capitalize()),
                 "productionStatusKey": production_status,
                 "productionValidationException": production_validation_exception,
+                "textureData": viewer_texture,
                 "automatic": is_auto,
                 "automaticOrigin": automatic_origin,
                 "automaticReason": automatic_reason,

@@ -148,9 +148,9 @@ const plate = new THREE.Mesh(new THREE.BoxGeometry(9.2,6.45,.11,4,4,1),matPlate)
 
 const book = new THREE.Group();
 // Vue lecteur : le livre n'est ni vertical comme un écran, ni vu du dessus.
-book.rotation.x=-0.362;   // vue face caméra
-book.rotation.y=0.011;    // léger biais naturel conservé
-book.rotation.z=0;
+book.rotation.x=-0.835;   // pages ≈ 28° au-dessus de l'horizontale
+book.rotation.y=0.020;    // très léger biais naturel
+book.rotation.z=-0.003;
 book.position.y=0.42;
 book.position.z=0.08;
 book.scale.setScalar(0.70);
@@ -273,9 +273,30 @@ function makeCoverDecorTexture(side='right', size=1024){
   return t;
 }
 
+function makePaperSurfaceTexture(size=512){
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  g.fillStyle='#cbbfa8'; g.fillRect(0,0,size,size);
+  for(let i=0;i<24000;i++){
+    const v=172+Math.floor(Math.random()*58);
+    const a=.16+Math.random()*.18;
+    g.fillStyle=`rgba(${v},${v},${v},${a})`;
+    g.fillRect(Math.random()*size,Math.random()*size,1,1);
+  }
+  g.globalAlpha=.25;
+  for(let i=0;i<420;i++){
+    const y=Math.random()*size, x=Math.random()*size, l=6+Math.random()*24;
+    g.strokeStyle=Math.random()>.5?'#ded9cc':'#8e897f';
+    g.lineWidth=.35;
+    g.beginPath(); g.moveTo(x,y); g.lineTo(x+l,y+(Math.random()-.5)*.8); g.stroke();
+  }
+  g.globalAlpha=1;
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(2.4,2.4);
+  return t;
+}
 
 const coverDecorLeft = makeCoverDecorTexture('left');
 const coverDecorRight = makeCoverDecorTexture('right');
+const paperSurfaceMap = makePaperSurfaceTexture();
 const coverColorMap = makeNoiseTexture(768,{base:'#7a2f33',accent:'#173542',strength:.24});
 const coverRoughnessMap = makeRoughnessTexture(768);
 const spineColorMap = makeNoiseTexture(768,{base:'#5e272b',accent:'#173542',strength:.20});
@@ -283,12 +304,29 @@ const pageEdgeMap = makeEdgeTexture();
 const contactShadowMap = makeContactShadowTexture();
 
 function paperCanvas(pageNo, variant=0){
-  const c=document.createElement('canvas');
-  c.width=1024;
-  c.height=1470;
-  const g=c.getContext('2d');
-  g.fillStyle='#ffffff';
-  g.fillRect(0,0,c.width,c.height);
+  const c=document.createElement('canvas'); c.width=1024; c.height=1470; const g=c.getContext('2d');
+  const grd=g.createLinearGradient(0,0,c.width,0); grd.addColorStop(0,'#d6c4a2'); grd.addColorStop(.08,'#ebdcc0'); grd.addColorStop(.58,'#f3e7cf'); grd.addColorStop(1,'#dcc8a9'); g.fillStyle=grd; g.fillRect(0,0,c.width,c.height);
+  // subtle fibres
+  const seed=(pageNo*7919+variant*1237)%9973; let s=seed; const rnd=()=>{s=(s*9301+49297)%233280; return s/233280};
+  g.globalAlpha=.07; for(let i=0;i<520;i++){const x=rnd()*c.width,y=rnd()*c.height,l=3+rnd()*18;g.strokeStyle=rnd()>.6?'#9a8a71':'#ccb793';g.beginPath();g.moveTo(x,y);g.lineTo(x+l,y+(rnd()-.5)*1.4);g.stroke()} g.globalAlpha=1;
+  // page content, intentionally editorial and neutral
+  const accent = ['#2c7f8a','#b18342','#5f9072','#7f6494'][pageNo%4];
+  g.fillStyle='#43382d';g.font='600 34px Georgia'; g.fillText(pageNo===1?'TOMELINEA — LIVRE EN COURS':`Chapitre ${Math.floor((pageNo-1)/8)+1}`,80,112);
+  g.fillStyle=accent; g.fillRect(80,145,250,5);
+  if(pageNo%5===0){
+    const rg=g.createLinearGradient(80,240,860,870); rg.addColorStop(0,accent); rg.addColorStop(1,'#d1d8d5'); g.fillStyle=rg; g.fillRect(80,240,864,560);
+    g.fillStyle='rgba(255,255,255,.9)'; g.font='700 52px Georgia'; g.fillText(pageNo%10===0?'OUVERTURE':'ILLUSTRATION',122,730);
+  }else{
+    g.fillStyle='#625447';g.font='28px Georgia'; g.fillText(pageNo===1?'La ligne éditoriale jusqu’au livre':'Une page du livre rendue en temps réel',80,225);
+    let y=310; g.fillStyle='#766759'; g.font='22px Georgia';
+    const lines=['Le contenu réel de TomeLinea remplacera cette matière de démonstration.','Le visionneur conserve la géométrie du livre, la pagination et les doubles pages.','Chaque face devient une texture de la feuille physique correspondante.','La courbure, les ombres et la reliure évoluent pendant le feuilletage.'];
+    for(let block=0;block<4;block++){
+      for(let k=0;k<lines.length;k++){g.fillText(lines[(k+block)%lines.length],80,y);y+=44}
+      y+=38;
+      if(block===1){g.fillStyle=accent;g.fillRect(80,y,864,2);y+=55;g.fillStyle='#606467'}
+    }
+  }
+  g.fillStyle='#8a7b6a';g.font='18px Segoe UI';g.textAlign='center';g.fillText(String(pageNo),512,1410);g.textAlign='left';
   return c;
 }
 const textureCache=new Map();
@@ -300,14 +338,7 @@ function pageTexture(n){
   return textureCache.get(n);
 }
 
-const paperBase={
-  color:0xffffff,
-  roughness:1,
-  metalness:0,
-  clearcoat:0,
-  envMapIntensity:0,
-  side:THREE.FrontSide
-};
+const paperBase={roughness:.78,roughnessMap:paperSurfaceMap,bumpMap:paperSurfaceMap,bumpScale:.010,metalness:0,clearcoat:.08,clearcoatRoughness:.90,envMapIntensity:.08,side:THREE.FrontSide};
 function pageMaterial(n, side=THREE.FrontSide){return new THREE.MeshPhysicalMaterial({...paperBase,map:pageTexture(n),side,shadowSide:THREE.DoubleSide});}
 
 function gutterWidthAtY(y){
@@ -613,7 +644,6 @@ function renderRulesPanel(panel,pageNo,defaultSide){
     <div class="ruleRow"><label>Double page</label><div>${esc(dpText)}</div></div>
     <div class="ruleRow"><label>Exception</label><div>${exceptionHtml}</div></div>
     <div class="ruleRow"><label>Gabarit</label><div>${esc(gabarit)}${gStatus?` · ${chip(gStatus,info.gabaritException?'red':'')}`:''}</div></div>
-    <div class="ruleRow"><label>Production</label><div class="chips">${productionHtml}</div></div>
     ${info.part?`<div class="ruleRow"><label>Partie</label><div>${esc(info.part)}</div></div>`:''}
     ${autoContext}`;
   actionsBox.innerHTML=`
@@ -708,8 +738,8 @@ function spreadForPage(page){
 function applyStatic(){
   const ln=currentLeftNo(),rn=currentRightNo();
   leftPage.material.dispose(); rightPage.material.dispose();
-  leftPage.material=ln?pageMaterial(ln):new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.FrontSide});
-  rightPage.material=rn?pageMaterial(rn):new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.FrontSide});
+  leftPage.material=ln?pageMaterial(ln):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
+  rightPage.material=rn?pageMaterial(rn):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
   leftPage.visible=!!ln; rightPage.visible=!!rn;
   setBlockSheetCounts(Math.max(0,Math.floor(spreadLeft/2)));
   const label=ln?`pages ${ln}${rn?`–${rn}`:''}`:`page ${rn??1}`; spreadStatus.textContent=label;
@@ -779,11 +809,11 @@ function updateTurningEdge(){
 
 function setTurnTextures(frontNo,backNo){
   [turnFront.material,turnBack.material].forEach(m=>m.dispose());
-  turnFront.material=frontNo?pageMaterial(frontNo,THREE.FrontSide):new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.FrontSide});
+  turnFront.material=frontNo?pageMaterial(frontNo,THREE.FrontSide):new THREE.MeshPhysicalMaterial({...paperBase,color:0xf0e1c3,side:THREE.FrontSide});
   // Back texture needs horizontal flip because we view the reverse face.
   let tex=backNo?pageTexture(backNo):null;
   if(tex){tex=tex.clone();tex.wrapS=THREE.RepeatWrapping;tex.repeat.x=-1;tex.offset.x=1;tex.needsUpdate=true;}
-  turnBack.material=new THREE.MeshPhysicalMaterial({...paperBase,map:tex,color:tex?0xffffff:0xffffff,side:THREE.BackSide});
+  turnBack.material=new THREE.MeshPhysicalMaterial({...paperBase,map:tex,color:tex?0xffffff:0xf3f0e9,side:THREE.BackSide});
 }
 
 let anim={active:false,dir:1,p:0,target:1,start:0,duration:780,raf:0,drag:false};
@@ -846,7 +876,7 @@ function deformTurn(p,dir){
 }
 function setStaticFace(mesh,pageNo){
   mesh.material.dispose();
-  mesh.material=pageNo?pageMaterial(pageNo):new THREE.MeshPhysicalMaterial({...paperBase,color:0xffffff,side:THREE.FrontSide});
+  mesh.material=pageNo?pageMaterial(pageNo):new THREE.MeshPhysicalMaterial({...paperBase,color:0xeadcc0,side:THREE.FrontSide});
   mesh.visible=!!pageNo;
 }
 function prepareFlip(dir){

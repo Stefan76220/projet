@@ -3018,7 +3018,6 @@ class TomeLineaV3(tk.Tk):
             badges = list(dict.fromkeys(badges))
 
 
-
             infos.append({
                 "number": page_number,
                 "physicalSide": physical_side,

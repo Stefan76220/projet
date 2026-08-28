@@ -925,7 +925,6 @@ class BookCanvas(tk.Frame):
         # permanent. Elle n'apparaît qu'après un clic sur « Valider la page ».
         self._gabarit_validation_scope_prompt: bool = False
         self._gabarit_validation_notice = None
-        self._production_validation_notice = None
         self._structure_pending_kind = None
         self._structure_pending_payload = None
         self._structure_hover_target = None
@@ -4260,10 +4259,27 @@ class BookCanvas(tk.Frame):
         # maintenant le halo autour de la grande page.
         state_y1=58.0; state_y2=91.0
         target.create_rectangle(permanent_left,state_y1,permanent_right,state_y2,fill="#17232A",outline="#52636B",width=1)
-        target.create_text((permanent_left+permanent_right)/2.0,(state_y1+state_y2)/2.0,text=self._production_status_label(status),anchor="center",fill="#EDF1EF",font=(theme.FONT_UI,8,"bold"))
-        # La validation Production n'est plus une commande permanente :
-        # le statut est purement informatif ici. Lorsqu'une page « En cours »
-        # est quittée, TomeLinea propose sa validation dans une alerte dédiée.
+        target.create_text(permanent_left+8,(state_y1+state_y2)/2.0,text=self._production_status_label(status),anchor="w",fill="#EDF1EF",font=(theme.FONT_UI,8,"bold"))
+        # Une page validée ne repasse jamais manuellement en cours : toute
+        # modification réelle l'invalide automatiquement. Le bouton devient donc
+        # un simple témoin tant que la page reste inchangée.
+        validate_disabled=status in {"vierge", "validee"}
+        validate_label="Validée" if status=="validee" else "Valider"
+        validate_x1=max(permanent_left+70.0,permanent_right-82.0)
+        self._gabarit_inspector_control_box(
+            target,"production_validate",(validate_x1,state_y1+4.0,permanent_right-4.0,state_y2-4.0),
+            selected=status=="validee",disabled=validate_disabled,
+        )
+        target.create_text(
+            (validate_x1+permanent_right-4.0)/2.0,(state_y1+state_y2)/2.0,
+            text=validate_label,anchor="center",
+            fill="#C7D1D0" if not validate_disabled else "#65737A",
+            font=(theme.FONT_UI,6,"bold"),
+        )
+        self._gabarit_inspector_register_tooltip(
+            "production_validate",
+            "Valider cette page" if status!="validee" else "Page validée — toute modification la repassera automatiquement en cours",
+        )
 
         # Exception de validation : la page garde son statut propre lors d'une
         # future validation de groupe. Elle ne modifie jamais son gabarit.
@@ -4441,6 +4457,9 @@ class BookCanvas(tk.Frame):
         self._render_production_tools_overlay(force=True)
 
         changed=False
+        if key=="production_validate":
+            self.production_toggle_validation()
+            return "break"
         if key=="production_validation_exception":
             self.production_toggle_validation_exception()
             return "break"
@@ -4998,93 +5017,6 @@ class BookCanvas(tk.Frame):
             pass
         return bool(result)
 
-    def _production_offer_leave_validation(self, index: int) -> None:
-        """Propose la validation lorsqu'une page Production « En cours » est quittée."""
-        if not (0 <= int(index) < len(self.items)):
-            return
-        item = self.items[int(index)]
-        if self._production_status(item) != "en_cours":
-            return
-        label = self._page_type_label(item, int(index))
-        try:
-            old = getattr(self, "_production_validation_notice", None)
-            if old is not None and bool(old.winfo_exists()):
-                old.destroy()
-        except Exception:
-            pass
-        try:
-            win = tk.Toplevel(self.winfo_toplevel())
-            self._production_validation_notice = win
-            win.title("Production non validée")
-            win.transient(self.winfo_toplevel())
-            win.resizable(False, False)
-            win.configure(bg="#17232A")
-            body = tk.Frame(win, bg="#17232A", padx=16, pady=13)
-            body.pack(fill="both", expand=True)
-            tk.Label(
-                body, text="PAGE NON VALIDÉE", bg="#17232A", fg="#E1C27B",
-                font=(theme.FONT_UI, 9, "bold"), anchor="w",
-            ).pack(fill="x")
-            tk.Label(
-                body, text=f"{label} a été modifiée. Voulez-vous la valider ?",
-                bg="#17232A", fg="#D7E0E0", font=(theme.FONT_UI, 8),
-                justify="left", wraplength=380, anchor="w",
-            ).pack(fill="x", pady=(6, 10))
-            actions = tk.Frame(body, bg="#17232A")
-            actions.pack(fill="x")
-
-            def later():
-                try:
-                    win.destroy()
-                except Exception:
-                    pass
-
-            tk.Button(
-                actions, text="Valider",
-                command=lambda: self._production_validate_background_index(int(index), win),
-                bd=0, padx=12, pady=5, bg="#3A6558", fg="#FFFFFF",
-                activebackground="#4A7C6D", activeforeground="#FFFFFF",
-            ).pack(side="left")
-            tk.Button(
-                actions, text="Plus tard", command=later,
-                bd=0, padx=12, pady=5, bg="#253038", fg="#B9C6C8",
-                activebackground="#34434C", activeforeground="#FFFFFF",
-            ).pack(side="right")
-            win.protocol("WM_DELETE_WINDOW", later)
-            win.update_idletasks()
-            root = self.winfo_toplevel()
-            rx, ry, rw = int(root.winfo_rootx()), int(root.winfo_rooty()), int(root.winfo_width())
-            ww = int(win.winfo_reqwidth())
-            win.geometry(f"+{max(rx+20, rx+rw-ww-30)}+{ry+76}")
-        except Exception:
-            self.status_var.set(f"{label} n'est pas validée.")
-
-    def _production_validate_background_index(self, index: int, notice=None) -> bool:
-        """Valide la page Production quittée sans changer la page visible."""
-        if not (0 <= int(index) < len(self.items)):
-            return False
-        current_index = self._selected_index
-        zoom = int(getattr(self, "_gabarit_zoom", 100))
-        pan_x = float(getattr(self, "_gabarit_pan_x", 0.0))
-        pan_y = float(getattr(self, "_gabarit_pan_y", 0.0))
-        try:
-            self._selected_index = int(index)
-            self._gabarit_normalize_selected_index()
-            result = self.production_toggle_validation(background=True)
-        finally:
-            if current_index is not None and self.items:
-                self._selected_index = max(0, min(int(current_index), len(self.items)-1))
-                self._gabarit_normalize_selected_index()
-            self._gabarit_zoom, self._gabarit_pan_x, self._gabarit_pan_y = zoom, pan_x, pan_y
-            self.render()
-            self._emit_gabarit_page_changed()
-        try:
-            if notice is not None and bool(notice.winfo_exists()):
-                notice.destroy()
-        except Exception:
-            pass
-        return bool(result)
-
     def _shared_page_workbench_mode(self) -> bool:
         """True pour les deux bureaux qui partagent la même surface de page."""
         return str(getattr(self, "_work_mode", "") or "") in {"gabarits", "production"}
@@ -5127,14 +5059,9 @@ class BookCanvas(tk.Frame):
         if not isinstance(item, dict):
             return
         current = self._production_status(item)
-        mode = str(getattr(self, "_work_mode", "") or "")
         # Dans Production, toute manipulation est une modification de composition.
-        # On conserve cette information jusqu'à la prochaine validation afin de
-        # déclencher les garde-fous liés aux exceptions au bon moment.
-        if mode == "production":
-            item["production_dirty"] = True
         # Dans Gabarits, seule une page déjà produite/validée doit être invalidée.
-        if mode == "production" or current == "validee":
+        if str(getattr(self, "_work_mode", "") or "") == "production" or current == "validee":
             item["production_status"] = "en_cours"
             item["production_validated"] = False
 
@@ -5173,12 +5100,10 @@ class BookCanvas(tk.Frame):
             win.title("Exception de validation")
             win.transient(root)
             win.resizable(False, False)
-            # Halo/bordure orange volontairement très visible : à cet endroit la
-            # décision ne doit pas pouvoir être confondue avec une simple info.
-            win.configure(bg="#D29A43")
+            win.configure(bg="#17232A")
 
             body = tk.Frame(win, bg="#17232A", padx=18, pady=15)
-            body.pack(fill="both", expand=True, padx=5, pady=5)
+            body.pack(fill="both", expand=True)
             tk.Label(
                 body, text="PAGE EN EXCEPTION DE VALIDATION",
                 bg="#17232A", fg="#E1C27B",
@@ -5230,19 +5155,14 @@ class BookCanvas(tk.Frame):
 
             win.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
             win.update_idletasks()
+            rx, ry = int(root.winfo_rootx()), int(root.winfo_rooty())
+            rw = int(root.winfo_width())
             ww = int(win.winfo_reqwidth())
             wh = int(win.winfo_reqheight())
-            sw = int(root.winfo_screenwidth())
-            sh = int(root.winfo_screenheight())
-            x = max(0, (sw - ww) // 2)
-            y = max(0, (sh - wh) // 2)
-            win.geometry(f"{ww}x{wh}+{x}+{y}")
-            try:
-                win.lift()
-                win.attributes("-topmost", True)
-                win.after(150, lambda: win.attributes("-topmost", False) if win.winfo_exists() else None)
-            except Exception:
-                pass
+            rh = int(root.winfo_height())
+            x = max(rx + 20, rx + (rw - ww) // 2)
+            y = max(ry + 40, ry + (rh - wh) // 2)
+            win.geometry(f"+{x}+{y}")
             win.grab_set()
             win.focus_force()
             self.wait_window(win)
@@ -5253,106 +5173,7 @@ class BookCanvas(tk.Frame):
             return "cancel"
         return str(result.get("value") or "cancel")
 
-    def _production_modified_gabarit_exception_choice(self, item: dict) -> str:
-        """Demande si une page locale modifiée en Production doit devenir exception de validation.
-
-        Le garde-fou n'apparaît que lorsqu'une vraie exception de Gabarit a été
-        modifiée depuis Production et qu'aucune exception de validation n'est
-        encore définie. Retour : ``exception``, ``group`` ou ``cancel``.
-        """
-        if not isinstance(item, dict):
-            return "group"
-        if self.production_validation_exception(item):
-            return "group"
-        if not bool(item.get("production_dirty", False)):
-            return "group"
-        if not self._gabarit_is_local_exception(item, int(self._selected_index) if self._selected_index is not None else None):
-            return "group"
-
-        result = {"value": "cancel"}
-        try:
-            root = self.winfo_toplevel()
-            win = tk.Toplevel(root)
-            win.title("Exception de validation")
-            win.transient(root)
-            win.resizable(False, False)
-            win.configure(bg="#D29A43")
-
-            body = tk.Frame(win, bg="#17232A", padx=18, pady=15)
-            body.pack(fill="both", expand=True, padx=5, pady=5)
-            tk.Label(
-                body, text="PAGE EN EXCEPTION MODIFIÉE",
-                bg="#17232A", fg="#F0B65C",
-                font=(theme.FONT_UI, 9, "bold"), anchor="w",
-            ).pack(fill="x")
-            tk.Label(
-                body,
-                text=(
-                    "Cette page possède un gabarit en exception et vient d’être modifiée en Production.\n"
-                    "Voulez-vous aussi créer une exception de validation pour cette page ?"
-                ),
-                bg="#17232A", fg="#D7E0E0",
-                font=(theme.FONT_UI, 8), justify="left",
-                wraplength=470, anchor="w",
-            ).pack(fill="x", pady=(7, 12))
-
-            actions = tk.Frame(body, bg="#17232A")
-            actions.pack(fill="x")
-
-            def choose(value: str) -> None:
-                result["value"] = str(value)
-                try:
-                    win.grab_release()
-                except Exception:
-                    pass
-                try:
-                    win.destroy()
-                except Exception:
-                    pass
-
-            tk.Button(
-                actions, text="Créer l’exception et valider cette page",
-                command=lambda: choose("exception"), bd=0, padx=11, pady=6,
-                bg="#A96E28", fg="#FFFFFF",
-                activebackground="#C18031", activeforeground="#FFFFFF",
-            ).pack(fill="x", pady=(0, 6))
-            tk.Button(
-                actions, text="Valider sans exception de validation",
-                command=lambda: choose("group"), bd=0, padx=11, pady=6,
-                bg="#29424A", fg="#F1F4F2",
-                activebackground="#355761", activeforeground="#FFFFFF",
-            ).pack(fill="x", pady=(0, 6))
-            tk.Button(
-                actions, text="Annuler",
-                command=lambda: choose("cancel"), bd=0, padx=11, pady=6,
-                bg="#253038", fg="#B9C6C8",
-                activebackground="#34434C", activeforeground="#FFFFFF",
-            ).pack(fill="x")
-
-            win.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
-            win.update_idletasks()
-            ww = int(win.winfo_reqwidth())
-            wh = int(win.winfo_reqheight())
-            sw = int(root.winfo_screenwidth())
-            sh = int(root.winfo_screenheight())
-            x = max(0, (sw - ww) // 2)
-            y = max(0, (sh - wh) // 2)
-            win.geometry(f"{ww}x{wh}+{x}+{y}")
-            try:
-                win.lift()
-                win.attributes("-topmost", True)
-                win.after(150, lambda: win.attributes("-topmost", False) if win.winfo_exists() else None)
-            except Exception:
-                pass
-            win.grab_set()
-            win.focus_force()
-            self.wait_window(win)
-        except Exception:
-            self.status_var.set("Validation annulée : confirmation de l’exception impossible.")
-            return "cancel"
-        return str(result.get("value") or "cancel")
-
-    def production_toggle_validation(self, *, background: bool = False) -> bool:
+    def production_toggle_validation(self) -> bool:
         """Valide Production seulement si le gabarit est validé, sauf édition née ici."""
         item = self._gabarit_active_item()
         if not isinstance(item, dict):
@@ -5377,29 +5198,18 @@ class BookCanvas(tk.Frame):
                 self.status_var.set("Page vierge — importez d’abord son contenu.")
                 return False
 
-            # Si une page qui est déjà une exception de Gabarit a été modifiée
-            # en Production, TL demande d'abord si cette singularité doit aussi
-            # devenir une exception de validation. On ne l'infère jamais seul.
-            modified_exception_choice = self._production_modified_gabarit_exception_choice(item)
-            if modified_exception_choice == "cancel":
+            # Une exception de validation ne doit jamais devenir un raccourci.
+            # Le gabarit a déjà été contrôlé ci-dessus ; ici l'utilisateur doit
+            # confirmer explicitement s'il conserve l'exception ou la retire.
+            exception_choice = self._production_exception_validation_choice(item)
+            if exception_choice == "cancel":
                 self.status_var.set("Validation annulée.")
                 return False
-            if modified_exception_choice == "exception":
-                item["production_validation_exception"] = True
-                exception_choice = "exception"
-            else:
-                # Une exception de validation déjà existante garde son propre
-                # garde-fou : conserver l'exception, la retirer, ou annuler.
-                exception_choice = self._production_exception_validation_choice(item)
-                if exception_choice == "cancel":
-                    self.status_var.set("Validation annulée.")
-                    return False
-                if exception_choice == "group":
-                    item["production_validation_exception"] = False
+            if exception_choice == "group":
+                item["production_validation_exception"] = False
 
             item["production_status"] = "validee"
             item["production_validated"] = True
-            item.pop("production_dirty", None)
             # Une modification géométrique effectuée depuis Production modifie
             # réellement le même gabarit. Dans ce cas la validation Production
             # est prioritaire et valide simultanément la géométrie correspondante.
@@ -5422,8 +5232,7 @@ class BookCanvas(tk.Frame):
         self._save_order()
         self._production_thumbnail_cache.clear()
         self._gabarit_inspector_signature = None
-        if not background:
-            self.render()
+        self.render()
         self.status_var.set(message)
         return True
 
@@ -5461,15 +5270,9 @@ class BookCanvas(tk.Frame):
         mode = str(mode or "structure")
         previous = str(getattr(self, "_work_mode", "structure") or "structure")
         pending_gabarits = 0
-        pending_production_index = None
         if previous == "gabarits" and mode != "gabarits":
             pending_gabarits = self._gabarit_unvalidated_count()
             self._gabarit_validation_scope_prompt = False
-        if previous == "production" and mode != "production":
-            current_index = self._selected_index
-            if current_index is not None and 0 <= int(current_index) < len(self.items):
-                if self._production_status(self.items[int(current_index)]) == "en_cours":
-                    pending_production_index = int(current_index)
         self._work_mode = mode
         titles = {
             "structure": "Structure du livre",
@@ -5572,8 +5375,6 @@ class BookCanvas(tk.Frame):
                 f"{n} {'page reste' if n == 1 else 'pages restent'} à valider dans Gabarits.",
                 timeout_ms=5200,
             ))
-        if pending_production_index is not None:
-            self.after_idle(lambda idx=int(pending_production_index): self._production_offer_leave_validation(idx))
 
 
     # ------------------------------------------------------------------
@@ -6741,20 +6542,12 @@ class BookCanvas(tk.Frame):
         if not 0 <= int(index) < len(self.items):
             return False
         previous_index = self._selected_index
-        mode = str(getattr(self, "_work_mode", "") or "")
-        should_remind_gabarit = bool(
-            mode == "gabarits"
+        should_remind = bool(
+            str(getattr(self, "_work_mode", "") or "") == "gabarits"
             and previous_index is not None
             and int(previous_index) != int(index)
             and 0 <= int(previous_index) < len(self.items)
             and self._gabarit_status(self.items[int(previous_index)]) == "en_cours"
-        )
-        should_remind_production = bool(
-            mode == "production"
-            and previous_index is not None
-            and int(previous_index) != int(index)
-            and 0 <= int(previous_index) < len(self.items)
-            and self._production_status(self.items[int(previous_index)]) == "en_cours"
         )
         zoom = int(getattr(self, "_gabarit_zoom", 100))
         pan_x = float(getattr(self, "_gabarit_pan_x", 0.0))
@@ -6784,10 +6577,8 @@ class BookCanvas(tk.Frame):
             self._gabarit_pan_y = 0.0
         self.render()
         self._emit_gabarit_page_changed()
-        if should_remind_gabarit:
+        if should_remind:
             self.after_idle(lambda idx=int(previous_index): self._gabarit_offer_leave_validation(idx))
-        elif should_remind_production:
-            self.after_idle(lambda idx=int(previous_index): self._production_offer_leave_validation(idx))
         return True
 
     def gabarit_navigate(self, delta: int) -> bool:
@@ -9281,12 +9072,11 @@ class BookCanvas(tk.Frame):
             y = float(visual["y"]); x1 = float(visual.get("x1", 0.0)); x2 = float(visual.get("x2", x1))
             target.create_line(x1, y, x2, y, fill=color, width=2)
 
-
     def _production_element_for_zone(self, item: dict | None, zone: dict | None) -> dict | None:
-        """Retourne le contenu Production r?ellement attach? ? une zone.
+        """Retourne le contenu Production réellement attaché à une zone.
 
         Le lien stable est ``slot_key``. Le contenu ne porte donc pas sa propre
-        g?om?trie : d?placer/redimensionner la zone d?place/redimensionne son
+        géométrie : déplacer/redimensionner la zone déplace/redimensionne son
         contenu avec elle.
         """
         if str(getattr(self, "_work_mode", "") or "") != "production":
@@ -9303,12 +9093,7 @@ class BookCanvas(tk.Frame):
             for element in values:
                 if not isinstance(element, dict):
                     continue
-                target_slot = str(
-                    element.get("slot_key")
-                    or element.get("zone_slot")
-                    or element.get("zone_id")
-                    or ""
-                ).strip()
+                target_slot = str(element.get("slot_key") or element.get("zone_slot") or element.get("zone_id") or "").strip()
                 if target_slot == slot:
                     return element
         return None
@@ -9356,7 +9141,6 @@ class BookCanvas(tk.Frame):
             return image
         except Exception:
             return None
-
 
     def _production_draw_zone_content(
         self, target, zone: dict, item: dict | None,
