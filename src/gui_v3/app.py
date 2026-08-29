@@ -2852,7 +2852,42 @@ class TomeLineaV3(tk.Tk):
             if not isinstance(item, dict):
                 item = {}
             page_number = index + 1
-            physical_side = "recto" if index % 2 == 0 else "verso"
+
+            # TOMELINEA_VISIONNEUR_4_FACES_RECTO_VERSO_V1
+            # Les quatre faces physiques de la couverture ne dépendent pas
+            # de la parité de leur position dans la Structure.
+            raw_page_type = str(
+                item.get("type")
+                or item.get("kind")
+                or item.get("page_type")
+                or ""
+            ).strip().lower()
+
+            cover_physical_sides = {
+                "couverture": "recto",
+                "cover": "recto",
+                "front_cover": "recto",
+
+                "deuxieme_couverture": "verso",
+                "2e_couverture": "verso",
+                "second_cover": "verso",
+                "inside_front_cover": "verso",
+
+                "troisieme_couverture": "recto",
+                "3e_couverture": "recto",
+                "third_cover": "recto",
+                "inside_back_cover": "recto",
+
+                "quatrieme": "verso",
+                "quatrieme_couverture": "verso",
+                "4e_couverture": "verso",
+                "back_cover": "verso",
+            }
+
+            physical_side = cover_physical_sides.get(
+                raw_page_type,
+                "recto" if index % 2 == 0 else "verso",
+            )
 
             try:
                 page_type = str(canvas._page_type_label(item, index) or "Page")

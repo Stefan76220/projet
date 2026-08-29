@@ -14979,7 +14979,13 @@ class BookCanvas(tk.Frame):
         raw_items = data.get("items", [])
         items = [dict(item) for item in raw_items if isinstance(item, dict)] if isinstance(raw_items, list) else []
 
+        # TOMELINEA_COUVERTURES_4_FACES_V1
+        # Les quatre faces physiques de couverture existent toujours.
+        # 2e et 3e restent blanches tant que Gabarits/Production ne leur
+        # ajoutent aucun contenu.
         cover = next((item for item in items if self._is_cover(item)), None)
+        second = next((item for item in items if self._is_second_cover(item)), None)
+        third = next((item for item in items if self._is_third_cover(item)), None)
         back = next((item for item in items if self._is_back_cover(item)), None)
         if cover is None:
             cover = {
@@ -14991,6 +14997,44 @@ class BookCanvas(tk.Frame):
                 "plan_group": self.START_GROUP_ID,
             }
             items.insert(0, cover)
+            changed = True
+
+        if second is None:
+            second = {
+                "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+                "type": "deuxieme_couverture",
+                "title": "2e de couverture",
+                "count": 1,
+                "done": False,
+                "plan_group": self.START_GROUP_ID,
+            }
+            self._structure_apply_type_metadata(
+                second, "deuxieme_couverture", "2e de couverture"
+            )
+            # Vraie face physique, contenu facultatif : aucun élément
+            # Gabarits/Production n'est créé automatiquement.
+            insert_at = 1 if items else 0
+            items.insert(insert_at, second)
+            changed = True
+
+        if third is None:
+            third = {
+                "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+                "type": "troisieme_couverture",
+                "title": "3e de couverture",
+                "count": 1,
+                "done": False,
+                "plan_group": self.END_GROUP_ID,
+            }
+            self._structure_apply_type_metadata(
+                third, "troisieme_couverture", "3e de couverture"
+            )
+            # Si la 4e existe déjà, la 3e vient immédiatement avant.
+            back_index = next(
+                (i for i, item in enumerate(items) if self._is_back_cover(item)),
+                len(items),
+            )
+            items.insert(back_index, third)
             changed = True
         if back is None:
             back = {

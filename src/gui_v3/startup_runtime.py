@@ -202,6 +202,7 @@ class _Splash:
         self.root = None
         self.status = None
         self.detail = None
+        self.bar = None
         try:
             import tkinter as tk
             from tkinter import ttk
@@ -254,9 +255,9 @@ class _Splash:
                 fg="#89939B",
                 font=("Segoe UI", 8),
             ).pack()
-            bar = ttk.Progressbar(frame, mode="indeterminate", length=410)
-            bar.pack(pady=(14, 0))
-            bar.start(12)
+            self.bar = ttk.Progressbar(frame, mode="indeterminate", length=410)
+            self.bar.pack(pady=(14, 0))
+            self.bar.start(12)
 
             # Cette fenêtre de préparation utilise son propre interpréteur Tk,
             # mais elle ne doit surtout pas rester la racine Tk "par défaut".
@@ -290,6 +291,21 @@ class _Splash:
     def close(self) -> None:
         if self.root is None:
             return
+
+        # Arr?ter imp?rativement l'animation ttk AVANT de d?truire
+        # l'interpr?teur Tk qui h?berge la barre de progression.
+        if self.bar is not None:
+            try:
+                self.bar.stop()
+            except Exception:
+                pass
+            self.bar = None
+
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
         try:
             self.root.destroy()
         except Exception:
