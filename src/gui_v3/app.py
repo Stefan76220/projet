@@ -3019,6 +3019,15 @@ class TomeLineaV3(tk.Tk):
 
 
 
+            page_snapshot = ""
+            try:
+                from src.gui_v3.viewer_page_snapshot import build_page_snapshot
+                page_snapshot = build_page_snapshot(
+                    canvas, item, page_number, width=1400, quality=92
+                )
+            except Exception:
+                page_snapshot = ""
+
             infos.append({
                 "number": page_number,
                 "physicalSide": physical_side,
@@ -3039,6 +3048,7 @@ class TomeLineaV3(tk.Tk):
                 "productionStatus": production_status_labels.get(production_status, production_status.replace("_", " ").capitalize()),
                 "productionStatusKey": production_status,
                 "productionValidationException": production_validation_exception,
+                "snapshot": page_snapshot,
                 "automatic": is_auto,
                 "automaticOrigin": automatic_origin,
                 "automaticReason": automatic_reason,
