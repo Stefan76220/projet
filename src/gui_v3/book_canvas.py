@@ -15048,6 +15048,10 @@ class BookCanvas(tk.Frame):
             items.append(back)
             changed = True
 
+        # Blanc de compensation : calculé dès l'ouverture du projet.
+        if self._normalize_compensation_blank_items(items):
+            changed = True
+
         for item in items:
             # Les anciens champs sont conservés, mais B n'affiche plus de catégorie
             # générique « Page intérieure ». Le libellé visible est le vrai type
@@ -15120,6 +15124,7 @@ class BookCanvas(tk.Frame):
             return
         selection_snapshot = self._structure_selection_snapshot()
         self._sync_recto_verso_corrections()
+        self._sync_compensation_blank()
         try:
             data = self.project.load_mockup()
         except Exception:
@@ -15169,7 +15174,13 @@ class BookCanvas(tk.Frame):
         return self._type_of(item) in self.THIRD_COVER_TYPES
 
     def _is_locked_page(self, item: dict) -> bool:
-        return self._is_cover(item) or self._is_second_cover(item) or self._is_third_cover(item) or self._is_back_cover(item)
+        return (
+            self._is_cover(item)
+            or self._is_second_cover(item)
+            or self._is_third_cover(item)
+            or self._is_back_cover(item)
+            or self._is_compensation_blank(item)
+        )
 
     def _start_group_sort_key(self, item: dict) -> tuple[int]:
         if self._is_cover(item):
@@ -15252,6 +15263,8 @@ class BookCanvas(tk.Frame):
 
     def _page_type_label(self, item: dict, index: int | None = None) -> str:
         """Type éditorial visible sous la miniature."""
+        if self._is_compensation_blank(item):
+            return "Blanc de compensation"
         definition = page_visual_definition(self._page_type_key(item))
         if definition is not None:
             return str(definition.get("label") or "Page")
@@ -15269,6 +15282,76 @@ class BookCanvas(tk.Frame):
 
     def _page_attribute_label(self, item: dict, index: int) -> str:
         return self._page_type_label(item, index)
+
+    # TOMELINEA_BLANC_COMPENSATION_PROTEGE_V2
+    def _is_compensation_blank(self, item: dict | None) -> bool:
+        # Face physique créée sans intervention pour conserver la bonne parité.
+        return bool(
+            isinstance(item, dict)
+            and item.get("compensation_blank", False)
+        )
+
+    def _normalize_compensation_blank_items(self, items: list[dict]) -> bool:
+        # Maintient exactement le blanc nécessaire juste avant la 3e couverture.
+        if not isinstance(items, list):
+            return False
+
+        changed = False
+        existing = [
+            item for item in items
+            if isinstance(item, dict) and self._is_compensation_blank(item)
+        ]
+        base = [
+            item for item in items
+            if not (isinstance(item, dict) and self._is_compensation_blank(item))
+        ]
+
+        third = next(
+            (item for item in base if isinstance(item, dict) and self._is_third_cover(item)),
+            None,
+        )
+        if third is None:
+            return False
+
+        third_index = base.index(third)
+        needs_blank = (third_index % 2 == 1)
+        rebuilt = list(base)
+
+        if needs_blank:
+            if existing:
+                blank = existing[0]
+            else:
+                blank = {
+                    "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+                    "count": 1,
+                    "done": False,
+                }
+                changed = True
+
+            blank["type"] = "page_blanche"
+            blank["type_name"] = "Blanc de compensation"
+            blank["attribute"] = "Blanc de compensation"
+            blank["title"] = "Blanc de compensation"
+            blank["plan_group"] = self.END_GROUP_ID
+            blank["compensation_blank"] = True
+            blank["compensation_reason"] = "parite_physique_avant_3e"
+            blank["structure_duplicable"] = False
+
+            insert_at = rebuilt.index(third)
+            rebuilt.insert(insert_at, blank)
+            if len(existing) != 1:
+                changed = True
+        elif existing:
+            changed = True
+
+        if len(rebuilt) != len(items) or any(a is not b for a, b in zip(rebuilt, items)):
+            items[:] = rebuilt
+            changed = True
+
+        return changed
+
+    def _sync_compensation_blank(self) -> bool:
+        return self._normalize_compensation_blank_items(self.items)
 
     def _is_automatic_page(self, item: dict) -> bool:
         if bool(item.get("automatic_recto_verso", False) or item.get("automatic", False) or item.get("auto_generated", False)):
