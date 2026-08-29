@@ -13871,7 +13871,11 @@ class BookCanvas(tk.Frame):
             self.status_var.set("Sélectionnez d’abord une page dans B.")
             return False
         sources = [self.items[index] for index in indices if 0 <= index < len(self.items)]
-        if not sources or any(self._is_locked_page(item) or self._is_automatic_page(item) for item in sources):
+        if not sources or any(
+            (self._is_locked_page(item) and not self._is_compensation_blank(item))
+            or self._is_automatic_page(item)
+            for item in sources
+        ):
             self.status_var.set("Une page automatique ou protégée ne peut pas changer de type.")
             return False
 
@@ -13891,6 +13895,10 @@ class BookCanvas(tk.Frame):
                 "double_page_override", "double_page_conflict",
             ):
                 item.pop(key, None)
+            if self._is_compensation_blank(item):
+                item.pop("compensation_blank", None)
+                item.pop("compensation_reason", None)
+                item.pop("structure_duplicable", None)
             self._structure_apply_type_metadata(item, type_key, label)
             local_side = self._recto_verso_override_value(item)
             if local_side in {"recto", "verso"}:
@@ -18244,10 +18252,26 @@ class BookCanvas(tk.Frame):
     def _index_at(self, event) -> int | None:
         cx = self.canvas.canvasx(event.x)
         cy = self.canvas.canvasy(event.y)
+
+        hits: list[int] = []
         for index, (x1, y1, x2, y2) in self._page_hitboxes.items():
             if x1 <= cx <= x2 and y1 <= cy <= y2:
+                hits.append(index)
+
+        if not hits:
+            return None
+
+        # TOMELINEA_BLANC_COMPENSATION_TRANSFORMABLE_SANS_RISQUE_V1
+        # Si deux miniatures se chevauchent, le Blanc de compensation
+        # est prioritaire uniquement pour ce clic.
+        for index in hits:
+            if (
+                0 <= index < len(self.items)
+                and self._is_compensation_blank(self.items[index])
+            ):
                 return index
-        return None
+
+        return hits[0]
 
     def _group_title_at(self, event) -> str | None:
         cx = self.canvas.canvasx(event.x)
