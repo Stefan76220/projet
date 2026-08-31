@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from copy import deepcopy
+
 """
 TomeLinea V4 — blocs atomiques de Structure.
 
@@ -16,7 +18,7 @@ Aucune opération de Structure ne doit pouvoir déposer un élément
 à l'intérieur d'un tel bloc.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from src.v4.domain import (
     BookV4,
@@ -33,6 +35,9 @@ from src.v4.structure_spreads import (
 )
 from src.v4.structure_parts import (
     boundary_part_id,
+)
+from src.v4.structure_sync import (
+    sync_structure_rules,
 )
 
 
@@ -321,9 +326,18 @@ def move_atomic_block(
     target_part_id: str | None = None,
 ) -> bool:
     """
-    Déplace le bloc contenant page_id.
+    D?place atomiquement le bloc contenant page_id.
 
-    Les AV/AP et les deux moitiés d'une 2P suivent ensemble.
+    Les AV/AP et les deux moiti?s d'une 2P suivent ensemble.
+
+    Apr?s le d?placement, toutes les r?gles Structure sont
+    resynchronis?es imm?diatement :
+    - AV/AP ;
+    - doubles pages ?tendues ;
+    - Recto/Verso ;
+    - compensations.
+
+    En cas d'?chec, l'?tat complet du Livre est restaur?.
     """
 
     book.validate()
@@ -335,7 +349,7 @@ def move_atomic_block(
         )
     ):
         raise IndexError(
-            "Position de déplacement invalide : "
+            "Position de d?placement invalide : "
             f"{target_index}"
         )
 
@@ -376,8 +390,8 @@ def move_atomic_block(
         )
     ):
         raise ValueError(
-            "Impossible de déposer un bloc "
-            "à l'intérieur d'un autre bloc atomique."
+            "Impossible de d?poser un bloc "
+            "? l'int?rieur d'un autre bloc atomique."
         )
 
     old_order = list(
@@ -426,6 +440,10 @@ def move_atomic_block(
     if new_order == old_order:
         return False
 
+    snapshot = deepcopy(
+        book
+    )
+
     old_part_ids = {
         current_id: (
             book.pages[
@@ -435,18 +453,31 @@ def move_atomic_block(
         for current_id in block_ids
     }
 
-    book.page_order = (
-        new_order
-    )
-
-    for current_id in block_ids:
-        book.pages[
-            current_id
-        ].part_id = (
-            resolved_part_id
+    try:
+        book.page_order = (
+            new_order
         )
 
-    try:
+        for current_id in block_ids:
+            book.pages[
+                current_id
+            ].part_id = (
+                resolved_part_id
+            )
+
+        book.validate()
+
+        # Le d?placement physique peut modifier :
+        # - les paires de types voisines ;
+        # - la parit? Recto/Verso ;
+        # - les AV/AP ;
+        # - les compensations.
+        #
+        # La synchronisation appartient donc ? la m?me transaction.
+        sync_structure_rules(
+            book
+        )
+
         book.validate()
 
         issues = (
@@ -460,51 +491,53 @@ def move_atomic_block(
 
         if issues:
             raise ValueError(
-                "Le déplacement casserait "
+                "Le d?placement casserait "
                 "la Structure : "
                 + " ; ".join(
                     issues
                 )
             )
 
-    except Exception:
-        book.page_order = (
-            old_order
+        book.history.append(
+            {
+                "action": (
+                    "bloc_structure_deplace"
+                ),
+                "page_ids": list(
+                    block.page_ids
+                ),
+                "from_index": start,
+                "target_index": (
+                    target_index
+                ),
+                "final_index": (
+                    adjusted_target
+                ),
+                "target_part_id": (
+                    resolved_part_id
+                ),
+                "previous_part_ids": (
+                    old_part_ids
+                ),
+            }
         )
 
-        for current_id, old_part_id in (
-            old_part_ids.items()
+        return True
+
+    except Exception:
+        for field_info in fields(
+            BookV4
         ):
-            book.pages[
-                current_id
-            ].part_id = (
-                old_part_id
+            setattr(
+                book,
+                field_info.name,
+                deepcopy(
+                    getattr(
+                        snapshot,
+                        field_info.name,
+                    )
+                ),
             )
 
         raise
 
-    book.history.append(
-        {
-            "action": (
-                "bloc_structure_deplace"
-            ),
-            "page_ids": list(
-                block.page_ids
-            ),
-            "from_index": start,
-            "target_index": (
-                target_index
-            ),
-            "final_index": (
-                adjusted_target
-            ),
-            "target_part_id": (
-                resolved_part_id
-            ),
-            "previous_part_ids": (
-                old_part_ids
-            ),
-        }
-    )
-
-    return True
