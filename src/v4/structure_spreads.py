@@ -184,6 +184,31 @@ def pair_pages(
             right_page_id
         )
 
+    if (
+        bool(
+            left.metadata.get(
+                "automatic_structure",
+                False,
+            )
+        )
+        or bool(
+            right.metadata.get(
+                "automatic_structure",
+                False,
+            )
+        )
+    ):
+        raise ValueError(
+            "Une page automatique ne peut pas "
+            "faire partie d'une double page."
+        )
+
+    if left.auto_after or right.auto_before:
+        raise ValueError(
+            "Une page AV/AP est requise entre ces deux pages. "
+            "La double page ne peut pas ?tre cr??e."
+        )
+
     left_index = _page_index(
         book,
         left.id,
@@ -415,6 +440,29 @@ def structure_spread_issues(
                 f"2P {spread_id} : côtés gauche/droite invalides"
             )
             continue
+
+        if (
+            bool(
+                left.metadata.get(
+                    "automatic_structure",
+                    False,
+                )
+            )
+            or bool(
+                right.metadata.get(
+                    "automatic_structure",
+                    False,
+                )
+            )
+        ):
+            issues.append(
+                f"2P {spread_id} : page automatique membre"
+            )
+
+        if left.auto_after or right.auto_before:
+            issues.append(
+                f"2P {spread_id} : AV/AP interne"
+            )
 
         if left.part_id != right.part_id:
             issues.append(
