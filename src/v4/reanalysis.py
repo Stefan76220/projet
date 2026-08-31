@@ -6,9 +6,11 @@ TomeLinea V4 — réanalyse contrôlée.
 Principes :
 - aucune correction humaine n'est écrasée ;
 - aucune page ne disparaît automatiquement ;
-- les nouvelles pages ne sont insérées automatiquement que lorsque
-  l'ordre du livre est encore celui de la dernière analyse ;
-- une page manuelle protège l'ordre ;
+- les nouvelles pages peuvent être intégrées automatiquement lorsque
+  l'ordre issu de l'analyse n'a pas été modifié volontairement ;
+- les pages manuelles correctement ancrées sont conservées dans leur
+  secteur logique sans bloquer toute évolution du reste du livre ;
+- une page manuelle déplacée hors de son ancre protège l'ordre ;
 - une page absente de la nouvelle analyse bloque toute modification
   structurelle automatique jusqu'à décision humaine.
 """
@@ -54,6 +56,7 @@ class ReanalysisPlan:
     automatic_changes: list[ReanalysisChange] = field(
         default_factory=list
     )
+
     protected_changes: list[ReanalysisChange] = field(
         default_factory=list
     )
@@ -61,6 +64,7 @@ class ReanalysisPlan:
     new_pages: list[ProposedPage] = field(
         default_factory=list
     )
+
     missing_page_ids: list[str] = field(
         default_factory=list
     )
@@ -69,14 +73,20 @@ class ReanalysisPlan:
     order_current: list[str] = field(default_factory=list)
     order_proposed: list[str] = field(default_factory=list)
 
+    # Photographie complète de l'ordre réel au moment du plan.
+    full_order_current: list[str] = field(default_factory=list)
+
     order_change_detected: bool = False
     order_protected: bool = False
     order_blocked_by_missing_pages: bool = False
 
     manual_page_ids: list[str] = field(default_factory=list)
+    manual_anchor_issues: list[str] = field(default_factory=list)
 
 
-def _source_value(page: PageV4) -> dict[str, Any] | None:
+def _source_value(
+    page: PageV4,
+) -> dict[str, Any] | None:
     if page.source is None:
         return None
 
@@ -87,7 +97,9 @@ def _source_value(page: PageV4) -> dict[str, Any] | None:
     }
 
 
-def current_page_values(page: PageV4) -> dict[str, Any]:
+def current_page_values(
+    page: PageV4,
+) -> dict[str, Any]:
     return {
         "page_type": page.page_type,
         "title": page.title,
@@ -102,6 +114,128 @@ def current_page_values(page: PageV4) -> dict[str, Any]:
     }
 
 
+def _proposal_key(
+    page: PageV4,
+) -> str | None:
+    value = page.metadata.get("proposal_key")
+
+    if value is None:
+        return None
+
+    return str(value)
+
+
+def _current_manual_anchor(
+    book: BookV4,
+    page_id: str,
+) -> dict[str, str | None]:
+    """
+    Calcule les pages issues de l'analyse situées immédiatement
+    avant et après une page manuelle dans l'état courant du Livre.
+    """
+
+    if page_id not in book.pages:
+        raise KeyError(page_id)
+
+    try:
+        index = book.page_order.index(page_id)
+    except ValueError as exc:
+        raise ValueError(
+            f"Page absente de l'ordre : {page_id}"
+        ) from exc
+
+    before_key: str | None = None
+    after_key: str | None = None
+
+    for candidate_id in reversed(
+        book.page_order[:index]
+    ):
+        candidate = book.pages[candidate_id]
+        key = _proposal_key(candidate)
+
+        if key is not None:
+            before_key = key
+            break
+
+    for candidate_id in book.page_order[index + 1:]:
+        candidate = book.pages[candidate_id]
+        key = _proposal_key(candidate)
+
+        if key is not None:
+            after_key = key
+            break
+
+    return {
+        "before_proposal_key": before_key,
+        "after_proposal_key": after_key,
+    }
+
+
+def _stored_manual_anchor(
+    page: PageV4,
+) -> dict[str, str | None] | None:
+    value = page.metadata.get("manual_anchor")
+
+    if not isinstance(value, dict):
+        return None
+
+    before = value.get("before_proposal_key")
+    after = value.get("after_proposal_key")
+
+    return {
+        "before_proposal_key": (
+            str(before)
+            if before is not None
+            else None
+        ),
+        "after_proposal_key": (
+            str(after)
+            if after is not None
+            else None
+        ),
+    }
+
+
+def _manual_anchor_is_current(
+    book: BookV4,
+    page: PageV4,
+) -> bool:
+    stored = _stored_manual_anchor(page)
+
+    if stored is None:
+        return False
+
+    current = _current_manual_anchor(
+        book,
+        page.id,
+    )
+
+    return stored == current
+
+
+def _refresh_manual_anchors(
+    book: BookV4,
+    manual_page_ids: list[str],
+) -> None:
+    """
+    Une évolution automatique réussie devient la nouvelle référence
+    structurelle des pages manuelles.
+    """
+
+    for page_id in manual_page_ids:
+        page = book.pages.get(page_id)
+
+        if page is None:
+            continue
+
+        page.metadata["manual_anchor"] = (
+            _current_manual_anchor(
+                book,
+                page_id,
+            )
+        )
+
+
 def build_reanalysis_plan(
     book: BookV4,
     proposal: BookProposal,
@@ -114,50 +248,89 @@ def build_reanalysis_plan(
         proposal_id=proposal.id
     )
 
+    plan.full_order_current = list(
+        book.page_order
+    )
+
     existing_by_key: dict[str, PageV4] = {}
 
     for page in book.pages.values():
-        proposal_key = page.metadata.get("proposal_key")
+        proposal_key = _proposal_key(page)
 
-        if proposal_key:
-            existing_by_key[str(proposal_key)] = page
+        if proposal_key is not None:
+            existing_by_key[proposal_key] = page
         else:
-            plan.manual_page_ids.append(page.id)
+            plan.manual_page_ids.append(
+                page.id
+            )
+
+            if not _manual_anchor_is_current(
+                book,
+                page,
+            ):
+                plan.manual_anchor_issues.append(
+                    page.id
+                )
 
     proposed_by_key = {
         page.proposal_key: page
         for page in proposal.pages
     }
 
+    # ----------------------------------------------------------
     # Nouvelles pages
+    # ----------------------------------------------------------
+
     for proposal_key, proposed in proposed_by_key.items():
         if proposal_key not in existing_by_key:
-            plan.new_pages.append(proposed)
+            plan.new_pages.append(
+                proposed
+            )
 
-    # Pages qui ne sont plus retrouvées.
-    # Elles ne seront jamais supprimées automatiquement.
+    # ----------------------------------------------------------
+    # Pages absentes de la nouvelle proposition
+    #
+    # Jamais supprimées automatiquement.
+    # ----------------------------------------------------------
+
     for proposal_key, page in existing_by_key.items():
         if proposal_key not in proposed_by_key:
-            plan.missing_page_ids.append(page.id)
+            plan.missing_page_ids.append(
+                page.id
+            )
 
+    # ----------------------------------------------------------
     # Propriétés des pages existantes
+    # ----------------------------------------------------------
+
     for proposal_key, proposed in proposed_by_key.items():
-        page = existing_by_key.get(proposal_key)
+        page = existing_by_key.get(
+            proposal_key
+        )
 
         if page is None:
             continue
 
-        baseline = page.metadata.get("analysis_baseline")
+        baseline = page.metadata.get(
+            "analysis_baseline"
+        )
 
         if not isinstance(baseline, dict):
             continue
 
         current = current_page_values(page)
-        new_values = proposed_page_baseline(proposed)
+        new_values = proposed_page_baseline(
+            proposed
+        )
 
         for field_name, proposed_value in new_values.items():
-            baseline_value = baseline.get(field_name)
-            current_value = current.get(field_name)
+            baseline_value = baseline.get(
+                field_name
+            )
+
+            current_value = current.get(
+                field_name
+            )
 
             if proposed_value == baseline_value:
                 continue
@@ -173,15 +346,24 @@ def build_reanalysis_plan(
                 baseline_value=baseline_value,
                 current_value=current_value,
                 proposed_value=proposed_value,
-                protected_by_human_change=human_changed,
+                protected_by_human_change=(
+                    human_changed
+                ),
             )
 
             if human_changed:
-                plan.protected_changes.append(change)
+                plan.protected_changes.append(
+                    change
+                )
             else:
-                plan.automatic_changes.append(change)
+                plan.automatic_changes.append(
+                    change
+                )
 
+    # ----------------------------------------------------------
     # Ordre structurel
+    # ----------------------------------------------------------
+
     baseline = book.metadata.get(
         "analysis_order_baseline",
         [],
@@ -195,28 +377,39 @@ def build_reanalysis_plan(
         for value in baseline
     ]
 
-    plan.order_current = book_order_keys(book)
-    plan.order_proposed = proposal_order_keys(proposal)
+    plan.order_current = book_order_keys(
+        book
+    )
+
+    plan.order_proposed = proposal_order_keys(
+        proposal
+    )
 
     plan.order_change_detected = (
-        plan.order_proposed != plan.order_baseline
+        plan.order_proposed
+        != plan.order_baseline
     )
 
-    human_reordered = (
-        plan.order_current != plan.order_baseline
+    # book_order_keys ignore volontairement les pages manuelles.
+    # Une simple insertion manuelle ne ressemble donc pas à un
+    # déplacement des pages issues de l'analyse.
+    human_reordered_analysis_pages = (
+        plan.order_current
+        != plan.order_baseline
     )
 
-    has_manual_pages = bool(plan.manual_page_ids)
+    manual_structure_changed = bool(
+        plan.manual_anchor_issues
+    )
 
     plan.order_protected = (
         plan.order_change_detected
         and (
-            human_reordered
-            or has_manual_pages
+            human_reordered_analysis_pages
+            or manual_structure_changed
         )
     )
 
-    # Une disparition rend l'interprétation du nouvel ordre ambiguë.
     plan.order_blocked_by_missing_pages = bool(
         plan.missing_page_ids
     )
@@ -230,7 +423,10 @@ def _apply_page_field(
     value: Any,
 ) -> None:
 
-    from src.v4.domain import PageOrigin, SourceLink
+    from src.v4.domain import (
+        PageOrigin,
+        SourceLink,
+    )
 
     if field_name == "origin":
         page.origin = PageOrigin(value)
@@ -241,10 +437,17 @@ def _apply_page_field(
             page.source = None
         else:
             page.source = SourceLink(
-                source_id=value["source_id"],
-                source_version_id=value["source_version_id"],
-                source_page=value.get("source_page"),
+                source_id=value[
+                    "source_id"
+                ],
+                source_version_id=value[
+                    "source_version_id"
+                ],
+                source_page=value.get(
+                    "source_page"
+                ),
             )
+
         return
 
     allowed_fields = {
@@ -260,10 +463,15 @@ def _apply_page_field(
 
     if field_name not in allowed_fields:
         raise ValueError(
-            f"Champ non applicable automatiquement : {field_name}"
+            "Champ non applicable "
+            f"automatiquement : {field_name}"
         )
 
-    setattr(page, field_name, value)
+    setattr(
+        page,
+        field_name,
+        value,
+    )
 
 
 def apply_safe_reanalysis_changes(
@@ -274,7 +482,8 @@ def apply_safe_reanalysis_changes(
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
-            "Le plan ne correspond pas à la proposition."
+            "Le plan ne correspond pas "
+            "à la proposition."
         )
 
     proposal.validate()
@@ -283,18 +492,25 @@ def apply_safe_reanalysis_changes(
     applied = 0
 
     for change in plan.automatic_changes:
-        page = book.pages.get(change.page_id)
+        page = book.pages.get(
+            change.page_id
+        )
 
         if page is None:
-            raise KeyError(change.page_id)
+            raise KeyError(
+                change.page_id
+            )
 
-        current = current_page_values(page).get(
+        current = current_page_values(
+            page
+        ).get(
             change.field_name
         )
 
         if current != change.current_value:
             raise RuntimeError(
-                "Le Livre a changé depuis la création du plan."
+                "Le Livre a changé depuis "
+                "la création du plan."
             )
 
         _apply_page_field(
@@ -312,21 +528,23 @@ def apply_safe_reanalysis_changes(
                 f"Baseline absente : {page.id}"
             )
 
-        baseline[change.field_name] = (
-            change.proposed_value
-        )
+        baseline[
+            change.field_name
+        ] = change.proposed_value
 
         applied += 1
 
-    book.metadata["last_reanalysis_proposal_id"] = (
-        proposal.id
-    )
+    book.metadata[
+        "last_reanalysis_proposal_id"
+    ] = proposal.id
 
     book.history.append(
         {
             "action": "reanalyse_proprietes",
             "proposal_id": proposal.id,
-            "automatic_changes_applied": applied,
+            "automatic_changes_applied": (
+                applied
+            ),
             "protected_changes_pending": len(
                 plan.protected_changes
             ),
@@ -342,9 +560,6 @@ def _new_page_from_proposal(
     proposed: ProposedPage,
     proposal_id: str,
 ) -> PageV4:
-    """
-    Crée une nouvelle PageV4 issue d'une réanalyse.
-    """
 
     page = PageV4(
         page_type=proposed.page_type,
@@ -356,21 +571,164 @@ def _new_page_from_proposal(
         recto_verso=proposed.recto_verso,
         spread_id=proposed.spread_key,
         spread_side=proposed.spread_side,
-        is_compensation=proposed.is_compensation,
+        is_compensation=(
+            proposed.is_compensation
+        ),
     )
 
-    page.metadata["proposal_key"] = (
-        proposed.proposal_key
-    )
-    page.metadata["proposal_id"] = proposal_id
-    page.metadata["analysis_refs"] = list(
+    page.metadata[
+        "proposal_key"
+    ] = proposed.proposal_key
+
+    page.metadata[
+        "proposal_id"
+    ] = proposal_id
+
+    page.metadata[
+        "analysis_refs"
+    ] = list(
         proposed.analysis_refs
     )
-    page.metadata["analysis_baseline"] = (
-        proposed_page_baseline(proposed)
+
+    page.metadata[
+        "analysis_baseline"
+    ] = proposed_page_baseline(
+        proposed
     )
 
     return page
+
+
+def _build_order_with_manual_pages(
+    book: BookV4,
+    proposal_keys: list[str],
+    pages_by_key: dict[str, PageV4],
+    manual_page_ids: list[str],
+) -> list[str]:
+    """
+    Reconstruit l'ordre en conservant les pages manuelles.
+
+    Politique V4 actuelle :
+    - une page située avant une page d'analyse reste attachée
+      à cette page ;
+    - en cas d'insertion automatique dans l'ancien intervalle,
+      la page manuelle reste donc juste avant son ancienne
+      borne droite ;
+    - en fin de livre, elle reste après sa borne gauche ;
+    - plusieurs pages manuelles du même intervalle gardent
+      leur ordre relatif actuel.
+    """
+
+    manual_set = set(
+        manual_page_ids
+    )
+
+    manual_in_current_order = [
+        page_id
+        for page_id in book.page_order
+        if page_id in manual_set
+    ]
+
+    before_buckets: dict[
+        str,
+        list[str],
+    ] = {}
+
+    after_buckets: dict[
+        str,
+        list[str],
+    ] = {}
+
+    detached: list[str] = []
+
+    proposal_key_set = set(
+        proposal_keys
+    )
+
+    for page_id in manual_in_current_order:
+        page = book.pages[
+            page_id
+        ]
+
+        anchor = _stored_manual_anchor(
+            page
+        )
+
+        if anchor is None:
+            detached.append(
+                page_id
+            )
+            continue
+
+        before_key = anchor[
+            "before_proposal_key"
+        ]
+
+        after_key = anchor[
+            "after_proposal_key"
+        ]
+
+        # Priorité à la borne droite :
+        # la page reste juste avant la page qu'elle précédait.
+        if (
+            after_key is not None
+            and after_key in proposal_key_set
+        ):
+            before_buckets.setdefault(
+                after_key,
+                [],
+            ).append(
+                page_id
+            )
+
+            continue
+
+        # Fin de livre : rester après la borne gauche.
+        if (
+            before_key is not None
+            and before_key in proposal_key_set
+        ):
+            after_buckets.setdefault(
+                before_key,
+                [],
+            ).append(
+                page_id
+            )
+
+            continue
+
+        detached.append(
+            page_id
+        )
+
+    if detached:
+        raise RuntimeError(
+            "Une ou plusieurs pages manuelles "
+            "n'ont plus d'ancre exploitable."
+        )
+
+    result: list[str] = []
+
+    for key in proposal_keys:
+        result.extend(
+            before_buckets.get(
+                key,
+                [],
+            )
+        )
+
+        result.append(
+            pages_by_key[key].id
+        )
+
+        result.extend(
+            after_buckets.get(
+                key,
+                [],
+            )
+        )
+
+    return result
 
 
 def apply_safe_structural_changes(
@@ -378,37 +736,33 @@ def apply_safe_structural_changes(
     proposal: BookProposal,
     plan: ReanalysisPlan,
 ) -> StructuralApplyResult:
-    """
-    Applique uniquement une évolution structurelle non ambiguë.
-
-    Autorisé :
-    - ajout de nouvelles pages ;
-    - repositionnement suivant le nouvel ordre proposé.
-
-    Interdit automatiquement :
-    - suppression d'une page ;
-    - modification d'un ordre déjà changé par l'utilisateur ;
-    - modification si une page manuelle existe ;
-    - modification si une ancienne page n'est plus retrouvée.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
-            "Le plan ne correspond pas à la proposition."
+            "Le plan ne correspond pas "
+            "à la proposition."
         )
 
     proposal.validate()
     book.validate()
 
-    # Le plan doit encore correspondre à l'état réel du Livre.
-    if book_order_keys(book) != plan.order_current:
+    # Contrôle de concurrence :
+    # aucune page, y compris manuelle, ne doit avoir bougé
+    # depuis la préparation du plan.
+    if list(book.page_order) != (
+        plan.full_order_current
+    ):
         raise RuntimeError(
-            "L'ordre du Livre a changé depuis la création du plan."
+            "L'ordre complet du Livre a changé "
+            "depuis la création du plan."
         )
 
-    if proposal_order_keys(proposal) != plan.order_proposed:
+    if proposal_order_keys(
+        proposal
+    ) != plan.order_proposed:
         raise RuntimeError(
-            "La proposition a changé depuis la création du plan."
+            "La proposition a changé depuis "
+            "la création du plan."
         )
 
     if plan.order_protected:
@@ -417,16 +771,16 @@ def apply_safe_structural_changes(
             reason="ordre_protege",
         )
 
+    if plan.manual_anchor_issues:
+        return StructuralApplyResult(
+            applied=False,
+            reason="ancre_manuelle_modifiee",
+        )
+
     if plan.order_blocked_by_missing_pages:
         return StructuralApplyResult(
             applied=False,
             reason="pages_absentes_a_verifier",
-        )
-
-    if plan.manual_page_ids:
-        return StructuralApplyResult(
-            applied=False,
-            reason="pages_manuelles_presentes",
         )
 
     if (
@@ -438,19 +792,28 @@ def apply_safe_structural_changes(
             reason="aucun_changement_structurel",
         )
 
-    pages_by_key: dict[str, PageV4] = {}
+    pages_by_key: dict[
+        str,
+        PageV4,
+    ] = {}
 
     for page in book.pages.values():
-        key = page.metadata.get("proposal_key")
+        key = _proposal_key(
+            page
+        )
 
         if key is not None:
-            pages_by_key[str(key)] = page
+            pages_by_key[
+                key
+            ] = page
 
     added = 0
 
-    # Ajouter d'abord les nouvelles pages sans imposer encore l'ordre.
     for proposed in plan.new_pages:
-        if proposed.proposal_key in pages_by_key:
+        if (
+            proposed.proposal_key
+            in pages_by_key
+        ):
             continue
 
         page = _new_page_from_proposal(
@@ -458,47 +821,96 @@ def apply_safe_structural_changes(
             proposal.id,
         )
 
-        book.add_page(page)
-
-        pages_by_key[proposed.proposal_key] = page
-        added += 1
-
-    # À ce stade aucune page ne doit manquer.
-    expected_keys = set(plan.order_proposed)
-    actual_keys = set(pages_by_key)
-
-    if expected_keys != actual_keys:
-        raise RuntimeError(
-            "Impossible d'appliquer automatiquement le nouvel ordre : "
-            "les ensembles de pages ne correspondent pas."
+        # Ajout temporaire en fin de liste.
+        # L'ordre définitif est reconstruit ensuite.
+        book.add_page(
+            page
         )
 
-    old_order = list(book.page_order)
+        pages_by_key[
+            proposed.proposal_key
+        ] = page
 
-    book.page_order = [
-        pages_by_key[key].id
-        for key in plan.order_proposed
-    ]
+        added += 1
 
-    reordered = (
-        book.page_order != old_order
-    )
-
-    # Le nouvel ordre automatique devient la nouvelle référence.
-    book.metadata["analysis_order_baseline"] = list(
+    expected_keys = set(
         plan.order_proposed
     )
 
-    book.metadata["last_structural_proposal_id"] = (
-        proposal.id
+    actual_keys = set(
+        pages_by_key
     )
+
+    if expected_keys != actual_keys:
+        raise RuntimeError(
+            "Impossible d'appliquer le nouvel ordre : "
+            "les ensembles de pages ne correspondent pas."
+        )
+
+    old_order = list(
+        book.page_order
+    )
+
+    new_order = (
+        _build_order_with_manual_pages(
+            book,
+            plan.order_proposed,
+            pages_by_key,
+            plan.manual_page_ids,
+        )
+    )
+
+    if set(new_order) != set(book.pages):
+        raise RuntimeError(
+            "Le nouvel ordre structurel ne contient "
+            "pas exactement toutes les pages du Livre."
+        )
+
+    if len(new_order) != len(
+        book.pages
+    ):
+        raise RuntimeError(
+            "Le nouvel ordre structurel contient "
+            "un nombre incohérent de pages."
+        )
+
+    book.page_order = new_order
+
+    reordered = (
+        book.page_order
+        != old_order
+    )
+
+    # La nouvelle analyse devient la référence des pages
+    # appartenant à l'analyse.
+    book.metadata[
+        "analysis_order_baseline"
+    ] = list(
+        plan.order_proposed
+    )
+
+    # Les pages manuelles adoptent leur nouvel environnement
+    # comme référence structurelle, sans perdre leur UUID.
+    _refresh_manual_anchors(
+        book,
+        plan.manual_page_ids,
+    )
+
+    book.metadata[
+        "last_structural_proposal_id"
+    ] = proposal.id
 
     book.history.append(
         {
-            "action": "reanalyse_structure_appliquee",
+            "action": (
+                "reanalyse_structure_appliquee"
+            ),
             "proposal_id": proposal.id,
             "pages_added": added,
             "order_updated": reordered,
+            "manual_pages_preserved": len(
+                plan.manual_page_ids
+            ),
         }
     )
 
@@ -511,7 +923,9 @@ def apply_safe_structural_changes(
     )
 
 
-MISSING_PAGE_STATUS = "absente_de_la_derniere_analyse"
+MISSING_PAGE_STATUS = (
+    "absente_de_la_derniere_analyse"
+)
 
 
 def update_missing_page_status(
@@ -519,29 +933,19 @@ def update_missing_page_status(
     proposal: BookProposal,
     plan: ReanalysisPlan,
 ) -> int:
-    """
-    Met à jour l'état des pages non retrouvées lors d'une réanalyse.
-
-    Une page absente :
-    - n'est jamais supprimée ;
-    - conserve son identité et sa position ;
-    - est seulement signalée comme à vérifier.
-
-    Si elle réapparaît dans une analyse ultérieure, le signalement
-    est retiré automatiquement.
-
-    Retourne le nombre de pages actuellement signalées.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
-            "Le plan ne correspond pas à la proposition."
+            "Le plan ne correspond pas "
+            "à la proposition."
         )
 
     proposal.validate()
     book.validate()
 
-    missing_ids = set(plan.missing_page_ids)
+    missing_ids = set(
+        plan.missing_page_ids
+    )
 
     proposed_keys = {
         proposed.proposal_key
@@ -551,38 +955,47 @@ def update_missing_page_status(
     flagged = 0
 
     for page in book.pages.values():
-        proposal_key = page.metadata.get("proposal_key")
+        proposal_key = _proposal_key(
+            page
+        )
 
-        # Les pages manuelles ne sont pas concernées.
+        # Une page manuelle n'appartient pas à l'analyse.
         if proposal_key is None:
             continue
 
         if page.id in missing_ids:
-            page.metadata["reanalysis_status"] = (
-                MISSING_PAGE_STATUS
-            )
-            page.metadata["missing_since_proposal_id"] = (
-                proposal.id
-            )
-            page.metadata["requires_review"] = True
+            page.metadata[
+                "reanalysis_status"
+            ] = MISSING_PAGE_STATUS
+
+            page.metadata[
+                "missing_since_proposal_id"
+            ] = proposal.id
+
+            page.metadata[
+                "requires_review"
+            ] = True
 
             flagged += 1
             continue
 
-        # Une page précédemment absente a été retrouvée.
-        if str(proposal_key) in proposed_keys:
+        if proposal_key in proposed_keys:
             if (
-                page.metadata.get("reanalysis_status")
+                page.metadata.get(
+                    "reanalysis_status"
+                )
                 == MISSING_PAGE_STATUS
             ):
                 page.metadata.pop(
                     "reanalysis_status",
                     None,
                 )
+
                 page.metadata.pop(
                     "missing_since_proposal_id",
                     None,
                 )
+
                 page.metadata.pop(
                     "requires_review",
                     None,
@@ -590,7 +1003,9 @@ def update_missing_page_status(
 
     book.history.append(
         {
-            "action": "statut_pages_absentes_actualise",
+            "action": (
+                "statut_pages_absentes_actualise"
+            ),
             "proposal_id": proposal.id,
             "pages_missing": flagged,
         }
