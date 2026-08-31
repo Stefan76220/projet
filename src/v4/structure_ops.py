@@ -8,7 +8,9 @@ Une page créée manuellement :
 - possède un UUID permanent ;
 - n'est pas rattachée artificiellement à une Source ;
 - n'est pas possédée par l'Analyse ;
-- mémorise son emplacement logique entre les pages issues de l'Analyse.
+- mémorise son emplacement logique ;
+- ne peut être insérée à l'intérieur d'aucun bloc atomique
+  (2P ou AV/source/AP).
 """
 
 from datetime import datetime, timezone
@@ -18,23 +20,46 @@ from src.v4.domain import (
     PageOrigin,
     PageV4,
 )
+from src.v4.structure_blocks import (
+    structure_insertion_boundary_allowed,
+)
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
-def _proposal_key(page: PageV4) -> str | None:
-    value = page.metadata.get("proposal_key")
-    return str(value) if value is not None else None
+def _proposal_key(
+    page: PageV4,
+) -> str | None:
+
+    value = page.metadata.get(
+        "proposal_key"
+    )
+
+    return (
+        str(value)
+        if value is not None
+        else None
+    )
 
 
 def _nearest_proposal_before(
     book: BookV4,
     index: int,
 ) -> str | None:
-    for page_id in reversed(book.page_order[:index]):
-        key = _proposal_key(book.pages[page_id])
+
+    for page_id in reversed(
+        book.page_order[:index]
+    ):
+        key = _proposal_key(
+            book.pages[
+                page_id
+            ]
+        )
+
         if key is not None:
             return key
 
@@ -45,8 +70,16 @@ def _nearest_proposal_after(
     book: BookV4,
     index: int,
 ) -> str | None:
-    for page_id in book.page_order[index:]:
-        key = _proposal_key(book.pages[page_id])
+
+    for page_id in (
+        book.page_order[index:]
+    ):
+        key = _proposal_key(
+            book.pages[
+                page_id
+            ]
+        )
+
         if key is not None:
             return key
 
@@ -61,28 +94,43 @@ def insert_manual_page(
     title: str = "",
     is_compensation: bool = False,
 ) -> PageV4:
-    """
-    Insère une page structurelle créée dans TomeLinea.
-
-    L'ancre mémorise les pages d'analyse situées immédiatement
-    autour au moment de la création.
-    """
 
     book.validate()
 
-    if index < 0 or index > len(book.page_order):
+    if (
+        index < 0
+        or index > len(
+            book.page_order
+        )
+    ):
         raise IndexError(
-            f"Position d'insertion invalide : {index}"
+            "Position d'insertion invalide : "
+            f"{index}"
         )
 
-    before_key = _nearest_proposal_before(
-        book,
-        index,
+    if not (
+        structure_insertion_boundary_allowed(
+            book,
+            index,
+        )
+    ):
+        raise ValueError(
+            "Impossible d'insérer une page "
+            "à l'intérieur d'un bloc structurel."
+        )
+
+    before_key = (
+        _nearest_proposal_before(
+            book,
+            index,
+        )
     )
 
-    after_key = _nearest_proposal_after(
-        book,
-        index,
+    after_key = (
+        _nearest_proposal_after(
+            book,
+            index,
+        )
     )
 
     page = PageV4(
@@ -90,15 +138,28 @@ def insert_manual_page(
         title=title,
         origin=PageOrigin.TOMELINEA,
         source=None,
-        is_compensation=is_compensation,
+        is_compensation=(
+            is_compensation
+        ),
     )
 
-    page.metadata["creation_kind"] = "manual"
-    page.metadata["created_at"] = utc_now()
+    page.metadata[
+        "creation_kind"
+    ] = "manual"
 
-    page.metadata["manual_anchor"] = {
-        "before_proposal_key": before_key,
-        "after_proposal_key": after_key,
+    page.metadata[
+        "created_at"
+    ] = utc_now()
+
+    page.metadata[
+        "manual_anchor"
+    ] = {
+        "before_proposal_key": (
+            before_key
+        ),
+        "after_proposal_key": (
+            after_key
+        ),
     }
 
     book.add_page(
@@ -108,11 +169,17 @@ def insert_manual_page(
 
     book.history.append(
         {
-            "action": "page_manuelle_ajoutee",
+            "action": (
+                "page_manuelle_ajoutee"
+            ),
             "page_id": page.id,
             "index": index,
-            "before_proposal_key": before_key,
-            "after_proposal_key": after_key,
+            "before_proposal_key": (
+                before_key
+            ),
+            "after_proposal_key": (
+                after_key
+            ),
             "date": utc_now(),
         }
     )
