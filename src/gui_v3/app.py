@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import queue
+import threading
 from datetime import datetime
 import tkinter as tk
 from dataclasses import dataclass
@@ -13,10 +15,17 @@ from typing import Callable
 
 from PIL import Image, ImageColor, ImageDraw, ImageEnhance, ImageFilter, ImageTk
 
+from src.core.book_source import (
+    inspect_pdf,
+    load_project_source,
+    source_cache_folder,
+    store_source_in_project,
+)
 from src.gui_v3 import theme
 from src.gui_v3.book_canvas import BookCanvas
 from src.gui_v3.focus_toolbar import FocusToolbar
 from src.gui_v3.hover import GlobalHoverManager
+from src.gui_v3.source_book_viewer import SourceBookViewer
 from src.gui_v3.viewer3d_panel import Viewer3DOverlay
 
 
@@ -224,6 +233,7 @@ class TomeLineaV3(tk.Tk):
     # ACCUEIL_LOGIQUE_STABLE_V3_V3
     # HABILLAGE_FENETRES_ET_ICONES_V3_V4
     # ACCUEIL_V3_ERGONOMIQUE_V1
+    # ACCUEIL_SOURCE_AVANT_CREATION_V4
     # BARRE_OUTILS_FLOTTANTE_PAGE_V3_V6
     # ZOOM_PAGE_PLEIN_ESPACE_V3_V4
     # CANEVA_LIVRE_UNIQUE_V3_V2
@@ -726,7 +736,7 @@ class TomeLineaV3(tk.Tk):
         ).pack(side="left")
 
         tk.Label(
-            left, text="Récents", bg=panel, fg=theme.INK,
+            left, text="Projet actif et récents", bg=panel, fg=theme.INK,
             font=(theme.FONT_UI, 8, "bold"),
         ).grid(row=1, column=0, sticky="w", padx=28, pady=(0, 8))
 
@@ -814,7 +824,7 @@ class TomeLineaV3(tk.Tk):
         preview.grid_columnconfigure((0, 1, 2), weight=1, uniform="preview")
         preview.grid_rowconfigure(0, weight=1)
         for col, (key, title, accent) in enumerate((
-            ("ouvrage_structure", "Livre de fiches", green),
+            ("ouvrage_structure", "Livre structuré", green),
             ("livre_textuel", "Livre textuel", purple),
             ("bande_dessinee", "Bande dessinée", orange),
         )):
@@ -848,6 +858,13 @@ class TomeLineaV3(tk.Tk):
         self._home_new_origin_var = tk.StringVar(value="")
         self._home_new_name_var = tk.StringVar(value="")
         self._home_model_path_var = tk.StringVar(value="")
+        self._home_source_path_var = tk.StringVar(value="")
+        self._home_source_status_var = tk.StringVar(value="Choisissez d’abord le type de livre.")
+        self._home_source_formats_var = tk.StringVar(value="")
+        self._home_source_info = None
+        self._home_source_analysis_token = 0
+        self._home_source_analysis_queue = queue.Queue()
+        self._home_source_wait_step = 0
         self._home_type_frames = {}
         self._home_type_icon_labels = {}
         self._home_type_radios = {}
@@ -883,7 +900,7 @@ class TomeLineaV3(tk.Tk):
         for col in range(3):
             type_row.grid_columnconfigure(col, weight=1, uniform="home_create_types")
         type_data = {
-            "ouvrage_structure": ("Livre de fiches", green),
+            "ouvrage_structure": ("Livre structuré", green),
             "livre_textuel": ("Livre textuel", purple),
             "bande_dessinee": ("Bande dessinée", orange),
         }
@@ -910,8 +927,46 @@ class TomeLineaV3(tk.Tk):
                 widget.bind("<Button-1>", lambda _e, k=key: self._home_select_type(k))
             self._home_type_frames[key] = card
 
+        # ----------------------------------------------------------
+        # Source du projet — apparaît seulement après le choix du type.
+        # Le garde-fou reflète les moteurs réellement disponibles :
+        # aujourd’hui le PDF est analysé avant toute création du projet.
+        # ----------------------------------------------------------
+        self.home_source_panel = tk.Frame(
+            self.home_creator_frame, bg=panel_alt, highlightthickness=1,
+            highlightbackground=border,
+        )
+        self.home_source_panel.grid(row=3, column=0, sticky="ew", padx=18, pady=(9, 0), ipady=6)
+        self.home_source_panel.grid_columnconfigure(0, weight=1)
+        self.home_source_panel.grid_remove()
+
+        source_head = tk.Frame(self.home_source_panel, bg=panel_alt)
+        source_head.grid(row=0, column=0, sticky="ew", padx=12, pady=(7, 2))
+        source_head.grid_columnconfigure(0, weight=1)
+        tk.Label(
+            source_head, text="SOURCE DU PROJET", bg=panel_alt, fg=theme.INK,
+            font=(theme.FONT_UI, 8, "bold"), anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+        self._home_source_button = V3Button(
+            source_head, "Importer la source",
+            self._home_choose_initial_source, primary=True, compact=True,
+        )
+        self._home_source_button.grid(row=0, column=1, sticky="e", padx=(10, 0))
+
+        tk.Label(
+            self.home_source_panel, textvariable=self._home_source_formats_var,
+            bg=panel_alt, fg=theme.MUTED, font=(theme.FONT_UI, 7),
+            justify="left", anchor="w", wraplength=610,
+        ).grid(row=1, column=0, sticky="ew", padx=12, pady=(2, 2))
+        self._home_source_status_label = tk.Label(
+            self.home_source_panel, textvariable=self._home_source_status_var,
+            bg=panel_alt, fg=theme.MUTED_DARK, font=(theme.FONT_UI, 8, "bold"),
+            justify="left", anchor="w", wraplength=610,
+        )
+        self._home_source_status_label.grid(row=2, column=0, sticky="ew", padx=12, pady=(2, 6))
+
         or_row = tk.Frame(self.home_creator_frame, bg=theme.PANEL_ALT)
-        or_row.grid(row=3, column=0, sticky="ew", padx=18, pady=(7, 6))
+        or_row.grid(row=4, column=0, sticky="ew", padx=18, pady=(7, 6))
         or_row.grid_columnconfigure((0, 2), weight=1)
         tk.Frame(or_row, bg=border, height=1).grid(row=0, column=0, sticky="ew")
         tk.Label(or_row, text="  ou  ", bg=theme.PANEL_ALT, fg=theme.MUTED_DARK, font=(theme.FONT_UI, 7)).grid(row=0, column=1)
@@ -921,7 +976,7 @@ class TomeLineaV3(tk.Tk):
             self.home_creator_frame, bg=panel_alt, highlightthickness=1,
             highlightbackground=border, cursor="hand2",
         )
-        model_card.grid(row=4, column=0, sticky="ew", padx=18, ipady=5)
+        model_card.grid(row=5, column=0, sticky="ew", padx=18, ipady=5)
         model_card.grid_columnconfigure(1, weight=1)
         creator_model_photo = self._tl_ui_icon("model", 28, green, glow=True)
         model_icon = tk.Label(model_card, image=creator_model_photo, bg=panel_alt, bd=0)
@@ -939,7 +994,7 @@ class TomeLineaV3(tk.Tk):
         self._home_model_card = model_card
 
         self.home_model_picker = tk.Frame(self.home_creator_frame, bg=theme.PANEL_ALT)
-        self.home_model_picker.grid(row=5, column=0, sticky="ew", padx=18, pady=(5, 0))
+        self.home_model_picker.grid(row=6, column=0, sticky="ew", padx=18, pady=(5, 0))
         self.home_model_picker.grid_columnconfigure(0, weight=1)
         self._home_model_list = tk.Listbox(
             self.home_model_picker, height=3, exportselection=False,
@@ -958,7 +1013,7 @@ class TomeLineaV3(tk.Tk):
         self.home_model_picker.grid_remove()
 
         details = tk.Frame(self.home_creator_frame, bg=theme.PANEL_ALT)
-        details.grid(row=6, column=0, sticky="ew", padx=18, pady=(8, 0))
+        details.grid(row=7, column=0, sticky="ew", padx=18, pady=(8, 0))
         details.grid_columnconfigure(1, weight=1)
         tk.Label(
             details, text="Nom", bg=theme.PANEL_ALT, fg=theme.MUTED,
@@ -978,21 +1033,15 @@ class TomeLineaV3(tk.Tk):
             font=(theme.FONT_UI, 7), anchor="w",
         ).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
-        tk.Label(
-            self.home_creator_frame,
-            text="Les sources de l’auteur seront proposées après la création du projet.",
-            bg=theme.PANEL_ALT, fg=theme.MUTED_DARK,
-            font=(theme.FONT_UI, 7), anchor="w",
-        ).grid(row=7, column=0, sticky="ew", padx=18, pady=(8, 0))
-
         actions = tk.Frame(self.home_creator_frame, bg=theme.PANEL_ALT)
-        actions.grid(row=8, column=0, sticky="ew", padx=18, pady=(9, 14))
+        actions.grid(row=8, column=0, sticky="ew", padx=18, pady=(7, 10))
         actions.grid_columnconfigure(0, weight=1)
         V3Button(actions, "Annuler", self._home_hide_creator, compact=True).grid(row=0, column=1, padx=(0, 7))
-        V3Button(
+        self._home_create_button = V3Button(
             actions, "Créer le projet", self._home_create_project_inline,
-            primary=True, compact=True,
-        ).grid(row=0, column=2)
+            primary=True, compact=True, state="disabled",
+        )
+        self._home_create_button.grid(row=0, column=2)
 
         # --------------------------------------------------------------
         # Citation basse
@@ -1261,15 +1310,63 @@ class TomeLineaV3(tk.Tk):
         info.pack(side="left", padx=(0, 3))
         info.bind("<Button-1>", lambda _e: self._show_zone_info("a"))
         V3Button(actions, "Aide", self._show_general_help, compact=True).pack(side="left", padx=3)
-        V3Button(actions, "Visionneur", self.open_viewer3d, compact=True, primary=True).pack(side="left", padx=3)
         V3Button(actions, "Accueil", self.show_home, compact=True).pack(side="left", padx=3)
-        V3Button(actions, "Importer", self.import_sources, compact=True).pack(side="left", padx=3)
+
+        # Actions contextuelles :
+        # - Structure / Gabarits : consultation de la Source du livre ;
+        # - Production : vrai Visionneur du livre composé.
+        # Elles ne doivent jamais être présentées côte à côte.
+        self.source_book_button = V3Button(
+            actions, "Source du livre", self.open_source_book_viewer, compact=True, primary=True
+        )
+        # Source complémentaire : cette commande n'altère jamais la Source du
+        # projet initiale. Elle n'apparaît qu'en Production et applique les
+        # mêmes garde-fous que l'import proposé lors de la reprise d'un projet.
+        self.add_to_book_button = V3Button(
+            actions, "Importer une nouvelle source", self.add_to_book, compact=True
+        )
+
+        self.viewer3d_button = V3Button(
+            actions, "Visionneur", self.open_viewer3d, compact=True, primary=True
+        )
+
         self.undo_button = V3Button(actions, "Annuler", self._workspace_undo, compact=True, state="disabled")
         self.undo_button.pack(side="left", padx=3)
         self.redo_button = V3Button(actions, "Rétablir", self._workspace_redo, compact=True, state="disabled")
         self.redo_button.pack(side="left", padx=3)
         V3Button(actions, "Fermer", self.destroy, compact=True).pack(side="left", padx=(10, 0))
         self._update_history_buttons(False, False)
+        self._update_workspace_context_actions("structure")
+
+    def _update_workspace_context_actions(self, key: str | None = None):
+        """Affiche uniquement les actions utiles au bureau actif."""
+        active = str(key or getattr(self, "active_tab", "structure") or "structure")
+        source_button = getattr(self, "source_book_button", None)
+        add_button = getattr(self, "add_to_book_button", None)
+        viewer_button = getattr(self, "viewer3d_button", None)
+        undo_button = getattr(self, "undo_button", None)
+
+        for button in (source_button, add_button, viewer_button):
+            if button is not None:
+                try:
+                    button.pack_forget()
+                except Exception:
+                    pass
+
+        pack_options = {"side": "left", "padx": 3}
+        if undo_button is not None:
+            pack_options["before"] = undo_button
+
+        if active in {"structure", "gabarits"}:
+            if source_button is not None:
+                source_button.pack(**pack_options)
+        elif active == "production":
+            # Production est le lieu des nouvelles sources complémentaires et du vrai
+            # Visionneur. Ces commandes n’encombrent pas les autres bureaux.
+            if viewer_button is not None:
+                viewer_button.pack(**pack_options)
+            if add_button is not None:
+                add_button.pack(**pack_options)
 
     def _build_zone_c(self):
         body = self.zone_c.body
@@ -2730,6 +2827,7 @@ class TomeLineaV3(tk.Tk):
                     button.configure(bg=theme.ACCENT_DARK, fg=theme.WHITE)
                 else:
                     button.configure(bg=theme.PANEL_SOFT, fg=theme.INK)
+            self._update_workspace_context_actions(key)
             return
 
         book_canvas = getattr(self, "book_canvas", None)
@@ -2787,6 +2885,7 @@ class TomeLineaV3(tk.Tk):
                 button.configure(bg=theme.ACCENT_DARK, fg=theme.WHITE)
             else:
                 button.configure(bg=theme.PANEL_SOFT, fg=theme.INK)
+        self._update_workspace_context_actions(key)
 
     # ------------------------------------------------------------------
     # Visionneur 3D intégré
@@ -3365,6 +3464,7 @@ class TomeLineaV3(tk.Tk):
         self._home_new_origin_var.set("")
         self._home_new_name_var.set("")
         self._home_model_path_var.set("")
+        self._home_reset_initial_source(hide_panel=True)
         self.home_model_picker.grid_remove()
         self._home_refresh_type_cards()
         self._home_reload_models()
@@ -3382,12 +3482,15 @@ class TomeLineaV3(tk.Tk):
         self._home_new_type_var.set("")
         self._home_new_origin_var.set("")
         self._home_model_path_var.set("")
+        self._home_reset_initial_source(hide_panel=True)
 
     def _home_select_type(self, key: str):
         self._home_new_origin_var.set("type")
         self._home_new_type_var.set(key)
         self._home_model_path_var.set("")
         self.home_model_picker.grid_remove()
+        self._home_reset_initial_source(hide_panel=False)
+        self._home_refresh_source_panel()
         self._home_refresh_type_cards()
 
     def _home_refresh_type_cards(self):
@@ -3419,7 +3522,7 @@ class TomeLineaV3(tk.Tk):
                     pass
             icon_label = getattr(self, "_home_type_icon_labels", {}).get(key)
             if icon_label is not None:
-                photo = self._home_type_icon_glow(key, 90, selected=active)
+                photo = self._home_type_icon_glow(key, 72, selected=active)
                 if photo is not None:
                     icon_label.configure(image=photo)
                     icon_label.image = photo
@@ -3444,14 +3547,159 @@ class TomeLineaV3(tk.Tk):
                 except Exception:
                     pass
 
+    def _home_effective_project_type(self) -> str:
+        origin = self._home_new_origin_var.get()
+        if origin == "type":
+            return self._home_new_type_var.get()
+        if origin == "modele":
+            model_path = self._home_model_path_var.get().strip()
+            for item in getattr(self, "_home_models", []):
+                if item.get("path") == model_path:
+                    return str(item.get("type") or "")
+        return ""
+
+    def _home_source_format_text(self, project_type: str) -> str:
+        future = {
+            "ouvrage_structure": "ODT, DOCX, ODP, PPTX",
+            "livre_textuel": "DOCX, ODT, TXT, RTF",
+            "bande_dessinee": "PNG, JPG, WEBP, TIFF",
+        }.get(project_type, "autres formats")
+        return f"Disponible : PDF   •   À venir : {future}   •   Format inconnu : refusé"
+
+    def _home_reset_initial_source(self, *, hide_panel: bool = False):
+        self._home_source_analysis_token += 1
+        self._home_source_path_var.set("")
+        self._home_source_info = None
+        self._home_source_wait_step = 0
+        if hasattr(self, "_home_source_status_var"):
+            self._home_source_status_var.set("Choisissez une Source à analyser.")
+        if hasattr(self, "_home_create_button"):
+            self._home_create_button.configure(state="disabled", cursor="arrow")
+        if hasattr(self, "_home_source_button"):
+            self._home_source_button.configure(
+                state="normal", cursor="hand2", text="Importer la source"
+            )
+        panel = getattr(self, "home_source_panel", None)
+        if panel is not None:
+            if hide_panel:
+                panel.grid_remove()
+            else:
+                panel.grid()
+
+    def _home_refresh_source_panel(self):
+        project_type = self._home_effective_project_type()
+        panel = getattr(self, "home_source_panel", None)
+        if panel is None:
+            return
+        if not project_type:
+            panel.grid_remove()
+            return
+        self._home_source_formats_var.set(self._home_source_format_text(project_type))
+        panel.grid()
+
+    def _home_choose_initial_source(self):
+        project_type = self._home_effective_project_type()
+        if project_type not in {"ouvrage_structure", "livre_textuel", "bande_dessinee"}:
+            messagebox.showinfo("Source du projet", "Choisissez d’abord le type de livre.", parent=self)
+            return
+
+        raw = filedialog.askopenfilename(
+            parent=self,
+            title="Importer la source du projet",
+            filetypes=(("PDF — disponible maintenant", "*.pdf"), ("Tous les fichiers", "*.*")),
+        )
+        if not raw:
+            return
+        source = Path(raw)
+        if not source.is_file():
+            messagebox.showerror("Source du projet", "Le fichier sélectionné est introuvable.", parent=self)
+            return
+        if source.suffix.lower() != ".pdf":
+            self._home_reset_initial_source(hide_panel=False)
+            self._home_source_status_var.set(
+                f"Format {source.suffix.upper() or 'inconnu'} refusé : le moteur correspondant n’est pas encore disponible."
+            )
+            self._home_source_status_label.configure(fg=theme.ERROR)
+            messagebox.showwarning(
+                "Format non pris en charge",
+                "TomeLinea refuse ce fichier avant de créer le projet.\n\n"
+                "Le moteur PDF est disponible aujourd’hui. Les autres formats affichés sont prévus mais ne sont pas encore activés.",
+                parent=self,
+            )
+            return
+        if source.stat().st_size <= 0:
+            messagebox.showerror("Source du projet", "Le fichier sélectionné est vide.", parent=self)
+            return
+
+        self._home_begin_source_analysis(source)
+
+    def _home_begin_source_analysis(self, source: Path):
+        self._home_source_analysis_token += 1
+        token = self._home_source_analysis_token
+        self._home_source_analysis_queue = queue.Queue()
+        self._home_source_path_var.set("")
+        self._home_source_info = None
+        self._home_source_wait_step = 0
+        self._home_source_status_label.configure(fg=theme.MUTED)
+        self._home_source_button.configure(state="disabled", cursor="arrow")
+        self._home_create_button.configure(state="disabled", cursor="arrow")
+        self._home_source_status_var.set("Lecture de la source…")
+
+        def worker():
+            try:
+                info = inspect_pdf(source)
+                result = (token, True, source, info, "")
+            except Exception as exc:
+                result = (token, False, source, None, str(exc))
+            self._home_source_analysis_queue.put(result)
+
+        threading.Thread(target=worker, name="TomeLineaSourceAnalyse", daemon=True).start()
+        self.after(140, lambda: self._home_poll_source_analysis(token))
+
+    def _home_poll_source_analysis(self, token: int):
+        if token != self._home_source_analysis_token:
+            return
+        try:
+            result = self._home_source_analysis_queue.get_nowait()
+        except queue.Empty:
+            steps = (
+                "Lecture de la source…",
+                "Vérification du document…",
+                "Préparation du format interne de consultation…",
+            )
+            self._home_source_wait_step += 1
+            self._home_source_status_var.set(steps[(self._home_source_wait_step // 5) % len(steps)])
+            self.after(140, lambda: self._home_poll_source_analysis(token))
+            return
+
+        result_token, ok, source, info, error = result
+        if result_token != self._home_source_analysis_token:
+            return
+        self._home_source_button.configure(state="normal", cursor="hand2", text="Changer la source")
+        if not ok or info is None:
+            self._home_source_status_label.configure(fg=theme.ERROR)
+            self._home_source_status_var.set("Source refusée : TomeLinea ne peut pas préparer ce fichier.")
+            messagebox.showerror("Source du projet", error or "Source incompatible.", parent=self)
+            return
+
+        self._home_source_path_var.set(str(source))
+        self._home_source_info = info
+        self._home_source_status_label.configure(fg=theme.ACCENT_BRIGHT)
+        self._home_source_status_var.set(
+            f"✓ Source compatible — {source.name} — {info.page_count} page{'s' if info.page_count != 1 else ''} détectée{'s' if info.page_count != 1 else ''}."
+        )
+        self._home_create_button.configure(state="normal", cursor="hand2")
+
     def _home_add_sources(self):
-        # Les sources auteur ne sont plus sélectionnées avant la création.
-        # Elles sont proposées dans C quand le projet existe réellement.
-        self._show_first_project_prompt()
+        # Compatibilité avec les anciens appels : le choix de la Source se fait
+        # désormais avant la création du projet, directement depuis l’Accueil.
+        self._home_choose_initial_source()
 
     def _home_create_project_inline(self):
         name = self._home_new_name_var.get().strip()
         origin = self._home_new_origin_var.get()
+        source_raw = self._home_source_path_var.get().strip()
+        source_path = Path(source_raw) if source_raw else None
         if not name:
             messagebox.showerror("TomeLinea", "Donnez un nom au nouveau projet.", parent=self)
             return
@@ -3472,6 +3720,16 @@ class TomeLineaV3(tk.Tk):
                 "TomeLinea", "Choisissez un type de livre ou un projet modèle.", parent=self,
             )
             return
+        if source_path is None or not source_path.is_file() or self._home_source_info is None:
+            messagebox.showerror(
+                "TomeLinea",
+                "Importez et validez la Source du projet avant de créer le livre.",
+                parent=self,
+            )
+            return
+
+        project = None
+        created_root = None
         try:
             if origin == "modele":
                 model_path = self._home_model_path_var.get().strip()
@@ -3489,13 +3747,28 @@ class TomeLineaV3(tk.Tk):
                 project = self.project_manager.new_project(
                     str(PROJECTS_HOME), name, project_type=project_type,
                 )
+            created_root = Path(project.root) if project is not None and project.root is not None else None
+
+            # La Source est enregistrée immédiatement après la création du
+            # conteneur projet. Elle a déjà été inspectée et validée à l’Accueil.
+            store_source_in_project(project.root, source_path)
         except Exception as exc:
+            # Garde-fou : un échec d’intégration de la Source ne laisse pas un
+            # nouveau projet incomplet dans le dossier de l’utilisateur.
+            if created_root is not None and created_root.exists():
+                try:
+                    shutil.rmtree(created_root)
+                except Exception:
+                    pass
             messagebox.showerror("TomeLinea", str(exc), parent=self)
             return
 
         self._home_hide_creator()
         self._remember_recent(project)
-        self.show_workspace(project, first_open=True)
+        # La Source est déjà présente : pas de second écran « ajouter les
+        # sources ». Structure construit sa base uniquement pour le mode
+        # structuré ; les autres parcours seront définis séparément.
+        self.show_workspace(project, first_open=False)
 
     def _open_recent_path(self, path: str):
         if not path or not Path(path).exists():
@@ -3511,8 +3784,7 @@ class TomeLineaV3(tk.Tk):
         except Exception as exc:
             messagebox.showerror("TomeLinea", str(exc), parent=self)
             return
-        self._remember_recent(project)
-        self.show_workspace(project)
+        self._show_existing_project_actions(project)
 
     def open_existing_project(self):
         PROJECTS_HOME.mkdir(parents=True, exist_ok=True)
@@ -3529,8 +3801,90 @@ class TomeLineaV3(tk.Tk):
         except Exception as exc:
             messagebox.showerror("TomeLinea", str(exc), parent=self)
             return
-        self._remember_recent(project)
-        self.show_workspace(project)
+        self._show_existing_project_actions(project)
+
+    def _show_existing_project_actions(self, project: Project):
+        """Choix contextuel après sélection d'un projet existant.
+
+        Ouvrir un projet ne déclenche aucun nouvel import automatiquement.
+        L'utilisateur peut soit reprendre immédiatement son travail, soit
+        importer une nouvelle Source complémentaire avant d'entrer dans le
+        projet. La Source initiale n'est jamais remplacée ici.
+        """
+        dialog = tk.Toplevel(self)
+        dialog.title("Reprendre un projet")
+        dialog.configure(bg=theme.PANEL)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        width, height = 560, 292
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - width) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - height) // 2)
+        dialog.geometry(f"{width}x{height}+{x}+{y}")
+
+        type_labels = {
+            "ouvrage_structure": "Livre structuré",
+            "livre_textuel": "Livre textuel",
+            "bande_dessinee": "Bande dessinée",
+        }
+        project_type = str(getattr(project, "project_type", "") or "")
+
+        tk.Label(
+            dialog, text="PROJET EXISTANT", bg=theme.PANEL, fg=theme.ACCENT_BRIGHT,
+            font=(theme.FONT_UI, 9, "bold"),
+        ).pack(anchor="w", padx=28, pady=(22, 3))
+        tk.Label(
+            dialog, text=str(getattr(project, "name", "Projet TomeLinea")),
+            bg=theme.PANEL, fg=theme.INK, font=(theme.FONT_TITLE, 16, "bold"),
+        ).pack(anchor="w", padx=28)
+        tk.Label(
+            dialog, text=type_labels.get(project_type, "Projet TomeLinea"),
+            bg=theme.PANEL, fg=theme.MUTED, font=(theme.FONT_UI, 8),
+        ).pack(anchor="w", padx=28, pady=(2, 16))
+
+        tk.Label(
+            dialog,
+            text="Reprenez le travail tel qu'il était, ou ajoutez une nouvelle source auteur au projet.",
+            bg=theme.PANEL, fg=theme.INK, font=(theme.FONT_UI, 9),
+            wraplength=500, justify="left",
+        ).pack(anchor="w", padx=28, pady=(0, 16))
+
+        buttons = tk.Frame(dialog, bg=theme.PANEL)
+        buttons.pack(fill="x", padx=28)
+
+        def resume():
+            try:
+                dialog.grab_release()
+            except Exception:
+                pass
+            dialog.destroy()
+            self._remember_recent(project)
+            self.show_workspace(project)
+
+        def import_new_source():
+            try:
+                dialog.grab_release()
+            except Exception:
+                pass
+            dialog.destroy()
+            self._choose_additional_source(project, open_after=True)
+
+        V3Button(
+            buttons, "Reprendre le projet", resume, primary=True, compact=False
+        ).pack(side="left", padx=(0, 10))
+        V3Button(
+            buttons, "Importer une nouvelle source", import_new_source, compact=False
+        ).pack(side="left")
+
+        tk.Label(
+            dialog,
+            text="La nouvelle source est ajoutée au projet : la Source initiale reste inchangée.",
+            bg=theme.PANEL, fg=theme.MUTED_DARK, font=(theme.FONT_UI, 7),
+        ).pack(anchor="w", padx=28, pady=(16, 0))
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
 
     def open_last_project(self):
         recent = self._load_recent()
@@ -3548,18 +3902,210 @@ class TomeLineaV3(tk.Tk):
             return
         self.show_workspace(project)
 
+    def add_to_book(self):
+        """Importe une nouvelle Source complémentaire depuis Production."""
+        if self.context is None or self.context.project is None:
+            return False
+        return self._choose_additional_source(self.context.project, open_after=False)
+
+    def _choose_additional_source(self, project: Project, *, open_after: bool = False):
+        """Sélectionne, contrôle puis ajoute une Source sans remplacer l'initiale.
+
+        Le moteur réellement disponible aujourd'hui est le PDF. Les autres
+        formats restent refusés tant que leur lecteur n'est pas activé.
+        """
+        raw = filedialog.askopenfilename(
+            parent=self,
+            title="Importer une nouvelle source",
+            filetypes=(("PDF — disponible maintenant", "*.pdf"), ("Tous les fichiers", "*.*")),
+        )
+        if not raw:
+            return False
+
+        source = Path(raw)
+        if not source.is_file():
+            messagebox.showerror(
+                "Importer une nouvelle source",
+                "Le fichier sélectionné est introuvable.",
+                parent=self,
+            )
+            return False
+        if source.suffix.lower() != ".pdf":
+            messagebox.showwarning(
+                "Format non pris en charge",
+                f"Format {source.suffix.upper() or 'inconnu'} refusé.\n\n"
+                "TomeLinea n'importe pas un fichier tant que son moteur de lecture n'est pas disponible. "
+                "Le PDF est pris en charge actuellement.",
+                parent=self,
+            )
+            return False
+        if source.stat().st_size <= 0:
+            messagebox.showerror(
+                "Importer une nouvelle source",
+                "Le fichier sélectionné est vide.",
+                parent=self,
+            )
+            return False
+
+        return self._begin_additional_source_analysis(project, source, open_after=open_after)
+
+    def _begin_additional_source_analysis(self, project: Project, source: Path, *, open_after: bool):
+        """Analyse la nouvelle Source en arrière-plan avant validation finale."""
+        wait = tk.Toplevel(self)
+        wait.title("Préparation de la source")
+        wait.configure(bg=theme.PANEL)
+        wait.resizable(False, False)
+        wait.transient(self)
+        wait.grab_set()
+
+        width, height = 500, 190
+        self.update_idletasks()
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - width) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - height) // 2)
+        wait.geometry(f"{width}x{height}+{x}+{y}")
+
+        tk.Label(
+            wait, text="IMPORT D'UNE NOUVELLE SOURCE", bg=theme.PANEL,
+            fg=theme.ACCENT_BRIGHT, font=(theme.FONT_UI, 9, "bold"),
+        ).pack(pady=(24, 5))
+        tk.Label(
+            wait, text=source.name, bg=theme.PANEL, fg=theme.INK,
+            font=(theme.FONT_UI, 10, "bold"),
+        ).pack()
+        status = tk.StringVar(value="Lecture de la source…")
+        tk.Label(
+            wait, textvariable=status, bg=theme.PANEL, fg=theme.MUTED,
+            font=(theme.FONT_UI, 9),
+        ).pack(pady=(18, 0))
+
+        result_queue = queue.Queue()
+        state = {"step": 0}
+
+        def worker():
+            try:
+                info = inspect_pdf(source)
+                result_queue.put((True, info, ""))
+            except Exception as exc:
+                result_queue.put((False, None, str(exc)))
+
+        def poll():
+            if not wait.winfo_exists():
+                return
+            try:
+                ok, info, error = result_queue.get_nowait()
+            except queue.Empty:
+                steps = (
+                    "Lecture de la source…",
+                    "Vérification du document…",
+                    "Préparation du format interne de consultation…",
+                )
+                state["step"] += 1
+                status.set(steps[(state["step"] // 5) % len(steps)])
+                wait.after(140, poll)
+                return
+
+            try:
+                wait.grab_release()
+            except Exception:
+                pass
+            wait.destroy()
+
+            if not ok or info is None:
+                messagebox.showerror(
+                    "Importer une nouvelle source",
+                    error or "TomeLinea ne peut pas préparer ce fichier.",
+                    parent=self,
+                )
+                return
+
+            page_count = int(getattr(info, "page_count", 0) or 0)
+            confirmed = messagebox.askyesno(
+                "Nouvelle source prête",
+                f"Source compatible : {source.name}\n"
+                f"{page_count} page{'s' if page_count != 1 else ''} détectée{'s' if page_count != 1 else ''}.\n\n"
+                "Importer cette nouvelle source dans le projet ?\n"
+                "La Source initiale restera inchangée.",
+                parent=self,
+            )
+            if not confirmed:
+                return
+
+            try:
+                self._store_source_files(project, [str(source)])
+            except Exception as exc:
+                messagebox.showerror("Importer une nouvelle source", str(exc), parent=self)
+                return
+
+            if open_after:
+                self._remember_recent(project)
+                self.show_workspace(project)
+            else:
+                self._refresh_workspace_state()
+
+            messagebox.showinfo(
+                "Nouvelle source importée",
+                f"{source.name} a été ajouté au projet.\n\n"
+                "La Source initiale n'a pas été remplacée.",
+                parent=self,
+            )
+
+        threading.Thread(
+            target=worker, name="TomeLineaAdditionalSourceAnalyse", daemon=True
+        ).start()
+        wait.after(140, poll)
+        return True
+
     def import_sources(self):
         if self.context is None or self.context.project is None:
             return False
-        paths = filedialog.askopenfilenames(parent=self, title="Ajouter les sources de l’auteur")
+
+        project = self.context.project
+        paths = filedialog.askopenfilenames(
+            parent=self,
+            title="Ajouter les sources de l’auteur",
+            filetypes=(
+                ("Documents pris en charge", "*.pdf *.odt *.docx *.odp *.pptx"),
+                ("PDF", "*.pdf"),
+                ("Tous les fichiers", "*.*"),
+            ),
+        )
         if not paths:
             return False
+
+        selected = [Path(raw) for raw in paths if Path(raw).is_file()]
+        if not selected:
+            return False
+
+        imported_primary_source = False
         try:
-            self._store_source_files(self.context.project, list(paths))
+            # Première brique du nouveau parcours : pour un Livre structuré,
+            # le premier PDF sélectionné devient la Source du livre centrale.
+            # Les éventuels autres fichiers restent des sources complémentaires.
+            remaining = list(selected)
+            if project.project_type == "ouvrage_structure":
+                primary_pdf = next(
+                    (path for path in remaining if path.suffix.lower() == ".pdf"),
+                    None,
+                )
+                if primary_pdf is not None:
+                    store_source_in_project(project.root, primary_pdf)
+                    imported_primary_source = True
+                    remaining.remove(primary_pdf)
+                    # La Source n'est pas un simple fichier joint : elle crée
+                    # immédiatement la Structure de départ lorsqu'elle est vide.
+                    self.book_canvas.structure_build_from_book_source(only_if_empty=True)
+
+            if remaining:
+                self._store_source_files(project, [str(path) for path in remaining])
         except Exception as exc:
             messagebox.showerror("TomeLinea", str(exc), parent=self)
             return False
+
         self._refresh_workspace_state()
+        if imported_primary_source:
+            # Retour visuel immédiat : l’utilisateur voit que l’import a réussi
+            # et peut contrôler les pages sans chercher une commande cachée.
+            self.after_idle(self.open_source_book_viewer)
         return True
 
     def _store_source_files(self, project: Project, paths: list[str]):
@@ -3590,22 +4136,29 @@ class TomeLineaV3(tk.Tk):
                 target = source_dir / f"{stem}_{counter}{suffix}"
                 counter += 1
             shutil.copy2(src, target)
-            manifest["files"].append({"original": str(src), "stored": target.name})
+            manifest["files"].append({"original": str(src), "stored": target.name, "role": "source_complementaire", "imported_at": datetime.now().isoformat()})
             known.add(target.name)
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def _source_count(self, project: Project | None) -> int:
         if project is None or project.root is None:
             return 0
-        manifest = project.root / "sources_originales" / "manifest.json"
-        if not manifest.exists():
-            return 0
-        try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-            files = data.get("files", []) if isinstance(data, dict) else []
-            return len(files) if isinstance(files, list) else 0
-        except Exception:
-            return 0
+
+        count = 0
+        source_dir = project.root / "sources_originales"
+        if (source_dir / "source_livre.json").is_file():
+            count += 1
+
+        manifest = source_dir / "manifest.json"
+        if manifest.exists():
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                files = data.get("files", []) if isinstance(data, dict) else []
+                if isinstance(files, list):
+                    count += len(files)
+            except Exception:
+                pass
+        return count
 
     # ------------------------------------------------------------------
     # Navigation V3
@@ -3636,11 +4189,17 @@ class TomeLineaV3(tk.Tk):
         self._gabarit_format_session_confirmed = None
         self.context = WorkspaceContext(project=project, name=project.name, project_type=project.project_type)
         self.book_canvas.set_project(project)
+        # Si une Source du livre est déjà enregistrée et que Structure ne
+        # contient encore que ses faces physiques de base, construire
+        # automatiquement la Structure liée. Cette passe est non destructive.
+        if str(project.project_type or "") == "ouvrage_structure":
+            try:
+                self.book_canvas.structure_build_from_book_source(only_if_empty=True)
+            except Exception:
+                pass
         self.select_tab("structure")
         self._refresh_workspace_state()
         self._screens["workspace"].tkraise()
-        if first_open:
-            self.after_idle(self._show_first_project_prompt)
 
     def _show_workspace_preview(self, name="Projet de démonstration", project_type="ouvrage_structure"):
         """Utilitaire de test visuel interne ; n’écrit rien dans le projet."""
@@ -3697,6 +4256,211 @@ class TomeLineaV3(tk.Tk):
             f"{source_count} source{'s' if source_count != 1 else ''} auteur  •  "
             "contrôles : non lancés"
         )
+
+    def close_source_book_viewer(self):
+        overlay = getattr(self, "_source_book_overlay", None)
+        if overlay is not None:
+            try:
+                overlay.destroy()
+            except Exception:
+                pass
+        self._source_book_overlay = None
+        self._source_book_viewer = None
+
+    def _selected_book_source_page_number(self) -> int | None:
+        """Retourne la page de la Source du livre liée à la sélection courante.
+
+        La correspondance est portée par ``book_source_page_number`` dans les
+        éléments Structure construits depuis la Source du livre. Les pages
+        créées par TomeLinea sans équivalent source (par exemple un Blanc de
+        compensation) retournent ``None`` au lieu d'ouvrir une page arbitraire.
+        """
+        canvas = getattr(self, "book_canvas", None)
+        if canvas is None:
+            return None
+
+        selected_index = getattr(canvas, "_selected_index", None)
+        if selected_index is None:
+            return None
+
+        try:
+            source_index = canvas._source_index_for_index(selected_index)
+        except Exception:
+            source_index = selected_index
+
+        try:
+            if source_index is None or not 0 <= int(source_index) < len(canvas.items):
+                return None
+            item = canvas.items[int(source_index)]
+        except Exception:
+            return None
+
+        if not isinstance(item, dict):
+            return None
+
+        raw = item.get("book_source_page_number")
+        try:
+            page_number = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return page_number if page_number >= 1 else None
+
+    def _book_source_type_trace(self, page_number: int) -> dict | None:
+        """Retourne le type actuel et le type d'origine d'une page source."""
+        canvas = getattr(self, "book_canvas", None)
+        if canvas is None:
+            return None
+        try:
+            number = int(page_number)
+        except (TypeError, ValueError):
+            return None
+
+        item = next(
+            (
+                candidate
+                for candidate in getattr(canvas, "items", [])
+                if isinstance(candidate, dict)
+                and candidate.get("book_source_page_number") == number
+            ),
+            None,
+        )
+        if not isinstance(item, dict):
+            return None
+
+        try:
+            canvas._structure_record_book_source_type_state(item)
+        except Exception:
+            try:
+                canvas._structure_ensure_book_source_initial_type(item)
+            except Exception:
+                pass
+
+        current = str(item.get("book_source_current_type_name") or "").strip()
+        if not current:
+            current = str(
+                item.get("type_name")
+                or item.get("attribute")
+                or item.get("title")
+                or ""
+            ).strip()
+        if not current:
+            raw_type = str(item.get("type") or "").strip()
+            current = raw_type.replace("_", " ").capitalize() if raw_type else "Sans type"
+
+        initial = str(item.get("book_source_initial_type_name") or "").strip()
+        if not initial:
+            role = str(item.get("book_source_role") or "").strip().lower()
+            initial = "Sans type" if role == "content" else current
+
+        return {
+            "current": current,
+            "initial": initial,
+            "modified": bool(item.get("book_source_type_modified", current.casefold() != initial.casefold())),
+            "origin": str(item.get("book_source_type_change_origin") or "").strip(),
+        }
+
+    def open_source_book_viewer(self, initial_page: int | None = None):
+        if self.context is None or self.context.project is None:
+            return False
+
+        project = self.context.project
+        try:
+            source_path, info = load_project_source(project.root)
+        except FileNotFoundError:
+            messagebox.showinfo(
+                "Source du livre",
+                "Aucune Source du livre n’est encore enregistrée dans ce projet.\n\n"
+                "La Source du livre se choisit lors de la création du projet, "
+                "à l’étape « Ajouter les sources de l’auteur ».",
+                parent=self,
+            )
+            return False
+        except Exception as exc:
+            messagebox.showerror("Source du livre", str(exc), parent=self)
+            return False
+
+        # Depuis Structure/Gabarits, ouvrir directement la page auteur liée à
+        # la page TomeLinea sélectionnée. Ne jamais retomber silencieusement
+        # sur la couverture lorsqu'une page sélectionnée n'a pas de source.
+        if initial_page is None:
+            selected_index = getattr(getattr(self, "book_canvas", None), "_selected_index", None)
+            if selected_index is not None:
+                initial_page = self._selected_book_source_page_number()
+                if initial_page is None:
+                    messagebox.showinfo(
+                        "Source du livre",
+                        "La page sélectionnée a été créée par TomeLinea et n’a pas de page correspondante dans la Source du livre.",
+                        parent=self,
+                    )
+                    return False
+
+        self.close_source_book_viewer()
+
+        host = getattr(self, "stack", self)
+        overlay = tk.Frame(host, bg=theme.WINDOW_DEEP)
+        overlay.place(x=0, y=0, relwidth=1, relheight=1)
+        overlay.lift()
+        self._source_book_overlay = overlay
+
+        overlay.grid_rowconfigure(1, weight=1)
+        overlay.grid_columnconfigure(0, weight=1)
+
+        head = tk.Frame(overlay, bg=theme.PANEL, height=52)
+        head.grid(row=0, column=0, sticky="ew")
+        head.grid_columnconfigure(1, weight=1)
+
+        tk.Label(
+            head,
+            text="SOURCE DU LIVRE",
+            bg=theme.PANEL,
+            fg=theme.ACCENT_BRIGHT,
+            font=(theme.FONT_UI, 9, "bold"),
+        ).grid(row=0, column=0, padx=(18, 12), pady=12, sticky="w")
+
+        tk.Label(
+            head,
+            text=f"{info.source_name}  •  {info.page_count} pages",
+            bg=theme.PANEL,
+            fg=theme.MUTED,
+            font=(theme.FONT_UI, 9),
+        ).grid(row=0, column=1, padx=8, pady=12, sticky="w")
+
+        close = tk.Label(
+            head,
+            text="×",
+            bg=theme.PANEL,
+            fg=theme.INK,
+            font=(theme.FONT_UI, 20, "bold"),
+            cursor="hand2",
+            padx=14,
+        )
+        close.grid(row=0, column=2, sticky="e")
+        close.bind("<Button-1>", lambda _e: self.close_source_book_viewer())
+
+        body = tk.Frame(overlay, bg=theme.WINDOW_DEEP)
+        body.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 14))
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_columnconfigure(0, weight=1)
+
+        page = 1 if initial_page is None else int(initial_page)
+        viewer = SourceBookViewer(
+            body,
+            source_path,
+            cache_dir=source_cache_folder(project.root),
+            initial_page=page,
+            bg=theme.WINDOW_DEEP,
+            panel_bg=theme.PANEL_ALT,
+            fg=theme.INK,
+            muted=theme.MUTED,
+            accent=theme.ACCENT_BRIGHT,
+            page_trace_provider=self._book_source_type_trace,
+        )
+        viewer.grid(row=0, column=0, sticky="nsew")
+        self._source_book_viewer = viewer
+
+        overlay.bind("<Escape>", lambda _e: self.close_source_book_viewer())
+        viewer.after_idle(viewer.focus_set)
+        return True
 
     def open_consultation(self, item: dict, index: int):
         win = tk.Toplevel(self)
@@ -3854,7 +4618,7 @@ class TomeLineaV3(tk.Tk):
         if box is not None:
             box.delete(0, "end")
             type_labels = {
-                "ouvrage_structure": "Fiches",
+                "ouvrage_structure": "Structuré",
                 "livre_textuel": "Textuel",
                 "bande_dessinee": "BD",
             }
@@ -3871,6 +4635,7 @@ class TomeLineaV3(tk.Tk):
         self._home_new_origin_var.set("modele")
         self._home_new_type_var.set("")
         self._home_model_path_var.set("")
+        self._home_reset_initial_source(hide_panel=True)
         self._home_reload_models()
         self.home_model_picker.grid()
         self._home_refresh_type_cards()
@@ -3886,8 +4651,11 @@ class TomeLineaV3(tk.Tk):
             return
         item = self._home_models[index]
         self._home_model_path_var.set(item["path"])
+        self._home_new_type_var.set(str(item.get("type") or ""))
+        self._home_reset_initial_source(hide_panel=False)
+        self._home_refresh_source_panel()
         type_labels = {
-            "ouvrage_structure": "Livre de fiches",
+            "ouvrage_structure": "Livre structuré",
             "livre_textuel": "Livre textuel",
             "bande_dessinee": "Bande dessinée",
         }
@@ -4002,7 +4770,7 @@ class TomeLineaV3(tk.Tk):
 
         recent = self._load_recent()[:3]
         type_labels = {
-            "ouvrage_structure": "Livre de fiches",
+            "ouvrage_structure": "Livre structuré",
             "livre_textuel": "Livre textuel",
             "bande_dessinee": "Bande dessinée",
         }

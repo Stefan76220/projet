@@ -1,27 +1,44 @@
 from __future__ import annotations
 
-from .application import Application
-from .application_controller import ApplicationController
-from .document import Document
-from .document_manager import DocumentManager
-from .graphic_object import GraphicObject
-from .page import Page
-from .page_controller import PageController
-from .page_manager import PageManager
-from .page_reference import PageReference
-from .project import Project
-from .project_manager import ProjectManager
+"""Noyau TomeLinea.
 
-__all__: list[str] = [
-    "Application",
-    "ApplicationController",
-    "Document",
-    "DocumentManager",
-    "GraphicObject",
-    "Page",
-    "PageController",
-    "PageManager",
-    "PageReference",
-    "Project",
-    "ProjectManager",
-]
+Le package ``src.core`` ne doit avoir aucun effet de bord à l'import.
+Les anciennes classes restent accessibles via ``from src.core import ...``,
+mais elles sont chargées uniquement lorsqu'elles sont réellement demandées.
+Cela permet aux briques modernes (par exemple ``book_source``) d'être utilisées
+sans démarrer ni importer l'ancienne interface graphique.
+"""
+
+from importlib import import_module
+
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "Application": (".application", "Application"),
+    "ApplicationController": (".application_controller", "ApplicationController"),
+    "Document": (".document", "Document"),
+    "DocumentManager": (".document_manager", "DocumentManager"),
+    "GraphicObject": (".graphic_object", "GraphicObject"),
+    "Page": (".page", "Page"),
+    "PageController": (".page_controller", "PageController"),
+    "PageManager": (".page_manager", "PageManager"),
+    "PageReference": (".page_reference", "PageReference"),
+    "Project": (".project", "Project"),
+    "ProjectManager": (".project_manager", "ProjectManager"),
+}
+
+__all__: list[str] = list(_EXPORTS)
+
+
+def __getattr__(name: str):
+    try:
+        module_name, attribute = _EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

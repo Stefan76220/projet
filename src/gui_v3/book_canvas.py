@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
+from src.core.book_source import detect_pdf_cover_pages, load_project_source, render_project_source_page
 from src.gui_v3 import theme
 from src.gui_v3.page_visual_catalog import canonical_page_type, page_visual_definition, structure_builtin_catalog
 from src.gui_v3.structure_core import migrate_structure_data
@@ -882,6 +883,14 @@ class BookCanvas(tk.Frame):
         # courte n'apparaît qu'après un survol volontaire et prolongé.
         self._gabarit_inspector_tooltip_key: str = ""
         self._gabarit_inspector_tooltip_job = None
+        # Source du livre : référence visuelle automatique dans Gabarits.
+        # Elle reste distincte du Fond guide, n'est jamais persistée dans la
+        # maquette et ne participe ni à Production ni à l'export.
+        # Transparence de la Source du livre dans Gabarits. Valeur utilisateur
+        # (0 = opaque, 0.90 = très transparente), distincte du Fond guide.
+        self._gabarit_source_reference_transparency: float = 0.42
+        self._gabarit_source_reference_slider_range = None
+
         # Fond guide : image de construction seulement, jamais exportée.
         self._gabarit_guide_cache: dict[str, object] = {}
         # V76 — copie runtime par page : évite qu’un rechargement/sauvegarde intermédiaire
@@ -1963,6 +1972,7 @@ class BookCanvas(tk.Frame):
         self.gabarit_inspector_canvas.bind("<Leave>", self._gabarit_inspector_leave)
         self.gabarit_inspector_canvas.bind("<Configure>", lambda _e: self._render_gabarit_inspector_overlay(force=True), add="+")
         self.gabarit_inspector_canvas.bind("<MouseWheel>", lambda _e: "break")
+
         self._gabarit_inspector_sync_job = None
         if self._gabarit_inspector_overlay:
             self.canvas.bind("<Configure>", self._schedule_gabarit_inspector_overlay_sync, add="+")
@@ -2558,6 +2568,93 @@ class BookCanvas(tk.Frame):
         return 350 if width >= 1000.0 else 324
 
     GABARIT_TOOLS_SIDE_KEY = "gabarit_tools_side_v82"
+    GABARIT_SOURCE_TRANSPARENCY_KEY = "gabarit_source_reference_transparency_v1"
+    GABARIT_PAGE_LOCK_KEY = "gabarit_page_locked"
+
+    def _gabarit_source_reference_transparency_value(self) -> float:
+        data = self._data if isinstance(getattr(self, "_data", None), dict) else {}
+        raw = data.get(self.GABARIT_SOURCE_TRANSPARENCY_KEY, getattr(self, "_gabarit_source_reference_transparency", 0.42))
+        try:
+            return max(0.0, min(0.90, float(raw)))
+        except Exception:
+            return 0.42
+
+    def gabarit_set_source_reference_transparency(self, transparency: float, *, save: bool = True) -> bool:
+        transparency = max(0.0, min(0.90, float(transparency)))
+        self._gabarit_source_reference_transparency = transparency
+        if not isinstance(getattr(self, "_data", None), dict):
+            self._data = {}
+        self._data[self.GABARIT_SOURCE_TRANSPARENCY_KEY] = round(transparency, 3)
+        if save and self.project is not None:
+            try:
+                data = self.project.load_mockup()
+            except Exception:
+                data = deepcopy(self._data)
+            if not isinstance(data, dict):
+                data = {}
+            data[self.GABARIT_SOURCE_TRANSPARENCY_KEY] = round(transparency, 3)
+            try:
+                self.project.save_mockup(data)
+            except Exception:
+                pass
+        self.render()
+        self._gabarit_inspector_signature = None
+        self._render_gabarit_inspector_overlay(force=True)
+        if save:
+            self.status_var.set(f"Transparence de la Source du livre : {int(round(transparency*100))} %")
+        return True
+
+    def _gabarit_set_source_reference_transparency_from_x(self, x: float, *, save: bool = False) -> bool:
+        """Même mécanique que le curseur de transparence du Fond guide."""
+        rng = getattr(self, "_gabarit_source_reference_slider_range", None)
+        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+            return False
+        x1, x2 = map(float, rng)
+        ratio = (float(x) - x1) / max(1.0, x2 - x1)
+        return self.gabarit_set_source_reference_transparency(
+            max(0.0, min(0.90, ratio * 0.90)), save=save
+        )
+
+    def _gabarit_item_page_locked(self, item: dict | None) -> bool:
+        return bool(isinstance(item, dict) and item.get(self.GABARIT_PAGE_LOCK_KEY, False))
+
+    def _gabarit_active_page_locked(self) -> bool:
+        indices = self._gabarit_active_unit_indices() if self.items else []
+        if not indices:
+            item = self._gabarit_active_item()
+            return self._gabarit_item_page_locked(item)
+        return any(self._gabarit_item_page_locked(self.items[i]) for i in indices if 0 <= int(i) < len(self.items))
+
+    def _gabarit_page_edit_guard(self, action: str = "modifier cette page") -> bool:
+        if str(getattr(self, "_work_mode", "") or "") != "gabarits":
+            return True
+        if not self._gabarit_active_page_locked():
+            return True
+        self._gabarit_zone_drag = None
+        self.status_var.set(f"Page verrouillée — déverrouillez-la avant de {action}.")
+        return False
+
+    def gabarit_toggle_page_lock(self) -> bool:
+        indices = self._gabarit_active_unit_indices()
+        if not indices and self._selected_index is not None:
+            indices = [int(self._selected_index)]
+        indices = [int(i) for i in indices if 0 <= int(i) < len(self.items)]
+        if not indices:
+            return False
+        # Une double page est verrouillée comme une seule surface de travail.
+        new_state = not all(self._gabarit_item_page_locked(self.items[i]) for i in indices)
+        for i in indices:
+            self.items[i][self.GABARIT_PAGE_LOCK_KEY] = bool(new_state)
+        self._gabarit_zone_drag = None
+        self._gabarit_set_selected_ids([])
+        self._gabarit_save_model_state()
+        self._gabarit_inspector_signature = None
+        self.render()
+        self._render_gabarit_inspector_overlay(force=True)
+        self._emit_gabarit_page_changed()
+        self._emit_gabarit_selection_changed()
+        self.status_var.set("Page verrouillée" if new_state else "Page déverrouillée")
+        return True
 
     def _gabarit_tools_side(self) -> str:
         runtime = str(getattr(self, "_gabarit_tools_side_runtime", "") or "").lower()
@@ -2732,6 +2829,8 @@ class BookCanvas(tk.Frame):
                 bool(self._gabarit_alignment_is_exception(item)),
                 str(getattr(self, "_gabarit_alignment_pending_reference", "")),
                 self._gabarit_status(item), self._gabarit_item_last_scope(item),
+                bool(self._gabarit_active_page_locked()),
+                round(self._gabarit_source_reference_transparency_value(), 3),
                 bool(self._gabarit_scope_is_active(item)), str(getattr(self, "_gabarit_scope_pending", "")),
                 bool(getattr(self, "_gabarit_validation_scope_prompt", False)),
                 tuple(sorted((str(k), str(v)) for k, v in fmt.items())),
@@ -3701,6 +3800,8 @@ class BookCanvas(tk.Frame):
         self._gabarit_inspector_register_tooltip("edit_book_settings", "Ouvrir les réglages généraux du livre")
 
         # Ajouter — les trois formes sont visibles sans ouvrir un groupe.
+        active_item = self._gabarit_active_item()
+        page_locked = self._gabarit_active_page_locked()
         add_label_y = 52.0
         target.create_text(permanent_left, add_label_y, text="AJOUTER", anchor="w", fill="#81959A", font=(theme.FONT_UI,7,"bold"))
         add_y = 62.0
@@ -3713,14 +3814,76 @@ class BookCanvas(tk.Frame):
         )):
             x1=permanent_left+i*(add_button+add_gap)
             premium_kind={"create_text":"text","create_image":"image","create_document":"document"}.get(key,"text")
-            self._gabarit_inspector_premium_icon_button(target,key,(x1,add_y,x1+add_button,add_y+add_button),premium_kind,tooltip=tip)
+            self._gabarit_inspector_premium_icon_button(target,key,(x1,add_y,x1+add_button,add_y+add_button),premium_kind,disabled=page_locked,tooltip=tip)
+
+        # Verrouillage local de la page : état toujours visible, distinct du
+        # verrouillage d'une zone. Il protège la composition contre les gestes
+        # accidentels tout en laissant navigation, zoom et références accessibles.
+        lock_y1, lock_y2 = 112.0, 143.0
+        self._gabarit_inspector_control_box(target, "page_lock", (permanent_left, lock_y1, permanent_right, lock_y2), selected=page_locked)
+        self._gabarit_inspector_draw_premium_icon(
+            target, "unlock" if page_locked else "lock",
+            (permanent_left+5.0, lock_y1+2.0, permanent_left+38.0, lock_y2-2.0),
+            selected=page_locked, hovered=(self._gabarit_inspector_hover=="page_lock"),
+        )
+        target.create_text(
+            permanent_left+43.0, (lock_y1+lock_y2)/2.0,
+            text="PAGE VERROUILLÉE" if page_locked else "PAGE MODIFIABLE",
+            anchor="w", fill="#E8D6A8" if page_locked else "#C8D5D5",
+            font=(theme.FONT_UI,7,"bold"),
+        )
+        self._gabarit_inspector_register_tooltip(
+            "page_lock",
+            "Déverrouiller cette page" if page_locked else "Verrouiller cette page contre les modifications accidentelles",
+        )
+
+        # Source du livre : transparence TOUJOURS visible dans la zone permanente.
+        # Le premier essai l'avait placée dans le déroulé « Fond guide » : le
+        # contrôle existait mais restait invisible tant que ce déroulé n'était pas
+        # ouvert. Ici, la Source est une référence de premier niveau de Gabarits.
+        active_source_numbers = [
+            self._gabarit_source_reference_page_number(self.items[i])
+            for i in self._gabarit_active_unit_indices()
+            if 0 <= int(i) < len(self.items)
+        ]
+        source_present = any(number is not None for number in active_source_numbers)
+        source_transparency = self._gabarit_source_reference_transparency_value()
+        source_label_y = 154.0
+        self._gabarit_source_transparency_label_id = target.create_text(
+            (permanent_left + permanent_right) / 2.0, source_label_y,
+            text=(f"SOURCE · TRANSPARENCE {int(round(source_transparency*100))} %"
+                  if source_present else "SOURCE · AUCUNE PAGE LIÉE"),
+            anchor="center",
+            fill="#A9C3C2" if source_present else "#66787D",
+            font=(theme.FONT_UI, 7, "bold"),
+        )
+        src_bar_x1 = permanent_left + 10.0
+        src_bar_x2 = permanent_right - 10.0
+        src_bar_y = 174.0
+        # Source du livre : copie volontaire du curseur Fond guide.
+        # Même piste Canvas, même poignée, même hitbox et même cycle
+        # press / B1-Motion / release. Aucun composant parallèle.
+        track_fill = "#405760" if source_present else "#324148"
+        label_fill = "#61777D" if source_present else "#4B5A5F"
+        knob_fill = "#51BEB5" if source_present else "#58696D"
+        knob_outline = "#C8D9D8" if source_present else "#718086"
+        target.create_line(src_bar_x1, src_bar_y, src_bar_x2, src_bar_y, fill=track_fill, width=6)
+        target.create_text(src_bar_x1, src_bar_y-12.0, text="0 %", anchor="w", fill=label_fill, font=(theme.FONT_UI,6))
+        target.create_text(src_bar_x2, src_bar_y-12.0, text="90 %", anchor="e", fill=label_fill, font=(theme.FONT_UI,6))
+        knob_x = src_bar_x1 + (src_bar_x2-src_bar_x1) * (source_transparency/0.90)
+        knob_x = max(src_bar_x1, min(src_bar_x2, knob_x))
+        target.create_oval(knob_x-8, src_bar_y-8, knob_x+8, src_bar_y+8, fill=knob_fill, outline=knob_outline, width=2)
+        self._gabarit_source_reference_slider_range = (src_bar_x1, src_bar_x2)
+        if source_present:
+            self._gabarit_inspector_hitboxes["source_opacity_bar"] = (
+                src_bar_x1-10, src_bar_y-15, src_bar_x2+10, src_bar_y+15
+            )
 
         # Validation du gabarit : elle se manifeste uniquement lorsqu'une
         # création/modification rend la page à valider. La portée est proposée
         # seulement après ce clic, jamais comme étape préalable.
-        active_item = self._gabarit_active_item()
         g_status = self._gabarit_status(active_item) if isinstance(active_item, dict) else "non_commence"
-        validation_y1, validation_y2 = 112.0, 143.0
+        validation_y1, validation_y2 = 194.0, 225.0
         if g_status == "en_cours":
             if bool(getattr(self, "_gabarit_validation_scope_prompt", False)):
                 gap = 6.0
@@ -3750,13 +3913,13 @@ class BookCanvas(tk.Frame):
         quick_x += quick_button + quick_gap
         self._gabarit_inspector_premium_icon_button(target,"history_redo",(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),"redo",disabled=not self.can_redo(),tooltip="Rétablir · Ctrl+Y / Ctrl+Maj+Z")
         quick_x += quick_button + quick_gap
-        self._gabarit_inspector_premium_icon_button(target,"zone_delete",(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),"trash",danger=True,disabled=count==0,tooltip="Supprimer la sélection · Suppr")
+        self._gabarit_inspector_premium_icon_button(target,"zone_delete",(quick_x,quick_y,quick_x+quick_button,quick_y+quick_button),"trash",danger=True,disabled=(count==0 or page_locked),tooltip="Supprimer la sélection · Suppr")
 
         # V84 — pas de traits entre les zones permanentes : les espacements suffisent.
 
         # Rail déroulant entre les deux zones permanentes.
         gap_y = 5.0
-        rail_top = 157.0
+        rail_top = 239.0 if g_status == "en_cours" else 194.0
         rail_bottom = quick_y - 15.0
         available = max(1.0, rail_bottom - rail_top)
         row_h = min(52.0, max(32.0, (available - gap_y * max(0,len(order)-1)) / max(1, len(order))))
@@ -3814,7 +3977,7 @@ class BookCanvas(tk.Frame):
         content_h = {
             "allowed": 60.0,
             "snap": 134.0,
-            "guide": 176.0,
+            "guide": 180.0,
             "organize": 362.0,
             "scope": 62.0,
             "model": 62.0,
@@ -3909,20 +4072,22 @@ class BookCanvas(tk.Frame):
 
         elif active_band == "guide":
             # Fond guide = support de travail de la PAGE, pas propriété d'une zone.
-            # Les réglages sont toujours affichés et peuvent être préparés avant import.
+            # La transparence de la Source du livre est désormais permanente
+            # dans l'inspecteur et n'est donc plus dupliquée dans ce déroulé.
+            guide_offset = 0.0
             has_guide=bool(guide)
             visible=bool(guide.get("visible",True)) if has_guide else False
             row_h = icon_strip((
                 ("guide_import","guide_import",False,"Remplacer le fond guide" if has_guide else "Importer un fond guide",False),
                 ("guide_toggle","guide_show" if visible else "guide_hide",visible,"Masquer le fond guide" if visible else "Afficher le fond guide",False,not has_guide),
                 ("guide_delete","delete",False,"Supprimer le fond guide",True,not has_guide),
-            ),button=40.0,gap=4.0,y_offset=0.0)
+            ),button=40.0,gap=4.0,y_offset=guide_offset)
 
             pending_frame=str(getattr(self,"_gabarit_guide_pending_frame","bleed") or "bleed")
             frame=str(guide.get("frame") or pending_frame) if has_guide else pending_frame
             if frame not in {"margins","page","bleed"}:
                 frame="bleed"
-            section_y = content_top + row_h + 8.0
+            section_y = content_top + guide_offset + row_h + 8.0
             target.create_text(fly_left+12.0,section_y,text="CADRAGE AUTO",anchor="w",fill="#9FB0B3",font=(theme.FONT_UI,8,"bold"))
             row_h2 = icon_strip((
                 ("guide_frame_margins","frame_margins",frame=="margins","Cadrer automatiquement sur les marges",False),
@@ -4679,23 +4844,28 @@ class BookCanvas(tk.Frame):
         if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "guide_opacity_bar":
             self._gabarit_set_guide_transparency_from_x(float(event.x),save=False)
             return "break"
-        name = str(getattr(self, "_gabarit_inspector_drag_block", "") or "")
-        if not name:
+        if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "source_opacity_bar":
+            self._gabarit_set_source_reference_transparency_from_x(float(event.x),save=False)
             return "break"
-        order = list(getattr(self, "_gabarit_inspector_drag_order", None) or self._gabarit_inspector_block_order())
-        if name not in order:
-            return "break"
-        bounds = dict(getattr(self, "_gabarit_inspector_block_bounds", {}) or {})
-        candidates = [(n, (float(b[0])+float(b[1]))/2.0) for n,b in bounds.items() if n in order]
-        if not candidates:
-            return "break"
-        target = min(candidates, key=lambda pair: abs(pair[1]-float(event.y)))[0]
-        old_index = order.index(name); new_index = order.index(target)
-        if new_index != old_index:
-            order.pop(old_index); order.insert(new_index, name)
-            self._gabarit_inspector_drag_order = order
+        drag_name = str(getattr(self, "_gabarit_inspector_drag_block", "") or "")
+        if drag_name:
+            order = list(getattr(self, "_gabarit_inspector_drag_order", None) or self._gabarit_inspector_block_order())
+            self._gabarit_inspector_save_block_order(order)
+            self._gabarit_inspector_drag_block = ""
+            self._gabarit_inspector_drag_order = None
+            self._gabarit_inspector_pressed = ""
+            self._gabarit_inspector_hover = ""
             self._gabarit_inspector_signature = None
+            try:
+                self.gabarit_inspector_canvas.configure(cursor="arrow")
+            except Exception:
+                pass
             self._render_gabarit_inspector_overlay(force=True)
+            return "break"
+        self._gabarit_inspector_pressed = ""
+        self._gabarit_inspector_hover = self._gabarit_inspector_key_at(float(event.x), float(event.y))
+        self._gabarit_inspector_signature = None
+        self._render_gabarit_inspector_overlay(force=True)
         return "break"
 
     def _gabarit_inspector_leave(self, _event=None):
@@ -4704,6 +4874,11 @@ class BookCanvas(tk.Frame):
         if self._gabarit_inline_geometry_is_active():
             return "break"
         if str(getattr(self, "_gabarit_inspector_drag_block", "") or ""):
+            return "break"
+        # Un curseur en cours de glisser ne doit jamais être désarmé par un
+        # simple <Leave>. La capture Tk continuera à envoyer le mouvement et le
+        # relâchement même si la souris dépasse momentanément la piste.
+        if str(getattr(self, "_gabarit_inspector_pressed", "") or "") in {"guide_opacity_bar", "source_opacity_bar"}:
             return "break"
         self._gabarit_inspector_hover = ""
         self._gabarit_inspector_pressed = ""
@@ -4760,6 +4935,35 @@ class BookCanvas(tk.Frame):
         self._gabarit_inspector_hover = key
         self._gabarit_inspector_signature = None
         self._render_gabarit_inspector_overlay(force=True)
+        if key in {"guide_opacity_bar", "source_opacity_bar"}:
+            try:
+                self.gabarit_inspector_canvas.grab_set()
+                self.gabarit_inspector_canvas.configure(cursor="sb_h_double_arrow")
+            except Exception:
+                pass
+        if key == "page_lock":
+            self.gabarit_toggle_page_lock()
+            return "break"
+
+        # Une page verrouillée reste consultable et navigable. Les commandes de
+        # référence, validation, historique et réglages restent disponibles ; les
+        # gestes qui modifient la composition sont bloqués ici au plus tôt.
+        if self._gabarit_active_page_locked():
+            allowed = {
+                "history_undo", "history_redo", "edit_book_settings",
+                "gabarit_validate", "gabarit_validate_page", "gabarit_validate_type",
+                "copy_template", "guide_import", "guide_toggle", "guide_delete",
+                "guide_opacity_bar", "source_opacity_bar",
+            }
+            if key.startswith("guide_frame_") or key.startswith("snap_"):
+                allowed.add(key)
+            if key not in allowed:
+                self.status_var.set("Page verrouillée — déverrouillez-la pour modifier la composition.")
+                self._gabarit_inspector_pressed = ""
+                self._gabarit_inspector_signature = None
+                self._render_gabarit_inspector_overlay(force=True)
+                return "break"
+
         if key == "create_text":
             self.gabarit_add_zone("text")
         elif key == "gabarit_validate":
@@ -4837,6 +5041,8 @@ class BookCanvas(tk.Frame):
             self.gabarit_set_guide_frame(key[len("guide_frame_"):])
         elif key == "guide_opacity_bar":
             self._gabarit_set_guide_transparency_from_x(float(event.x),save=False)
+        elif key == "source_opacity_bar":
+            self._gabarit_set_source_reference_transparency_from_x(float(event.x),save=False)
         elif key == "multi_distribute_h":
             self.gabarit_distribute_selected_zones("horizontal")
         elif key == "multi_distribute_v":
@@ -4858,6 +5064,22 @@ class BookCanvas(tk.Frame):
             return self._structure_tools_release(event)
         if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "guide_opacity_bar":
             self._gabarit_set_guide_transparency_from_x(float(event.x),save=True)
+            try:
+                self.gabarit_inspector_canvas.grab_release()
+                self.gabarit_inspector_canvas.configure(cursor="arrow")
+            except Exception:
+                pass
+            self._gabarit_inspector_pressed = ""
+            self._gabarit_inspector_signature = None
+            self._render_gabarit_inspector_overlay(force=True)
+            return "break"
+        if str(getattr(self,"_gabarit_inspector_pressed","") or "") == "source_opacity_bar":
+            self._gabarit_set_source_reference_transparency_from_x(float(event.x),save=True)
+            try:
+                self.gabarit_inspector_canvas.grab_release()
+                self.gabarit_inspector_canvas.configure(cursor="arrow")
+            except Exception:
+                pass
             self._gabarit_inspector_pressed = ""
             self._gabarit_inspector_signature = None
             self._render_gabarit_inspector_overlay(force=True)
@@ -5826,6 +6048,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_set_selected_zone_rect_mm(self, x_mm: float, y_mm: float, w_mm: float, h_mm: float) -> bool:
+        if not self._gabarit_page_edit_guard("modifier les dimensions"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -5846,6 +6070,8 @@ class BookCanvas(tk.Frame):
         return self._gabarit_commit_zone_rect(zone, requested, "Position et dimensions mises à jour")
 
     def gabarit_set_selected_zone_occupation(self, mode: str) -> bool:
+        if not self._gabarit_page_edit_guard("modifier l’occupation"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -7990,6 +8216,8 @@ class BookCanvas(tk.Frame):
         return value if value in {"left", "center", "right"} else "left"
 
     def gabarit_set_selected_zone_spread_position(self, position: str) -> bool:
+        if not self._gabarit_page_edit_guard("modifier la cible de la zone"):
+            return False
         """Place une zone sur la page gauche, la double page ou la page droite."""
         if not self._gabarit_active_is_spread():
             self.status_var.set("Ce réglage est disponible uniquement sur une double page.")
@@ -8061,6 +8289,8 @@ class BookCanvas(tk.Frame):
         return None
 
     def gabarit_add_zone(self, kind: str) -> bool:
+        if not self._gabarit_page_edit_guard("ajouter une zone"):
+            return False
         kind = str(kind or "").strip().lower()
         if kind not in {"text", "image", "document"}:
             return False
@@ -8315,6 +8545,8 @@ class BookCanvas(tk.Frame):
         return [str(z.get("id") or "") for z in self._gabarit_active_zones() if isinstance(z,dict) and self._gabarit_zone_assoc_group(z)==gid and str(z.get("id") or "")]
 
     def gabarit_associate_selected_zones(self) -> bool:
+        if not self._gabarit_page_edit_guard("associer des zones"):
+            return False
         zones=self._gabarit_selected_zone_dicts()
         if len(zones)<2:
             self.status_var.set("Associer : sélectionnez au moins 2 zones — Maj+clic pour ajouter ou retirer une zone.")
@@ -8336,6 +8568,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_dissociate_selected_zones(self) -> bool:
+        if not self._gabarit_page_edit_guard("dissocier des zones"):
+            return False
         zones=self._gabarit_selected_zone_dicts()
         groups={self._gabarit_zone_assoc_group(z) for z in zones if self._gabarit_zone_assoc_group(z)}
         if not groups:
@@ -8351,6 +8585,8 @@ class BookCanvas(tk.Frame):
         return changed
 
     def gabarit_move_selected_zones_layer(self, direction: str) -> bool:
+        if not self._gabarit_page_edit_guard("modifier la superposition"):
+            return False
         active=self._gabarit_active_item(); zones=active.get("gabarit_zones") if isinstance(active,dict) else None
         # V80 — Superposition reçoit les unités atomiques complètes : sélectionner
         # un membre d'un groupe revient toujours à déplacer le groupe entier.
@@ -8436,6 +8672,8 @@ class BookCanvas(tk.Frame):
             z["y"] = float(z.get("y",0)) + float(dy)
 
     def gabarit_align_selected_zones(self, mode: str) -> bool:
+        if not self._gabarit_page_edit_guard("aligner des zones"):
+            return False
         units = self._gabarit_selected_units()
         if not units:
             return self.gabarit_align_selected_zone(mode)
@@ -8509,6 +8747,8 @@ class BookCanvas(tk.Frame):
         return changed
 
     def gabarit_distribute_selected_zones(self, axis: str) -> bool:
+        if not self._gabarit_page_edit_guard("distribuer des zones"):
+            return False
         units = self._gabarit_selected_units()
         if len(units) < 3:
             self.status_var.set("Distribuer : sélectionnez au moins 3 zones ou groupes — Maj+clic pour compléter la sélection.")
@@ -8558,6 +8798,8 @@ class BookCanvas(tk.Frame):
             z["h"] = max(1e-6, zh * sy)
 
     def gabarit_equalize_selected_zones(self, dimension: str) -> bool:
+        if not self._gabarit_page_edit_guard("égaliser des zones"):
+            return False
         units = self._gabarit_selected_units()
         if len(units) < 2:
             self.status_var.set("Égaliser : sélectionnez au moins 2 zones ou groupes — Maj+clic pour compléter la sélection.")
@@ -8591,6 +8833,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_delete_selected_zones(self) -> bool:
+        if not self._gabarit_page_edit_guard("supprimer des zones"):
+            return False
         ids=set(self._gabarit_selected_ids())
         if not ids: return False
         active=self._gabarit_active_item(); zones=active.get("gabarit_zones") if isinstance(active,dict) else None
@@ -8604,6 +8848,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_duplicate_selected_zones(self) -> bool:
+        if not self._gabarit_page_edit_guard("dupliquer des zones"):
+            return False
         units = self._gabarit_selected_units()
         sources = [z for unit in units for z in unit]
         if len(sources) < 2:
@@ -8637,6 +8883,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_duplicate_selected_zone(self) -> bool:
+        if not self._gabarit_page_edit_guard("dupliquer une zone"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -8671,6 +8919,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_delete_selected_zone(self) -> bool:
+        if not self._gabarit_page_edit_guard("supprimer une zone"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -8701,6 +8951,8 @@ class BookCanvas(tk.Frame):
             return None
         if not self._gabarit_selected_ids():
             return "break"
+        if not self._gabarit_page_edit_guard("supprimer la sélection"):
+            return "break"
         if len(self._gabarit_selected_ids()) > 1:
             self.gabarit_delete_selected_zones()
         else:
@@ -8723,6 +8975,8 @@ class BookCanvas(tk.Frame):
         """Déplace la sélection de 0,1 / 1 / 10 mm sans casser les groupes."""
         if str(getattr(self, "_work_mode", "")) not in {"gabarits", "production"}:
             return None
+        if not self._gabarit_page_edit_guard("déplacer la sélection"):
+            return "break"
         units = self._gabarit_selected_units()
         if not units:
             return None
@@ -8749,6 +9003,8 @@ class BookCanvas(tk.Frame):
         return "break"
 
     def gabarit_center_selected_zone(self) -> bool:
+        if not self._gabarit_page_edit_guard("déplacer une zone"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -8758,6 +9014,8 @@ class BookCanvas(tk.Frame):
         return self._gabarit_commit_zone_rect(zone, rect, "Zone centrée")
 
     def gabarit_unlock_all_zones(self) -> bool:
+        if not self._gabarit_page_edit_guard("modifier le verrouillage des zones"):
+            return False
         zones=[z for z in self._gabarit_active_zones() if isinstance(z,dict)]
         changed=False
         for zone in zones:
@@ -8773,6 +9031,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_toggle_selected_zones_lock(self) -> bool:
+        if not self._gabarit_page_edit_guard("modifier le verrouillage des zones"):
+            return False
         zones=self._gabarit_selected_zone_dicts()
         if not zones:
             return False
@@ -8787,6 +9047,8 @@ class BookCanvas(tk.Frame):
         return True
 
     def gabarit_toggle_selected_zone_lock(self) -> bool:
+        if not self._gabarit_page_edit_guard("modifier le verrouillage de la zone"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -8811,6 +9073,8 @@ class BookCanvas(tk.Frame):
         return changed
 
     def gabarit_move_selected_zone_layer(self, direction: str) -> bool:
+        if not self._gabarit_page_edit_guard("modifier la superposition"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -8901,6 +9165,8 @@ class BookCanvas(tk.Frame):
         return x, y, w, h
 
     def gabarit_align_selected_zone(self, mode: str, reference: str | None = None) -> bool:
+        if not self._gabarit_page_edit_guard("aligner une zone"):
+            return False
         active = self._gabarit_active_item()
         zone = self._gabarit_find_zone(active, zone_id=self._gabarit_selected_zone_id) if active else None
         if zone is None:
@@ -9200,6 +9466,63 @@ class BookCanvas(tk.Frame):
             "se": se, "s": s, "sw": sw, "w": w,
             "rotate": rotate,
         }
+
+    def _gabarit_source_reference_page_number(self, item: dict | None) -> int | None:
+        """Numéro de page auteur lié à une page TomeLinea, s'il existe."""
+        if not isinstance(item, dict):
+            return None
+        raw = item.get("book_source_page_number")
+        try:
+            number = int(raw)
+        except (TypeError, ValueError):
+            return None
+        return number if number >= 1 else None
+
+    def _gabarit_draw_source_reference(
+        self, target, x: float, y: float, w: float, h: float, *, item: dict
+    ) -> bool:
+        """Dessine la page de la Source du livre derrière le gabarit.
+
+        Cette image est une référence de travail éphémère : elle n'est ni un
+        Fond guide, ni un contenu Production, ni une donnée enregistrée dans la
+        maquette. Le lien stable reste ``book_source_page_number``.
+        """
+        if str(getattr(self, "_work_mode", "") or "") != "gabarits":
+            return False
+        if Image is None or not hasattr(target, "image"):
+            return False
+        number = self._gabarit_source_reference_page_number(item)
+        if number is None:
+            return False
+        project_root = getattr(self.project, "root", None) if self.project is not None else None
+        if not project_root:
+            return False
+        try:
+            rendered = render_project_source_page(project_root, number, max_width=1600)
+            source = self._gabarit_load_guide_image(str(rendered))
+        except Exception:
+            return False
+        if source is None:
+            return False
+        iw, ih = source.size
+        if iw <= 0 or ih <= 0 or w <= 1 or h <= 1:
+            return False
+        scale = min(float(w) / float(iw), float(h) / float(ih))
+        rw = max(1, int(round(iw * scale)))
+        rh = max(1, int(round(ih * scale)))
+        try:
+            resized = source.resize((rw, rh), Image.Resampling.LANCZOS)
+        except Exception:
+            resized = source.resize((rw, rh))
+        opacity = max(0.10, min(1.0, 1.0 - self._gabarit_source_reference_transparency_value()))
+        alpha = resized.getchannel("A").point(lambda a: int(a * opacity))
+        px = int(round(x + (w - rw) / 2.0))
+        py = int(round(y + (h - rh) / 2.0))
+        try:
+            target.image.paste(resized.convert("RGB"), (px, py), alpha)
+        except Exception:
+            return False
+        return True
 
     def _gabarit_guide_frame_box(self, x: float, y: float, w: float, h: float, item: dict, frame: str, *, spread=False):
         settings=self._gabarit_sheet_settings(item)
@@ -9770,6 +10093,27 @@ class BookCanvas(tk.Frame):
         else:
             self._gabarit_draw_sheet_guides(target, x1, y1, single_w, page_h, item=active_item)
 
+        # Source du livre : première référence visuelle de Gabarits. Chaque face
+        # d'une double page utilise son propre lien source ; les pages créées par
+        # TomeLinea sans équivalent auteur restent volontairement vierges.
+        source_reference_drawn = False
+        if str(getattr(self, "_work_mode", "") or "") == "gabarits":
+            if spread:
+                unit_indices = list(active_unit.get("indices", (active_index,)))
+                left_item = self.items[unit_indices[0]] if unit_indices else active_item
+                right_item = self.items[unit_indices[1]] if len(unit_indices) > 1 else active_item
+                left_drawn = self._gabarit_draw_source_reference(
+                    target, x1, y1, single_w, page_h, item=left_item
+                )
+                right_drawn = self._gabarit_draw_source_reference(
+                    target, x1 + single_w, y1, single_w, page_h, item=right_item
+                )
+                source_reference_drawn = bool(left_drawn or right_drawn)
+            else:
+                source_reference_drawn = self._gabarit_draw_source_reference(
+                    target, x1, y1, single_w, page_h, item=active_item
+                )
+
         # Production affiche, lorsqu'il existe, le vrai rendu de chaque page
         # à l'intérieur du même cadre que Gabarits. La géométrie et les zones
         # restent par-dessus afin de permettre les corrections de composition.
@@ -9819,7 +10163,7 @@ class BookCanvas(tk.Frame):
                 self._gabarit_draw_pending_validation_halo(target, x1 + single_w, y1, x2, y2, _gab_right)
             else:
                 self._gabarit_draw_pending_validation_halo(target, x1, y1, x2, y2, active_item)
-        if scale >= 0.35 and not self._gabarit_active_zones():
+        if scale >= 0.35 and not self._gabarit_active_zones() and not source_reference_drawn:
             target.create_text(cx, cy, text=str(active_type), fill="#68706E", font=(theme.FONT_TITLE, max(10, int(13 * min(zoom_factor, 2.0))), "bold"), anchor="center")
             hint = "En attente du gabarit" if str(getattr(self, "_work_mode", "") or "") == "production" else "Page prête pour le gabarit"
             target.create_text(cx, cy + 22, text=hint, fill="#8B9290", font=(theme.FONT_UI, max(7, int(8 * min(zoom_factor, 1.6)))), anchor="center")
@@ -10104,6 +10448,10 @@ class BookCanvas(tk.Frame):
                     zid, handle = handle_key, "se"
                 active = self._gabarit_active_item()
 
+                if self._gabarit_active_page_locked():
+                    self.status_var.set("Page verrouillée — les zones restent consultables mais ne peuvent pas être transformées.")
+                    return "break"
+
                 if zid == "__multi__":
                     selected_zones = self._gabarit_selected_zone_dicts()
                     if len(selected_zones) > 1 and self._gabarit_multi_same_surface(selected_zones):
@@ -10187,7 +10535,7 @@ class BookCanvas(tk.Frame):
                     else:
                         move_ids = associated or [zid]
                         self._gabarit_set_selected_ids(move_ids, primary=zid)
-                    if zone is not None and not bool(zone.get("locked", False)):
+                    if zone is not None and not bool(zone.get("locked", False)) and not self._gabarit_active_page_locked():
                         selected_zones = [self._gabarit_find_zone(active, zone_id=value) for value in move_ids]
                         selected_zones = [value for value in selected_zones if isinstance(value, dict)]
                         drag_state = {"mode": "move", "start": (x, y), "rect": (float(zone.get("x",0)), float(zone.get("y",0)), float(zone.get("w",.2)), float(zone.get("h",.2))), "zone": zone}
@@ -10209,6 +10557,9 @@ class BookCanvas(tk.Frame):
                                 # la sélection, jamais sur le seul membre attrapé à la souris.
                                 drag_state["snap_rect"] = self._gabarit_unit_bounds(selected_zones)
                         self._gabarit_zone_drag = drag_state
+                    elif self._gabarit_active_page_locked():
+                        self._gabarit_zone_drag = None
+                        self.status_var.set("Page verrouillée — sélection possible, modification bloquée.")
                 self.render()
                 self._emit_gabarit_selection_changed()
                 return "break"
@@ -13735,7 +14086,125 @@ class BookCanvas(tk.Frame):
         return event
 
 
-    def _structure_apply_type_metadata(self, item: dict, page_type: str, label: str) -> None:
+    def _structure_book_source_current_type(self, item: dict) -> tuple[str, str]:
+        """Retourne le type interne et son libellé courant pour une page liée."""
+        current_type = str(item.get("type") or item.get("kind") or "").strip()
+        current_name = str(
+            item.get("type_name")
+            or item.get("attribute")
+            or item.get("title")
+            or ""
+        ).strip()
+        if not current_name:
+            current_name = (
+                current_type.replace("_", " ").strip().capitalize()
+                if current_type
+                else "Sans type"
+            )
+        return current_type, current_name
+
+    @staticmethod
+    def _structure_normalize_book_source_change_origin(origin: str | None) -> str:
+        """Normalise l'origine d'un changement pour le suivi Source du livre."""
+        raw = str(origin or "").strip().lower()
+        if raw in {"user", "manual", "manuel", "utilisateur"}:
+            return "user"
+        if raw in {"automatic", "auto", "automatique", "tomelinea"}:
+            return "automatic"
+        if raw in {"source", "import", "initial"}:
+            return "source"
+        if raw in {"legacy", "migration"}:
+            return "legacy"
+        return "system" if raw else ""
+
+    def _structure_ensure_book_source_initial_type(self, item: dict) -> None:
+        """Mémorise l'état initial d'une page liée à la Source du livre.
+
+        La Source reste immuable. Les anciens projets sont migrés à la volée :
+        dans la première version du moteur, les pages de contenu naissaient
+        volontairement "Sans type".
+        """
+        if not isinstance(item, dict) or item.get("book_source_page_number") is None:
+            return
+
+        if not str(item.get("book_source_initial_type_name") or "").strip():
+            role = str(item.get("book_source_role") or "").strip().lower()
+            if role == "content":
+                initial_type = ""
+                initial_name = "Sans type"
+            else:
+                initial_type, initial_name = self._structure_book_source_current_type(item)
+
+            item["book_source_initial_type"] = initial_type
+            item["book_source_initial_type_name"] = initial_name
+
+        # Les champs courants rendent le suivi indépendant de l'interface et
+        # réutilisable plus tard par un moteur de classement automatique.
+        current_type, current_name = self._structure_book_source_current_type(item)
+        item.setdefault("book_source_current_type", current_type)
+        item.setdefault("book_source_current_type_name", current_name)
+
+        initial_type = str(item.get("book_source_initial_type") or "").strip()
+        initial_name = str(item.get("book_source_initial_type_name") or "Sans type").strip() or "Sans type"
+        modified = (
+            current_type.casefold() != initial_type.casefold()
+            or current_name.casefold() != initial_name.casefold()
+        )
+        item.setdefault("book_source_type_modified", bool(modified))
+        if modified and not str(item.get("book_source_type_change_origin") or "").strip():
+            # Pour un ancien projet, on sait constater le changement mais pas
+            # déterminer honnêtement s'il venait de l'utilisateur ou d'un futur
+            # automatisme : on le marque comme migration héritée.
+            item["book_source_type_change_origin"] = "legacy"
+
+    def _structure_record_book_source_type_state(self, item: dict, *, origin: str | None = None) -> None:
+        """Enregistre l'état courant et l'origine d'un changement de type.
+
+        Cette fonction est commune aux modifications manuelles et aux futurs
+        classements automatiques TomeLinea. L'affichage Source du livre reste
+        basé sur l'état initial et l'état actuel, sans altérer le document source.
+        """
+        if not isinstance(item, dict) or item.get("book_source_page_number") is None:
+            return
+
+        self._structure_ensure_book_source_initial_type(item)
+        current_type, current_name = self._structure_book_source_current_type(item)
+        initial_type = str(item.get("book_source_initial_type") or "").strip()
+        initial_name = str(item.get("book_source_initial_type_name") or "Sans type").strip() or "Sans type"
+        modified = (
+            current_type.casefold() != initial_type.casefold()
+            or current_name.casefold() != initial_name.casefold()
+        )
+
+        item["book_source_current_type"] = current_type
+        item["book_source_current_type_name"] = current_name
+        item["book_source_type_modified"] = bool(modified)
+
+        normalized_origin = self._structure_normalize_book_source_change_origin(origin)
+        if normalized_origin:
+            item["book_source_type_last_change_origin"] = normalized_origin
+
+        if modified:
+            if normalized_origin and normalized_origin != "source":
+                item["book_source_type_change_origin"] = normalized_origin
+            elif not str(item.get("book_source_type_change_origin") or "").strip():
+                item["book_source_type_change_origin"] = "system"
+        else:
+            item.pop("book_source_type_change_origin", None)
+
+    def _structure_apply_type_metadata(
+        self,
+        item: dict,
+        page_type: str,
+        label: str,
+        *,
+        change_origin: str | None = None,
+    ) -> None:
+        # Si la page est liée à la Source du livre, figer son état initial AVANT
+        # toute modification. Cela vaut aussi pour les futurs automatismes.
+        if isinstance(item, dict) and item.get("book_source_page_number") is not None:
+            self._structure_ensure_book_source_initial_type(item)
+
         definition = self._structure_type_definition(page_type)
         if page_type:
             item["type"] = page_type
@@ -13773,6 +14242,9 @@ class BookCanvas(tk.Frame):
             item.pop("part_head", None)
             item.pop("is_part_head", None)
             item.pop("tete_partie", None)
+
+        if isinstance(item, dict) and item.get("book_source_page_number") is not None:
+            self._structure_record_book_source_type_state(item, origin=change_origin)
 
     def _structure_insert_page(self, page_type: str, label: str, group_id: str, local_pos: int) -> int | None:
         if self.project is None:
@@ -13818,6 +14290,7 @@ class BookCanvas(tk.Frame):
             "Sans type" if not page_type else "Page"
         )
         source_id = str(item.get("id") or "").strip()
+        self._structure_ensure_book_source_initial_type(item)
         old_type = self._type_of(item)
         if old_type == page_type:
             self.status_var.set(f"Type déjà appliqué  •  {label}")
@@ -13836,7 +14309,7 @@ class BookCanvas(tk.Frame):
         ):
             item.pop(key, None)
 
-        self._structure_apply_type_metadata(item, page_type, label)
+        self._structure_apply_type_metadata(item, page_type, label, change_origin="user")
         local_side = self._recto_verso_override_value(item)
         if local_side in {"recto", "verso"}:
             item["structure_side"] = str(local_side)
@@ -13886,6 +14359,7 @@ class BookCanvas(tk.Frame):
 
         source_ids = [str(item.get("id") or "").strip() for item in sources]
         for item in sources:
+            self._structure_ensure_book_source_initial_type(item)
             # Même règle que pour le remplacement unitaire : AV/AP/R/V locaux
             # appartiennent à la page et sont conservés lors du changement de type.
             # Seules les anciennes exceptions 2P liées au type et les marques de
@@ -13899,7 +14373,7 @@ class BookCanvas(tk.Frame):
                 item.pop("compensation_blank", None)
                 item.pop("compensation_reason", None)
                 item.pop("structure_duplicable", None)
-            self._structure_apply_type_metadata(item, type_key, label)
+            self._structure_apply_type_metadata(item, type_key, label, change_origin="user")
             local_side = self._recto_verso_override_value(item)
             if local_side in {"recto", "verso"}:
                 item["structure_side"] = str(local_side)
@@ -14808,6 +15282,141 @@ class BookCanvas(tk.Frame):
             "message": message,
         }
 
+    def structure_build_from_book_source(self, *, only_if_empty: bool = True) -> dict:
+        """Construit la Structure de départ depuis la Source du livre.
+
+        Première version volontairement prudente : les pages intérieures sont
+        créées sans type éditorial. Les seules reconnaissances automatiques
+        concernent les faces de couverture clairement identifiables.
+
+        La méthode est non destructive : si une Structure de contenu existe
+        déjà et qu'aucun lien Source du livre n'est présent, elle ne la remplace
+        pas silencieusement.
+        """
+        if self.project is None or getattr(self.project, "root", None) is None:
+            return {"ok": False, "changed": False, "reason": "no_project"}
+
+        try:
+            source_path, info = load_project_source(self.project.root)
+        except FileNotFoundError:
+            return {"ok": False, "changed": False, "reason": "no_source"}
+        except Exception as exc:
+            return {"ok": False, "changed": False, "reason": "source_error", "error": str(exc)}
+
+        linked_numbers = {
+            int(item.get("book_source_page_number"))
+            for item in self.items
+            if isinstance(item, dict)
+            and str(item.get("book_source_page_number", "")).strip().isdigit()
+        }
+        if linked_numbers:
+            return {
+                "ok": True,
+                "changed": False,
+                "reason": "already_built",
+                "source_pages": int(info.page_count),
+                "linked_pages": len(linked_numbers),
+                "book_pages": len(self.items),
+            }
+
+        existing_content = [
+            item for item in self.items
+            if isinstance(item, dict)
+            and not self._is_automatic_page(item)
+            and not self._is_cover(item)
+            and not self._is_second_cover(item)
+            and not self._is_third_cover(item)
+            and not self._is_back_cover(item)
+            and not self._is_compensation_blank(item)
+        ]
+        if existing_content and only_if_empty:
+            return {
+                "ok": False,
+                "changed": False,
+                "reason": "structure_not_empty",
+                "source_pages": int(info.page_count),
+                "existing_content_pages": len(existing_content),
+            }
+
+        # Si un appel explicite force la reconstruction, on ne supprime que les
+        # pages de contenu non structurelles ; les quatre faces physiques de
+        # couverture demeurent celles du moteur TomeLinea.
+        if existing_content and not only_if_empty:
+            removable_ids = {id(item) for item in existing_content}
+            self.items = [item for item in self.items if id(item) not in removable_ids]
+
+        cover_roles = detect_pdf_cover_pages(source_path)
+        used_source_pages: set[int] = set()
+
+        def link(item: dict | None, page_number: int | None, role: str) -> None:
+            if not isinstance(item, dict) or page_number is None:
+                return
+            number = int(page_number)
+            if number < 1 or number > int(info.page_count):
+                return
+            item["book_source_page_number"] = number
+            item["book_source_page_id"] = f"SOURCE-LIVRE-PAGE-{number:04d}"
+            item["book_source_name"] = str(info.source_name)
+            item["book_source_role"] = role
+            self._structure_ensure_book_source_initial_type(item)
+            used_source_pages.add(number)
+
+        front = next((item for item in self.items if self._is_cover(item)), None)
+        second = next((item for item in self.items if self._is_second_cover(item)), None)
+        third = next((item for item in self.items if self._is_third_cover(item)), None)
+        back = next((item for item in self.items if self._is_back_cover(item)), None)
+
+        link(front, cover_roles.get("front_cover"), "front_cover")
+        link(second, cover_roles.get("second_cover"), "second_cover")
+        link(third, cover_roles.get("third_cover"), "third_cover")
+        link(back, cover_roles.get("back_cover"), "back_cover")
+
+        group_id = self._structure_fallback_content_group_id()
+        for page_number in range(1, int(info.page_count) + 1):
+            if page_number in used_source_pages:
+                continue
+            item = {
+                "id": f"MAQUETTE-{uuid4().hex[:12].upper()}",
+                "count": 1,
+                "done": False,
+                "plan_group": group_id,
+                "book_source_page_number": page_number,
+                "book_source_page_id": f"SOURCE-LIVRE-PAGE-{page_number:04d}",
+                "book_source_name": str(info.source_name),
+                "book_source_role": "content",
+            }
+            self._structure_apply_type_metadata(item, "", "Sans type", change_origin="source")
+            self._structure_ensure_book_source_initial_type(item)
+            self.items.append(item)
+
+        # Remet les groupes dans leur ordre physique puis laisse le moteur central
+        # décider s'il faut un Blanc de compensation avant la 3e couverture.
+        self._reorder_items_by_group_order()
+        self._sync_compensation_blank()
+        self._save_order()
+
+        first_linked = next(
+            (index for index, item in enumerate(self.items) if item.get("book_source_page_number") == 1),
+            None,
+        )
+        if first_linked is not None:
+            self._set_single_page_selection(first_linked)
+        self.render()
+
+        linked_count = sum(
+            1 for item in self.items
+            if isinstance(item, dict) and item.get("book_source_page_number") is not None
+        )
+        return {
+            "ok": True,
+            "changed": True,
+            "reason": "built",
+            "source_pages": int(info.page_count),
+            "linked_pages": linked_count,
+            "book_pages": len(self.items),
+            "cover_roles": dict(cover_roles),
+        }
+
     def set_project(self, project):
         if getattr(self, "_overlay_active", False):
             self.close_page_overlay()
@@ -14815,6 +15424,7 @@ class BookCanvas(tk.Frame):
         self.items = []
         self.groups = [dict(group) for group in self.DEFAULT_GROUPS]
         self._data = {}
+        self._gabarit_source_reference_transparency = 0.42
 
         if project is not None:
             try:
@@ -14826,6 +15436,10 @@ class BookCanvas(tk.Frame):
 
             data, changed = self._ensure_minimum_structure(data)
             self._data = data
+            try:
+                self._gabarit_source_reference_transparency = max(0.0, min(0.90, float(data.get(self.GABARIT_SOURCE_TRANSPARENCY_KEY, 0.42))))
+            except Exception:
+                self._gabarit_source_reference_transparency = 0.42
             self.groups = [dict(group) for group in data.get("groups", []) if isinstance(group, dict)]
             self.items = [dict(item) for item in data.get("items", []) if isinstance(item, dict)]
             # Toutes les règles structurelles sont réconciliées ensemble :
