@@ -7,10 +7,13 @@ L'Analyse propose.
 Le Livre constitue l'état réellement retenu du projet.
 
 Une proposition ne modifie jamais directement un Livre existant.
-Chaque page créée conserve aussi la photographie des valeurs
-automatiques dont elle est issue. Cette référence permettra aux
-réanalyses futures de distinguer une évolution automatique d'une
-correction humaine.
+Chaque page créée conserve la photographie des valeurs automatiques
+dont elle est issue.
+
+Le Livre conserve également l'ordre proposé par l'Analyse afin de
+pouvoir distinguer plus tard :
+- un nouvel ordre calculé automatiquement ;
+- d'un déplacement volontaire effectué par l'utilisateur.
 """
 
 from dataclasses import dataclass, field
@@ -142,6 +145,41 @@ class ProposalApplication:
     applied_at: str
 
 
+def proposal_order_keys(
+    proposal: BookProposal,
+) -> list[str]:
+    """
+    Ordre structurel proposé par l'Analyse.
+    """
+
+    return [
+        page.proposal_key
+        for page in proposal.pages
+    ]
+
+
+def book_order_keys(
+    book: BookV4,
+) -> list[str]:
+    """
+    Ordre actuel des pages provenant d'une proposition.
+
+    Les pages générées manuellement par TomeLinea ou l'utilisateur
+    sans proposal_key ne sont pas inventées ici : elles restent
+    explicitement hors de cette comparaison automatique.
+    """
+
+    result: list[str] = []
+
+    for page in book.ordered_pages():
+        proposal_key = page.metadata.get("proposal_key")
+
+        if proposal_key is not None:
+            result.append(str(proposal_key))
+
+    return result
+
+
 def proposed_page_baseline(
     proposed: ProposedPage,
 ) -> dict[str, Any]:
@@ -183,9 +221,8 @@ def create_book_from_proposal(
     """
     Crée un nouveau LivreV4 à partir d'une proposition.
 
-    Important :
-    cette fonction sert à l'initialisation d'un livre.
-    Elle ne synchronise pas silencieusement un livre déjà modifié.
+    Cette fonction sert uniquement à l'initialisation du Livre.
+    Elle ne synchronise jamais silencieusement un Livre déjà travaillé.
     """
 
     proposal.validate()
@@ -195,7 +232,10 @@ def create_book_from_proposal(
         kind=proposal.suggested_kind,
     )
 
-    book.parts = [dict(item) for item in proposal.parts]
+    book.parts = [
+        dict(item)
+        for item in proposal.parts
+    ]
 
     book.models = {
         key: dict(value)
@@ -235,6 +275,11 @@ def create_book_from_proposal(
     book.metadata["initial_proposal_id"] = proposal.id
     book.metadata["source_version_ids"] = list(
         proposal.source_version_ids
+    )
+
+    # Référence structurelle de l'ordre automatiquement proposé.
+    book.metadata["analysis_order_baseline"] = (
+        proposal_order_keys(proposal)
     )
 
     application = ProposalApplication(
