@@ -3,16 +3,14 @@
 """
 TomeLinea V4 — réanalyse contrôlée.
 
-Ce module compare une nouvelle proposition d'analyse avec le Livre
-courant.
-
 Principes :
 - aucune correction humaine n'est écrasée ;
 - aucune page ne disparaît automatiquement ;
-- un changement d'ordre n'est considéré automatique que si l'ordre
-  précédent n'a pas été modifié par l'utilisateur ;
-- la présence de pages sans origine de proposition protège également
-  l'ordre structurel.
+- les nouvelles pages ne sont insérées automatiquement que lorsque
+  l'ordre du livre est encore celui de la dernière analyse ;
+- une page manuelle protège l'ordre ;
+- une page absente de la nouvelle analyse bloque toute modification
+  structurelle automatique jusqu'à décision humaine.
 """
 
 from dataclasses import dataclass, field
@@ -41,6 +39,14 @@ class ReanalysisChange:
     protected_by_human_change: bool
 
 
+@dataclass(frozen=True, slots=True)
+class StructuralApplyResult:
+    applied: bool
+    added_pages: int = 0
+    reordered: bool = False
+    reason: str | None = None
+
+
 @dataclass(slots=True)
 class ReanalysisPlan:
     proposal_id: str
@@ -48,7 +54,6 @@ class ReanalysisPlan:
     automatic_changes: list[ReanalysisChange] = field(
         default_factory=list
     )
-
     protected_changes: list[ReanalysisChange] = field(
         default_factory=list
     )
@@ -56,18 +61,17 @@ class ReanalysisPlan:
     new_pages: list[ProposedPage] = field(
         default_factory=list
     )
-
     missing_page_ids: list[str] = field(
         default_factory=list
     )
 
-    # État structurel
     order_baseline: list[str] = field(default_factory=list)
     order_current: list[str] = field(default_factory=list)
     order_proposed: list[str] = field(default_factory=list)
 
     order_change_detected: bool = False
     order_protected: bool = False
+    order_blocked_by_missing_pages: bool = False
 
     manual_page_ids: list[str] = field(default_factory=list)
 
@@ -83,13 +87,7 @@ def _source_value(page: PageV4) -> dict[str, Any] | None:
     }
 
 
-def current_page_values(
-    page: PageV4,
-) -> dict[str, Any]:
-    """
-    Représentation comparable avec analysis_baseline.
-    """
-
+def current_page_values(page: PageV4) -> dict[str, Any]:
     return {
         "page_type": page.page_type,
         "title": page.title,
@@ -108,17 +106,6 @@ def build_reanalysis_plan(
     book: BookV4,
     proposal: BookProposal,
 ) -> ReanalysisPlan:
-    """
-    Compare une nouvelle proposition avec le Livre courant.
-
-    Une valeur de page est protégée dès que :
-        current != baseline
-
-    L'ordre est protégé dès que :
-        ordre courant != baseline d'analyse
-
-    ou si le Livre possède des pages sans proposal_key.
-    """
 
     proposal.validate()
     book.validate()
@@ -142,29 +129,18 @@ def build_reanalysis_plan(
         for page in proposal.pages
     }
 
-    # ----------------------------------------------------------
-    # Pages nouvelles
-    # ----------------------------------------------------------
-
+    # Nouvelles pages
     for proposal_key, proposed in proposed_by_key.items():
         if proposal_key not in existing_by_key:
             plan.new_pages.append(proposed)
 
-    # ----------------------------------------------------------
-    # Pages absentes de la nouvelle proposition
-    #
-    # Important :
-    # aucune suppression automatique.
-    # ----------------------------------------------------------
-
+    # Pages qui ne sont plus retrouvées.
+    # Elles ne seront jamais supprimées automatiquement.
     for proposal_key, page in existing_by_key.items():
         if proposal_key not in proposed_by_key:
             plan.missing_page_ids.append(page.id)
 
-    # ----------------------------------------------------------
-    # Comparaison des propriétés de page
-    # ----------------------------------------------------------
-
+    # Propriétés des pages existantes
     for proposal_key, proposed in proposed_by_key.items():
         page = existing_by_key.get(proposal_key)
 
@@ -174,7 +150,6 @@ def build_reanalysis_plan(
         baseline = page.metadata.get("analysis_baseline")
 
         if not isinstance(baseline, dict):
-            # En l'absence de baseline, on ne prend aucun risque.
             continue
 
         current = current_page_values(page)
@@ -206,10 +181,7 @@ def build_reanalysis_plan(
             else:
                 plan.automatic_changes.append(change)
 
-    # ----------------------------------------------------------
-    # Comparaison structurelle de l'ordre
-    # ----------------------------------------------------------
-
+    # Ordre structurel
     baseline = book.metadata.get(
         "analysis_order_baseline",
         [],
@@ -234,8 +206,6 @@ def build_reanalysis_plan(
         plan.order_current != plan.order_baseline
     )
 
-    # Une page manuelle pourrait avoir été insérée entre deux pages
-    # issues de l'analyse. On protège donc l'ordre global.
     has_manual_pages = bool(plan.manual_page_ids)
 
     plan.order_protected = (
@@ -246,6 +216,11 @@ def build_reanalysis_plan(
         )
     )
 
+    # Une disparition rend l'interprétation du nouvel ordre ambiguë.
+    plan.order_blocked_by_missing_pages = bool(
+        plan.missing_page_ids
+    )
+
     return plan
 
 
@@ -254,12 +229,6 @@ def _apply_page_field(
     field_name: str,
     value: Any,
 ) -> None:
-    """
-    Applique une valeur issue de l'analyse sur un champ PageV4.
-
-    Cette fonction n'est appelée que pour un changement préalablement
-    classé comme automatique et sûr.
-    """
 
     from src.v4.domain import PageOrigin, SourceLink
 
@@ -291,8 +260,7 @@ def _apply_page_field(
 
     if field_name not in allowed_fields:
         raise ValueError(
-            f"Champ de réanalyse non applicable automatiquement : "
-            f"{field_name}"
+            f"Champ non applicable automatiquement : {field_name}"
         )
 
     setattr(page, field_name, value)
@@ -303,27 +271,14 @@ def apply_safe_reanalysis_changes(
     proposal: BookProposal,
     plan: ReanalysisPlan,
 ) -> int:
-    """
-    Applique uniquement les changements de propriétés automatiques sûrs.
-
-    Cette fonction ne traite pas encore :
-    - les nouvelles pages ;
-    - les pages absentes ;
-    - les déplacements structurels.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
-            "Le plan de réanalyse ne correspond pas à la proposition."
+            "Le plan ne correspond pas à la proposition."
         )
 
     proposal.validate()
     book.validate()
-
-    proposed_by_key = {
-        proposed.proposal_key: proposed
-        for proposed in proposal.pages
-    }
 
     applied = 0
 
@@ -331,25 +286,15 @@ def apply_safe_reanalysis_changes(
         page = book.pages.get(change.page_id)
 
         if page is None:
-            raise KeyError(
-                f"Page du plan introuvable : {change.page_id}"
-            )
-
-        if change.protected_by_human_change:
-            raise ValueError(
-                "Un changement protégé ne peut pas être appliqué "
-                "automatiquement."
-            )
+            raise KeyError(change.page_id)
 
         current = current_page_values(page).get(
             change.field_name
         )
 
-        # Vérifie que la page n'a pas changé après création du plan.
         if current != change.current_value:
             raise RuntimeError(
-                f"La page {change.page_id} a changé depuis "
-                f"la préparation de la réanalyse."
+                "Le Livre a changé depuis la création du plan."
             )
 
         _apply_page_field(
@@ -358,11 +303,13 @@ def apply_safe_reanalysis_changes(
             change.proposed_value,
         )
 
-        baseline = page.metadata.get("analysis_baseline")
+        baseline = page.metadata.get(
+            "analysis_baseline"
+        )
 
         if not isinstance(baseline, dict):
             raise ValueError(
-                f"Baseline absente pour la page {page.id}"
+                f"Baseline absente : {page.id}"
             )
 
         baseline[change.field_name] = (
@@ -371,45 +318,17 @@ def apply_safe_reanalysis_changes(
 
         applied += 1
 
-    for proposed_key, proposed in proposed_by_key.items():
-        page = next(
-            (
-                existing
-                for existing in book.pages.values()
-                if existing.metadata.get("proposal_key")
-                == proposed_key
-            ),
-            None,
-        )
-
-        if page is not None:
-            page.metadata["last_reanalysis_refs"] = list(
-                proposed.analysis_refs
-            )
-
     book.metadata["last_reanalysis_proposal_id"] = (
         proposal.id
     )
 
     book.history.append(
         {
-            "action": "reanalyse_appliquee_partiellement",
+            "action": "reanalyse_proprietes",
             "proposal_id": proposal.id,
             "automatic_changes_applied": applied,
             "protected_changes_pending": len(
                 plan.protected_changes
-            ),
-            "new_pages_pending": len(
-                plan.new_pages
-            ),
-            "missing_pages_pending": len(
-                plan.missing_page_ids
-            ),
-            "order_change_pending": (
-                plan.order_change_detected
-            ),
-            "order_change_protected": (
-                plan.order_protected
             ),
         }
     )
@@ -417,3 +336,176 @@ def apply_safe_reanalysis_changes(
     book.validate()
 
     return applied
+
+
+def _new_page_from_proposal(
+    proposed: ProposedPage,
+    proposal_id: str,
+) -> PageV4:
+    """
+    Crée une nouvelle PageV4 issue d'une réanalyse.
+    """
+
+    page = PageV4(
+        page_type=proposed.page_type,
+        title=proposed.title,
+        origin=proposed.origin,
+        source=proposed.source,
+        part_id=proposed.part_key,
+        model_id=proposed.model_key,
+        recto_verso=proposed.recto_verso,
+        spread_id=proposed.spread_key,
+        spread_side=proposed.spread_side,
+        is_compensation=proposed.is_compensation,
+    )
+
+    page.metadata["proposal_key"] = (
+        proposed.proposal_key
+    )
+    page.metadata["proposal_id"] = proposal_id
+    page.metadata["analysis_refs"] = list(
+        proposed.analysis_refs
+    )
+    page.metadata["analysis_baseline"] = (
+        proposed_page_baseline(proposed)
+    )
+
+    return page
+
+
+def apply_safe_structural_changes(
+    book: BookV4,
+    proposal: BookProposal,
+    plan: ReanalysisPlan,
+) -> StructuralApplyResult:
+    """
+    Applique uniquement une évolution structurelle non ambiguë.
+
+    Autorisé :
+    - ajout de nouvelles pages ;
+    - repositionnement suivant le nouvel ordre proposé.
+
+    Interdit automatiquement :
+    - suppression d'une page ;
+    - modification d'un ordre déjà changé par l'utilisateur ;
+    - modification si une page manuelle existe ;
+    - modification si une ancienne page n'est plus retrouvée.
+    """
+
+    if plan.proposal_id != proposal.id:
+        raise ValueError(
+            "Le plan ne correspond pas à la proposition."
+        )
+
+    proposal.validate()
+    book.validate()
+
+    # Le plan doit encore correspondre à l'état réel du Livre.
+    if book_order_keys(book) != plan.order_current:
+        raise RuntimeError(
+            "L'ordre du Livre a changé depuis la création du plan."
+        )
+
+    if proposal_order_keys(proposal) != plan.order_proposed:
+        raise RuntimeError(
+            "La proposition a changé depuis la création du plan."
+        )
+
+    if plan.order_protected:
+        return StructuralApplyResult(
+            applied=False,
+            reason="ordre_protege",
+        )
+
+    if plan.order_blocked_by_missing_pages:
+        return StructuralApplyResult(
+            applied=False,
+            reason="pages_absentes_a_verifier",
+        )
+
+    if plan.manual_page_ids:
+        return StructuralApplyResult(
+            applied=False,
+            reason="pages_manuelles_presentes",
+        )
+
+    if (
+        not plan.new_pages
+        and not plan.order_change_detected
+    ):
+        return StructuralApplyResult(
+            applied=False,
+            reason="aucun_changement_structurel",
+        )
+
+    pages_by_key: dict[str, PageV4] = {}
+
+    for page in book.pages.values():
+        key = page.metadata.get("proposal_key")
+
+        if key is not None:
+            pages_by_key[str(key)] = page
+
+    added = 0
+
+    # Ajouter d'abord les nouvelles pages sans imposer encore l'ordre.
+    for proposed in plan.new_pages:
+        if proposed.proposal_key in pages_by_key:
+            continue
+
+        page = _new_page_from_proposal(
+            proposed,
+            proposal.id,
+        )
+
+        book.add_page(page)
+
+        pages_by_key[proposed.proposal_key] = page
+        added += 1
+
+    # À ce stade aucune page ne doit manquer.
+    expected_keys = set(plan.order_proposed)
+    actual_keys = set(pages_by_key)
+
+    if expected_keys != actual_keys:
+        raise RuntimeError(
+            "Impossible d'appliquer automatiquement le nouvel ordre : "
+            "les ensembles de pages ne correspondent pas."
+        )
+
+    old_order = list(book.page_order)
+
+    book.page_order = [
+        pages_by_key[key].id
+        for key in plan.order_proposed
+    ]
+
+    reordered = (
+        book.page_order != old_order
+    )
+
+    # Le nouvel ordre automatique devient la nouvelle référence.
+    book.metadata["analysis_order_baseline"] = list(
+        plan.order_proposed
+    )
+
+    book.metadata["last_structural_proposal_id"] = (
+        proposal.id
+    )
+
+    book.history.append(
+        {
+            "action": "reanalyse_structure_appliquee",
+            "proposal_id": proposal.id,
+            "pages_added": added,
+            "order_updated": reordered,
+        }
+    )
+
+    book.validate()
+
+    return StructuralApplyResult(
+        applied=True,
+        added_pages=added,
+        reordered=reordered,
+    )
