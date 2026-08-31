@@ -517,6 +517,24 @@ class BookV4:
                     "Une partie ne peut pas être sa propre parente."
                 )
 
+
+        # Interdit les cycles hi?rarchiques indirects entre parties.
+        # Exemple : A -> B -> C -> A.
+        for part_id in self.parts:
+            seen: set[str] = set()
+            current_id: str | None = part_id
+
+            while current_id is not None:
+                if current_id in seen:
+                    raise ValueError(
+                        "Cycle hi?rarchique de parties : "
+                        f"{part_id}"
+                    )
+
+                seen.add(current_id)
+                current = self.parts[current_id]
+                current_id = current.parent_id
+
         for page in self.pages.values():
             if (
                 page.part_id is not None
