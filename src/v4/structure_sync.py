@@ -38,6 +38,10 @@ from src.v4.structure_auto import (
 from src.v4.structure_parity import (
     sync_structure_parity,
 )
+from src.v4.structure_pair_rules import (
+    structure_pair_rule_issues,
+    sync_double_page_pair_rules,
+)
 from src.v4.structure_rules import (
     AFTER,
     BEFORE,
@@ -58,6 +62,11 @@ class StructureSyncResult:
     created_auto_pages: int
     removed_auto_pages: int
     compensation_pages: int
+
+    created_double_pages: int
+    reused_double_pages: int
+    removed_double_pages: int
+    double_page_conflicts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -1002,11 +1011,55 @@ def _sync_av_ap(
 # Synchronisation publique
 # ==============================================================
 
+def _av_ap_auto_ids(
+    book: BookV4,
+) -> set[str]:
+    """
+    Identit?s des pages automatiques portant r?ellement
+    au moins un r?le AV ou AP.
+
+    Les compensations R/V/DP sont compt?es s?par?ment.
+    """
+
+    return {
+        page.id
+        for page in book.pages.values()
+        if (
+            is_structural_auto_page(page)
+            and bool(
+                _relation_keys(page)
+            )
+        )
+    }
+
+
 def sync_structure_rules(
     book: BookV4,
 ) -> StructureSyncResult:
+    """
+    Synchronisation Structure compl?te.
+
+    Ordre volontaire :
+
+        1. AV/AP pr?liminaire
+        2. r?gles 2P
+        3. AV/AP d?finitif si la g?om?trie 2P a chang?
+        4. R/V + compensation
+
+    Le premier passage AV/AP ?limine notamment une ancienne
+    page automatique devenue inutile avant que le moteur 2P
+    d?cide si deux pages peuvent d?sormais ?tre soud?es.
+
+    Ainsi une seule invocation converge vers l'?tat correct.
+    """
 
     book.validate()
+
+    auto_ids_before = (
+        _av_ap_auto_ids(
+            book
+        )
+    )
 
     rule_issues = (
         structure_rule_issues(
@@ -1016,7 +1069,7 @@ def sync_structure_rules(
 
     if rule_issues:
         raise ValueError(
-            "Règles Structure invalides : "
+            "R?gles Structure invalides : "
             + " ; ".join(
                 rule_issues
             )
@@ -1036,15 +1089,53 @@ def sync_structure_rules(
             )
         )
 
-    reused, created, removed = (
-        _sync_av_ap(
+    # ----------------------------------------------------------
+    # 1 ? AV/AP courant.
+    #
+    # Ce passage supprime aussi les anciennes autos devenues
+    # obsol?tes. C'est important avant de d?cider si une nouvelle
+    # paire 2P est physiquement r?alisable.
+    # ----------------------------------------------------------
+
+    _sync_av_ap(
+        book
+    )
+
+    # ----------------------------------------------------------
+    # 2 ? R?gles de vraies doubles pages.
+    # ----------------------------------------------------------
+
+    pair_result = (
+        sync_double_page_pair_rules(
             book
         )
     )
 
-    # Le moteur de parité déjà validé lit PageV4.recto_verso.
-    # On lui présente temporairement les règles R/V effectives,
-    # puis on restaure exactement les valeurs métier originales.
+    # ----------------------------------------------------------
+    # 3 ? Si une 2P vient d'?tre cr??e ou supprim?e,
+    # les fronti?res physiques ont chang?.
+    #
+    # On recalcule donc AV/AP imm?diatement.
+    # Ce second passage r?utilise les UUID existants chaque fois
+    # que la relation structurelle existe toujours.
+    # ----------------------------------------------------------
+
+    if (
+        pair_result.created_pairs
+        or pair_result.removed_pairs
+    ):
+        _sync_av_ap(
+            book
+        )
+
+    # ----------------------------------------------------------
+    # 4 ? R/V et compensation.
+    #
+    # PageV4.recto_verso reste une valeur m?tier ind?pendante.
+    # Les r?gles effectives sont pr?sent?es temporairement au
+    # moteur physique puis les valeurs originales sont restaur?es.
+    # ----------------------------------------------------------
+
     originals = {
         page.id: page.recto_verso
         for page in book.pages.values()
@@ -1101,32 +1192,97 @@ def sync_structure_rules(
         + structure_rule_issues(
             book
         )
+        + structure_pair_rule_issues(
+            book
+        )
     )
 
     if issues:
         raise ValueError(
-            "Structure incohérente après "
+            "Structure incoh?rente apr?s "
             "synchronisation : "
             + " ; ".join(
                 issues
             )
         )
 
+    auto_ids_after = (
+        _av_ap_auto_ids(
+            book
+        )
+    )
+
+    created_auto = len(
+        auto_ids_after
+        - auto_ids_before
+    )
+
+    removed_auto = len(
+        auto_ids_before
+        - auto_ids_after
+    )
+
+    reused_auto = len(
+        auto_ids_before
+        & auto_ids_after
+    )
+
     book.history.append(
         {
             "action": "regles_structure_synchronisees",
-            "reused_auto_pages": reused,
-            "created_auto_pages": created,
-            "removed_auto_pages": removed,
-            "compensation_pages": compensation_count,
+
+            "reused_auto_pages": (
+                reused_auto
+            ),
+            "created_auto_pages": (
+                created_auto
+            ),
+            "removed_auto_pages": (
+                removed_auto
+            ),
+            "compensation_pages": (
+                compensation_count
+            ),
+
+            "created_double_pages": (
+                pair_result.created_pairs
+            ),
+            "reused_double_pages": (
+                pair_result.reused_pairs
+            ),
+            "removed_double_pages": (
+                pair_result.removed_pairs
+            ),
+            "double_page_conflicts": (
+                pair_result.conflicts
+            ),
         }
     )
 
     return StructureSyncResult(
-        reused_auto_pages=reused,
-        created_auto_pages=created,
-        removed_auto_pages=removed,
+        reused_auto_pages=(
+            reused_auto
+        ),
+        created_auto_pages=(
+            created_auto
+        ),
+        removed_auto_pages=(
+            removed_auto
+        ),
         compensation_pages=(
             compensation_count
+        ),
+
+        created_double_pages=(
+            pair_result.created_pairs
+        ),
+        reused_double_pages=(
+            pair_result.reused_pairs
+        ),
+        removed_double_pages=(
+            pair_result.removed_pairs
+        ),
+        double_page_conflicts=(
+            pair_result.conflicts
         ),
     )
