@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from copy import deepcopy
+
 """
 TomeLinea V4 — opérations structurelles manuelles.
 
@@ -13,6 +15,7 @@ Une page créée manuellement :
   (2P ou AV/source/AP).
 """
 
+from dataclasses import fields
 from datetime import datetime, timezone
 
 from src.v4.domain import (
@@ -25,6 +28,9 @@ from src.v4.structure_blocks import (
 )
 from src.v4.structure_parts import (
     boundary_part_id,
+)
+from src.v4.structure_sync import (
+    sync_structure_rules,
 )
 
 
@@ -98,6 +104,12 @@ def insert_manual_page(
     is_compensation: bool = False,
     target_part_id: str | None = None,
 ) -> PageV4:
+    """
+    Ins?re une page manuelle dans une transaction Structure compl?te.
+
+    Apr?s cr?ation, toutes les r?gles Structure sont imm?diatement
+    remat?rialis?es. En cas d'?chec, le Livre entier est restaur?.
+    """
 
     book.validate()
 
@@ -119,8 +131,8 @@ def insert_manual_page(
         )
     ):
         raise ValueError(
-            "Impossible d'insérer une page "
-            "à l'intérieur d'un bloc structurel."
+            "Impossible d'ins?rer une page "
+            "? l'int?rieur d'un bloc structurel."
         )
 
     resolved_part_id = (
@@ -145,59 +157,93 @@ def insert_manual_page(
         )
     )
 
-    page = PageV4(
-        page_type=page_type,
-        title=title,
-        origin=PageOrigin.TOMELINEA,
-        source=None,
-        part_id=resolved_part_id,
-        is_compensation=(
-            is_compensation
-        ),
+    snapshot = deepcopy(
+        book
     )
 
-    page.metadata[
-        "creation_kind"
-    ] = "manual"
-
-    page.metadata[
-        "created_at"
-    ] = utc_now()
-
-    page.metadata[
-        "manual_anchor"
-    ] = {
-        "before_proposal_key": (
-            before_key
-        ),
-        "after_proposal_key": (
-            after_key
-        ),
-    }
-
-    book.add_page(
-        page,
-        index=index,
-    )
-
-    book.history.append(
-        {
-            "action": (
-                "page_manuelle_ajoutee"
+    try:
+        page = PageV4(
+            page_type=page_type,
+            title=title,
+            origin=PageOrigin.TOMELINEA,
+            source=None,
+            part_id=resolved_part_id,
+            is_compensation=(
+                is_compensation
             ),
-            "page_id": page.id,
-            "index": index,
-            "part_id": resolved_part_id,
+        )
+
+        page.metadata[
+            "creation_kind"
+        ] = "manual"
+
+        page.metadata[
+            "created_at"
+        ] = utc_now()
+
+        page.metadata[
+            "manual_anchor"
+        ] = {
             "before_proposal_key": (
                 before_key
             ),
             "after_proposal_key": (
                 after_key
             ),
-            "date": utc_now(),
         }
-    )
 
-    book.validate()
+        book.add_page(
+            page,
+            index=index,
+        )
 
-    return page
+        book.history.append(
+            {
+                "action": (
+                    "page_manuelle_ajoutee"
+                ),
+                "page_id": page.id,
+                "index": index,
+                "part_id": resolved_part_id,
+                "before_proposal_key": (
+                    before_key
+                ),
+                "after_proposal_key": (
+                    after_key
+                ),
+                "date": utc_now(),
+            }
+        )
+
+        # L'insertion peut modifier imm?diatement :
+        # - AV/AP ;
+        # - r?gles de doubles pages ;
+        # - Recto/Verso ;
+        # - compensations.
+        sync_structure_rules(
+            book
+        )
+
+        book.validate()
+
+        return book.pages[
+            page.id
+        ]
+
+    except Exception:
+        for field_info in fields(
+            BookV4
+        ):
+            setattr(
+                book,
+                field_info.name,
+                deepcopy(
+                    getattr(
+                        snapshot,
+                        field_info.name,
+                    )
+                ),
+            )
+
+        raise
+
