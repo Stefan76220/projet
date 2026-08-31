@@ -509,3 +509,93 @@ def apply_safe_structural_changes(
         added_pages=added,
         reordered=reordered,
     )
+
+
+MISSING_PAGE_STATUS = "absente_de_la_derniere_analyse"
+
+
+def update_missing_page_status(
+    book: BookV4,
+    proposal: BookProposal,
+    plan: ReanalysisPlan,
+) -> int:
+    """
+    Met à jour l'état des pages non retrouvées lors d'une réanalyse.
+
+    Une page absente :
+    - n'est jamais supprimée ;
+    - conserve son identité et sa position ;
+    - est seulement signalée comme à vérifier.
+
+    Si elle réapparaît dans une analyse ultérieure, le signalement
+    est retiré automatiquement.
+
+    Retourne le nombre de pages actuellement signalées.
+    """
+
+    if plan.proposal_id != proposal.id:
+        raise ValueError(
+            "Le plan ne correspond pas à la proposition."
+        )
+
+    proposal.validate()
+    book.validate()
+
+    missing_ids = set(plan.missing_page_ids)
+
+    proposed_keys = {
+        proposed.proposal_key
+        for proposed in proposal.pages
+    }
+
+    flagged = 0
+
+    for page in book.pages.values():
+        proposal_key = page.metadata.get("proposal_key")
+
+        # Les pages manuelles ne sont pas concernées.
+        if proposal_key is None:
+            continue
+
+        if page.id in missing_ids:
+            page.metadata["reanalysis_status"] = (
+                MISSING_PAGE_STATUS
+            )
+            page.metadata["missing_since_proposal_id"] = (
+                proposal.id
+            )
+            page.metadata["requires_review"] = True
+
+            flagged += 1
+            continue
+
+        # Une page précédemment absente a été retrouvée.
+        if str(proposal_key) in proposed_keys:
+            if (
+                page.metadata.get("reanalysis_status")
+                == MISSING_PAGE_STATUS
+            ):
+                page.metadata.pop(
+                    "reanalysis_status",
+                    None,
+                )
+                page.metadata.pop(
+                    "missing_since_proposal_id",
+                    None,
+                )
+                page.metadata.pop(
+                    "requires_review",
+                    None,
+                )
+
+    book.history.append(
+        {
+            "action": "statut_pages_absentes_actualise",
+            "proposal_id": proposal.id,
+            "pages_missing": flagged,
+        }
+    )
+
+    book.validate()
+
+    return flagged
