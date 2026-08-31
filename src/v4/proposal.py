@@ -7,6 +7,10 @@ L'Analyse propose.
 Le Livre constitue l'état réellement retenu du projet.
 
 Une proposition ne modifie jamais directement un Livre existant.
+Chaque page créée conserve aussi la photographie des valeurs
+automatiques dont elle est issue. Cette référence permettra aux
+réanalyses futures de distinguer une évolution automatique d'une
+correction humaine.
 """
 
 from dataclasses import dataclass, field
@@ -138,6 +142,39 @@ class ProposalApplication:
     applied_at: str
 
 
+def proposed_page_baseline(
+    proposed: ProposedPage,
+) -> dict[str, Any]:
+    """
+    Valeurs automatiques qui ont servi à créer la page.
+
+    Cette photographie ne représente pas l'état courant de la page.
+    Elle sert de référence lors des réanalyses.
+    """
+
+    source = None
+
+    if proposed.source is not None:
+        source = {
+            "source_id": proposed.source.source_id,
+            "source_version_id": proposed.source.source_version_id,
+            "source_page": proposed.source.source_page,
+        }
+
+    return {
+        "page_type": proposed.page_type,
+        "title": proposed.title,
+        "origin": proposed.origin.value,
+        "source": source,
+        "part_id": proposed.part_key,
+        "model_id": proposed.model_key,
+        "recto_verso": proposed.recto_verso,
+        "spread_id": proposed.spread_key,
+        "spread_side": proposed.spread_side,
+        "is_compensation": proposed.is_compensation,
+    }
+
+
 def create_book_from_proposal(
     proposal: BookProposal,
     *,
@@ -159,6 +196,7 @@ def create_book_from_proposal(
     )
 
     book.parts = [dict(item) for item in proposal.parts]
+
     book.models = {
         key: dict(value)
         for key, value in proposal.models.items()
@@ -186,7 +224,12 @@ def create_book_from_proposal(
             proposed.analysis_refs
         )
 
+        page.metadata["analysis_baseline"] = (
+            proposed_page_baseline(proposed)
+        )
+
         book.add_page(page)
+
         mapping[proposed.proposal_key] = page.id
 
     book.metadata["initial_proposal_id"] = proposal.id
@@ -210,4 +253,5 @@ def create_book_from_proposal(
     )
 
     book.validate()
+
     return book, application
