@@ -1,10 +1,18 @@
 ﻿from __future__ import annotations
 
 """
-TomeLinea V4 — comparaison d'une réanalyse avec le Livre courant.
+TomeLinea V4 — réanalyse contrôlée.
 
-Ce module ne modifie jamais le Livre.
-Il produit uniquement un plan de synchronisation contrôlé.
+Ce module compare une nouvelle proposition d'analyse avec le Livre
+courant.
+
+Principes :
+- aucune correction humaine n'est écrasée ;
+- aucune page ne disparaît automatiquement ;
+- un changement d'ordre n'est considéré automatique que si l'ordre
+  précédent n'a pas été modifié par l'utilisateur ;
+- la présence de pages sans origine de proposition protège également
+  l'ordre structurel.
 """
 
 from dataclasses import dataclass, field
@@ -14,7 +22,9 @@ from src.v4.domain import BookV4, PageV4
 from src.v4.proposal import (
     BookProposal,
     ProposedPage,
+    book_order_keys,
     proposed_page_baseline,
+    proposal_order_keys,
 )
 
 
@@ -50,6 +60,16 @@ class ReanalysisPlan:
     missing_page_ids: list[str] = field(
         default_factory=list
     )
+
+    # État structurel
+    order_baseline: list[str] = field(default_factory=list)
+    order_current: list[str] = field(default_factory=list)
+    order_proposed: list[str] = field(default_factory=list)
+
+    order_change_detected: bool = False
+    order_protected: bool = False
+
+    manual_page_ids: list[str] = field(default_factory=list)
 
 
 def _source_value(page: PageV4) -> dict[str, Any] | None:
@@ -91,15 +111,13 @@ def build_reanalysis_plan(
     """
     Compare une nouvelle proposition avec le Livre courant.
 
-    Règle fondamentale :
+    Une valeur de page est protégée dès que :
+        current != baseline
 
-    current == baseline
-        => l'utilisateur n'a pas modifié ce champ ;
-           TomeLinea peut proposer une mise à jour automatique.
+    L'ordre est protégé dès que :
+        ordre courant != baseline d'analyse
 
-    current != baseline
-        => le champ a évolué depuis la proposition précédente ;
-           TomeLinea le protège.
+    ou si le Livre possède des pages sans proposal_key.
     """
 
     proposal.validate()
@@ -116,24 +134,37 @@ def build_reanalysis_plan(
 
         if proposal_key:
             existing_by_key[str(proposal_key)] = page
+        else:
+            plan.manual_page_ids.append(page.id)
 
     proposed_by_key = {
         page.proposal_key: page
         for page in proposal.pages
     }
 
-    # Pages nouvelles dans la nouvelle analyse.
+    # ----------------------------------------------------------
+    # Pages nouvelles
+    # ----------------------------------------------------------
+
     for proposal_key, proposed in proposed_by_key.items():
         if proposal_key not in existing_by_key:
             plan.new_pages.append(proposed)
 
-    # Pages du Livre qui ne sont plus présentes dans la proposition.
-    # Elles ne sont surtout pas supprimées automatiquement.
+    # ----------------------------------------------------------
+    # Pages absentes de la nouvelle proposition
+    #
+    # Important :
+    # aucune suppression automatique.
+    # ----------------------------------------------------------
+
     for proposal_key, page in existing_by_key.items():
         if proposal_key not in proposed_by_key:
             plan.missing_page_ids.append(page.id)
 
-    # Comparaison champ par champ.
+    # ----------------------------------------------------------
+    # Comparaison des propriétés de page
+    # ----------------------------------------------------------
+
     for proposal_key, proposed in proposed_by_key.items():
         page = existing_by_key.get(proposal_key)
 
@@ -143,7 +174,7 @@ def build_reanalysis_plan(
         baseline = page.metadata.get("analysis_baseline")
 
         if not isinstance(baseline, dict):
-            # Une page sans baseline est considérée comme protégée.
+            # En l'absence de baseline, on ne prend aucun risque.
             continue
 
         current = current_page_values(page)
@@ -175,7 +206,48 @@ def build_reanalysis_plan(
             else:
                 plan.automatic_changes.append(change)
 
+    # ----------------------------------------------------------
+    # Comparaison structurelle de l'ordre
+    # ----------------------------------------------------------
+
+    baseline = book.metadata.get(
+        "analysis_order_baseline",
+        [],
+    )
+
+    if not isinstance(baseline, list):
+        baseline = []
+
+    plan.order_baseline = [
+        str(value)
+        for value in baseline
+    ]
+
+    plan.order_current = book_order_keys(book)
+    plan.order_proposed = proposal_order_keys(proposal)
+
+    plan.order_change_detected = (
+        plan.order_proposed != plan.order_baseline
+    )
+
+    human_reordered = (
+        plan.order_current != plan.order_baseline
+    )
+
+    # Une page manuelle pourrait avoir été insérée entre deux pages
+    # issues de l'analyse. On protège donc l'ordre global.
+    has_manual_pages = bool(plan.manual_page_ids)
+
+    plan.order_protected = (
+        plan.order_change_detected
+        and (
+            human_reordered
+            or has_manual_pages
+        )
+    )
+
     return plan
+
 
 def _apply_page_field(
     page: PageV4,
@@ -232,14 +304,12 @@ def apply_safe_reanalysis_changes(
     plan: ReanalysisPlan,
 ) -> int:
     """
-    Applique uniquement les changements automatiques sûrs.
+    Applique uniquement les changements de propriétés automatiques sûrs.
 
-    Ne touche jamais :
-    - aux changements protégés par une modification humaine ;
-    - aux nouvelles pages ;
-    - aux pages absentes de la nouvelle analyse.
-
-    Retourne le nombre de champs réellement mis à jour.
+    Cette fonction ne traite pas encore :
+    - les nouvelles pages ;
+    - les pages absentes ;
+    - les déplacements structurels.
     """
 
     if plan.proposal_id != proposal.id:
@@ -275,8 +345,7 @@ def apply_safe_reanalysis_changes(
             change.field_name
         )
 
-        # Sécurité supplémentaire :
-        # la page ne doit pas avoir changé depuis la création du plan.
+        # Vérifie que la page n'a pas changé après création du plan.
         if current != change.current_value:
             raise RuntimeError(
                 f"La page {change.page_id} a changé depuis "
@@ -296,14 +365,12 @@ def apply_safe_reanalysis_changes(
                 f"Baseline absente pour la page {page.id}"
             )
 
-        # Seul le champ réellement appliqué change de référence.
-        # Une valeur protégée conserve donc son ancienne baseline.
-        baseline[change.field_name] = change.proposed_value
+        baseline[change.field_name] = (
+            change.proposed_value
+        )
 
         applied += 1
 
-    # Les références d'analyse de la nouvelle proposition peuvent être
-    # mémorisées sans prétendre que les changements protégés sont acceptés.
     for proposed_key, proposed in proposed_by_key.items():
         page = next(
             (
@@ -320,7 +387,9 @@ def apply_safe_reanalysis_changes(
                 proposed.analysis_refs
             )
 
-    book.metadata["last_reanalysis_proposal_id"] = proposal.id
+    book.metadata["last_reanalysis_proposal_id"] = (
+        proposal.id
+    )
 
     book.history.append(
         {
@@ -330,9 +399,17 @@ def apply_safe_reanalysis_changes(
             "protected_changes_pending": len(
                 plan.protected_changes
             ),
-            "new_pages_pending": len(plan.new_pages),
+            "new_pages_pending": len(
+                plan.new_pages
+            ),
             "missing_pages_pending": len(
                 plan.missing_page_ids
+            ),
+            "order_change_pending": (
+                plan.order_change_detected
+            ),
+            "order_change_protected": (
+                plan.order_protected
             ),
         }
     )
