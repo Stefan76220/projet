@@ -7,6 +7,10 @@ Règles :
 - une nouvelle partie reçoit un UUID permanent ;
 - aucune partie disparue de l'Analyse n'est supprimée ;
 - un ordre modifié humainement n'est jamais écrasé ;
+- une partie manuelle correctement ancrée est conservée pendant
+  l'évolution automatique du reste de la structure ;
+- son UUID reste inchangé ;
+- son ancre est recalculée après une évolution automatique ;
 - les changements de parent différés sont appliqués seulement
   lorsque leur nouvelle partie parente existe ;
 - une partie disparue est simplement signalée à vérifier.
@@ -21,7 +25,6 @@ from src.v4.domain import (
 from src.v4.proposal import (
     BookProposal,
     ProposedPart,
-    book_part_order_keys,
     proposal_part_order_keys,
     proposed_part_baseline,
 )
@@ -86,12 +89,261 @@ def _parts_by_proposal_key(
     return result
 
 
+# ==============================================================
+# Ancres des parties manuelles
+# ==============================================================
+
+def _stored_manual_anchor(
+    part: PartV4,
+) -> dict[str, str | None] | None:
+
+    value = part.metadata.get(
+        "manual_anchor"
+    )
+
+    if not isinstance(
+        value,
+        dict,
+    ):
+        return None
+
+    before = value.get(
+        "before_proposal_key"
+    )
+
+    after = value.get(
+        "after_proposal_key"
+    )
+
+    return {
+        "before_proposal_key": (
+            str(before)
+            if before is not None
+            else None
+        ),
+        "after_proposal_key": (
+            str(after)
+            if after is not None
+            else None
+        ),
+    }
+
+
+def _current_manual_anchor(
+    book: BookV4,
+    part_id: str,
+) -> dict[str, str | None]:
+
+    if part_id not in book.parts:
+        raise KeyError(
+            part_id
+        )
+
+    try:
+        index = book.part_order.index(
+            part_id
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"Partie absente de l'ordre : {part_id}"
+        ) from exc
+
+    before_key: str | None = None
+    after_key: str | None = None
+
+    for candidate_id in reversed(
+        book.part_order[:index]
+    ):
+        candidate = book.parts[
+            candidate_id
+        ]
+
+        key = _proposal_key(
+            candidate
+        )
+
+        if key is not None:
+            before_key = key
+            break
+
+    for candidate_id in book.part_order[index + 1:]:
+        candidate = book.parts[
+            candidate_id
+        ]
+
+        key = _proposal_key(
+            candidate
+        )
+
+        if key is not None:
+            after_key = key
+            break
+
+    return {
+        "before_proposal_key": before_key,
+        "after_proposal_key": after_key,
+    }
+
+
+def _refresh_manual_anchors(
+    book: BookV4,
+    manual_part_ids: list[str],
+) -> None:
+
+    for part_id in manual_part_ids:
+        part = book.parts.get(
+            part_id
+        )
+
+        if part is None:
+            continue
+
+        part.metadata[
+            "manual_anchor"
+        ] = _current_manual_anchor(
+            book,
+            part_id,
+        )
+
+
+def _build_order_with_manual_parts(
+    book: BookV4,
+    proposal_keys: list[str],
+    parts_by_key: dict[str, PartV4],
+    manual_part_ids: list[str],
+) -> list[str]:
+    """
+    Reconstruit l'ordre réel en conservant les parties manuelles.
+
+    Politique :
+    - priorité à l'ancienne borne droite ;
+    - une insertion automatique dans un ancien intervalle se place
+      donc avant la partie manuelle ;
+    - en fin de livre, la borne gauche est utilisée ;
+    - plusieurs parties manuelles du même intervalle gardent leur
+      ordre relatif.
+    """
+
+    manual_set = set(
+        manual_part_ids
+    )
+
+    manual_in_current_order = [
+        part_id
+        for part_id in book.part_order
+        if part_id in manual_set
+    ]
+
+    before_buckets: dict[
+        str,
+        list[str],
+    ] = {}
+
+    after_buckets: dict[
+        str,
+        list[str],
+    ] = {}
+
+    detached: list[str] = []
+
+    proposal_key_set = set(
+        proposal_keys
+    )
+
+    for part_id in manual_in_current_order:
+        part = book.parts[
+            part_id
+        ]
+
+        anchor = _stored_manual_anchor(
+            part
+        )
+
+        if anchor is None:
+            detached.append(
+                part_id
+            )
+            continue
+
+        before_key = anchor[
+            "before_proposal_key"
+        ]
+
+        after_key = anchor[
+            "after_proposal_key"
+        ]
+
+        # Priorité à la borne droite.
+        if (
+            after_key is not None
+            and after_key in proposal_key_set
+        ):
+            before_buckets.setdefault(
+                after_key,
+                [],
+            ).append(
+                part_id
+            )
+
+            continue
+
+        # Cas de fin de structure.
+        if (
+            before_key is not None
+            and before_key in proposal_key_set
+        ):
+            after_buckets.setdefault(
+                before_key,
+                [],
+            ).append(
+                part_id
+            )
+
+            continue
+
+        detached.append(
+            part_id
+        )
+
+    if detached:
+        raise RuntimeError(
+            "Une ou plusieurs parties manuelles "
+            "n'ont plus d'ancre exploitable."
+        )
+
+    result: list[str] = []
+
+    for key in proposal_keys:
+        result.extend(
+            before_buckets.get(
+                key,
+                [],
+            )
+        )
+
+        result.append(
+            parts_by_key[
+                key
+            ].id
+        )
+
+        result.extend(
+            after_buckets.get(
+                key,
+                [],
+            )
+        )
+
+    return result
+
+
+# ==============================================================
+# Validation de la hiérarchie
+# ==============================================================
+
 def _validate_parent_graph(
     book: BookV4,
 ) -> None:
-    """
-    Vérifie l'absence de boucle dans la hiérarchie réelle du Livre.
-    """
 
     parent_by_id = {
         part.id: part.parent_id
@@ -128,38 +380,38 @@ def _new_part_from_proposal(
         part_type=proposed.part_type,
     )
 
-    part.metadata["proposal_key"] = (
-        proposed.proposal_key
-    )
+    part.metadata[
+        "proposal_key"
+    ] = proposed.proposal_key
 
-    part.metadata["proposal_id"] = (
-        proposal_id
-    )
+    part.metadata[
+        "proposal_id"
+    ] = proposal_id
 
-    part.metadata["analysis_refs"] = list(
+    part.metadata[
+        "analysis_refs"
+    ] = list(
         proposed.analysis_refs
     )
 
-    part.metadata["analysis_baseline"] = (
-        proposed_part_baseline(
-            proposed
-        )
+    part.metadata[
+        "analysis_baseline"
+    ] = proposed_part_baseline(
+        proposed
     )
 
     return part
 
+
+# ==============================================================
+# Application structurelle
+# ==============================================================
 
 def apply_safe_part_structural_changes(
     book: BookV4,
     proposal: BookProposal,
     plan: PartReanalysisPlan,
 ) -> PartStructuralApplyResult:
-    """
-    Applique uniquement une évolution structurelle non ambiguë.
-
-    Une partie disparue ou un ordre protégé bloque l'application
-    structurelle automatique.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
@@ -169,32 +421,21 @@ def apply_safe_part_structural_changes(
     proposal.validate()
     book.validate()
 
-    # Le Livre ne doit pas avoir changé depuis la création du plan.
-    if (
-        book_part_order_keys(book)
-        != plan.order_current
+    # Contrôle complet :
+    # aucune partie, y compris manuelle, ne doit avoir bougé
+    # depuis la préparation du plan.
+    if list(book.part_order) != (
+        plan.full_order_current
     ):
         raise RuntimeError(
-            "L'ordre des parties du Livre a changé "
-            "depuis la création du plan."
-        )
-
-    current_manual_ids = {
-        part.id
-        for part in book.parts.values()
-        if _proposal_key(part) is None
-    }
-
-    if current_manual_ids != set(
-        plan.manual_part_ids
-    ):
-        raise RuntimeError(
-            "Les parties manuelles ont changé "
+            "L'ordre complet des parties a changé "
             "depuis la création du plan."
         )
 
     if (
-        proposal_part_order_keys(proposal)
+        proposal_part_order_keys(
+            proposal
+        )
         != plan.order_proposed
     ):
         raise RuntimeError(
@@ -202,24 +443,23 @@ def apply_safe_part_structural_changes(
             "la création du plan."
         )
 
-    # Une disparition est ambiguë :
-    # aucune suppression et aucun réordonnancement automatique.
+    # Jamais de suppression automatique.
     if plan.missing_part_ids:
         return PartStructuralApplyResult(
             applied=False,
             reason="parties_absentes_a_verifier",
         )
 
+    if plan.manual_anchor_issues:
+        return PartStructuralApplyResult(
+            applied=False,
+            reason="ancre_partie_manuelle_modifiee",
+        )
+
     if plan.order_protected:
         return PartStructuralApplyResult(
             applied=False,
             reason="ordre_parties_protege",
-        )
-
-    if plan.manual_part_ids:
-        return PartStructuralApplyResult(
-            applied=False,
-            reason="parties_manuelles_presentes",
         )
 
     if (
@@ -232,11 +472,6 @@ def apply_safe_part_structural_changes(
             reason="aucun_changement_structurel",
         )
 
-    proposed_by_key = {
-        part.proposal_key: part
-        for part in proposal.parts
-    }
-
     parts_by_key = (
         _parts_by_proposal_key(
             book
@@ -247,13 +482,13 @@ def apply_safe_part_structural_changes(
 
     # ==========================================================
     # 1. Création des nouvelles parties
-    #
-    # Elles sont d'abord créées sans parent afin que toutes les
-    # identités existent avant de construire la hiérarchie.
-    # ==========================================================
+    # ==============================================================
 
     for proposed in plan.new_parts:
-        if proposed.proposal_key in parts_by_key:
+        if (
+            proposed.proposal_key
+            in parts_by_key
+        ):
             continue
 
         part = _new_part_from_proposal(
@@ -261,6 +496,7 @@ def apply_safe_part_structural_changes(
             proposal.id,
         )
 
+        # Ajout temporaire en fin de structure.
         book.add_part(
             part
         )
@@ -273,7 +509,7 @@ def apply_safe_part_structural_changes(
 
     # ==========================================================
     # 2. Parents des nouvelles parties
-    # ==========================================================
+    # ==============================================================
 
     for proposed in plan.new_parts:
         part = parts_by_key[
@@ -299,8 +535,8 @@ def apply_safe_part_structural_changes(
         )
 
     # ==========================================================
-    # 3. Changements de parent qui attendaient une nouvelle partie
-    # ==========================================================
+    # 3. Changements de parent différés
+    # ==============================================================
 
     deferred_applied = 0
 
@@ -345,7 +581,9 @@ def apply_safe_part_structural_changes(
                     f"{change.proposed_value}"
                 )
 
-            new_parent_id = parent.id
+            new_parent_id = (
+                parent.id
+            )
 
         part.parent_id = (
             new_parent_id
@@ -363,9 +601,9 @@ def apply_safe_part_structural_changes(
                 f"Baseline absente : {part.id}"
             )
 
-        baseline["parent_key"] = (
-            change.proposed_value
-        )
+        baseline[
+            "parent_key"
+        ] = change.proposed_value
 
         deferred_applied += 1
 
@@ -374,8 +612,8 @@ def apply_safe_part_structural_changes(
     )
 
     # ==========================================================
-    # 4. Nouvel ordre
-    # ==========================================================
+    # 4. Reconstruction de l'ordre
+    # ==============================================================
 
     expected_keys = set(
         plan.order_proposed
@@ -387,27 +625,60 @@ def apply_safe_part_structural_changes(
 
     if expected_keys != actual_keys:
         raise RuntimeError(
-            "Les parties du Livre ne correspondent pas "
-            "à la nouvelle proposition."
+            "Les parties issues de l'Analyse ne correspondent "
+            "pas à la nouvelle proposition."
         )
 
     old_order = list(
         book.part_order
     )
 
-    book.part_order = [
-        parts_by_key[key].id
-        for key in plan.order_proposed
-    ]
-
-    reordered = (
-        old_order != book.part_order
+    new_order = (
+        _build_order_with_manual_parts(
+            book,
+            plan.order_proposed,
+            parts_by_key,
+            plan.manual_part_ids,
+        )
     )
 
+    if set(new_order) != set(
+        book.parts
+    ):
+        raise RuntimeError(
+            "Le nouvel ordre ne contient pas exactement "
+            "toutes les parties du Livre."
+        )
+
+    if len(new_order) != len(
+        book.parts
+    ):
+        raise RuntimeError(
+            "Le nouvel ordre contient un nombre "
+            "incohérent de parties."
+        )
+
+    book.part_order = (
+        new_order
+    )
+
+    reordered = (
+        old_order
+        != book.part_order
+    )
+
+    # Nouvelle référence automatique.
     book.metadata[
         "analysis_part_order_baseline"
     ] = list(
         plan.order_proposed
+    )
+
+    # Les parties manuelles adoptent leur nouvel environnement
+    # comme référence, sans changer d'identité.
+    _refresh_manual_anchors(
+        book,
+        plan.manual_part_ids,
     )
 
     book.metadata[
@@ -425,6 +696,9 @@ def apply_safe_part_structural_changes(
             "deferred_parent_changes_applied": (
                 deferred_applied
             ),
+            "manual_parts_preserved": len(
+                plan.manual_part_ids
+            ),
         }
     )
 
@@ -440,16 +714,15 @@ def apply_safe_part_structural_changes(
     )
 
 
+# ==============================================================
+# Parties absentes
+# ==============================================================
+
 def update_missing_part_status(
     book: BookV4,
     proposal: BookProposal,
     plan: PartReanalysisPlan,
 ) -> int:
-    """
-    Signale les parties non retrouvées sans jamais les supprimer.
-
-    Si une partie réapparaît plus tard, le signalement disparaît.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
@@ -475,7 +748,7 @@ def update_missing_part_status(
             part
         )
 
-        # Partie créée manuellement : hors Analyse.
+        # Partie manuelle : hors Analyse.
         if key is None:
             continue
 

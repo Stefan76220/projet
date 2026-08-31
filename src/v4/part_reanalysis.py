@@ -7,9 +7,11 @@ Principes :
 - PartV4.id reste l'identité permanente ;
 - l'Analyse travaille avec proposal_key ;
 - une modification humaine n'est jamais écrasée ;
-- les nouvelles parties sont détectées mais pas encore créées ici ;
-- les parties disparues ne sont jamais supprimées ici ;
-- les changements d'ordre sont détectés séparément ;
+- les nouvelles parties sont détectées avant création ;
+- les parties disparues ne sont jamais supprimées automatiquement ;
+- une partie manuelle correctement ancrée ne bloque pas, à elle seule,
+  l'évolution automatique de l'ordre ;
+- le déplacement manuel d'une partie est détecté et protège l'ordre ;
 - les changements de parent sont contrôlés contre les cycles.
 """
 
@@ -70,6 +72,10 @@ class PartReanalysisPlan:
         default_factory=list
     )
 
+    manual_anchor_issues: list[str] = field(
+        default_factory=list
+    )
+
     order_baseline: list[str] = field(
         default_factory=list
     )
@@ -79,6 +85,11 @@ class PartReanalysisPlan:
     )
 
     order_proposed: list[str] = field(
+        default_factory=list
+    )
+
+    # Ordre réel complet, parties manuelles comprises.
+    full_order_current: list[str] = field(
         default_factory=list
     )
 
@@ -162,8 +173,6 @@ def _current_parent_key(
     if parent_key is not None:
         return parent_key
 
-    # Un parent créé manuellement doit être distingué
-    # de toute clé issue de l'Analyse.
     return f"@manuel:{parent.id}"
 
 
@@ -182,6 +191,126 @@ def current_part_values(
     }
 
 
+# ==============================================================
+# Ancres des parties manuelles
+# ==============================================================
+
+def _current_manual_anchor(
+    book: BookV4,
+    part_id: str,
+) -> dict[str, str | None]:
+
+    if part_id not in book.parts:
+        raise KeyError(
+            part_id
+        )
+
+    try:
+        index = book.part_order.index(
+            part_id
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"Partie absente de l'ordre : {part_id}"
+        ) from exc
+
+    before_key: str | None = None
+    after_key: str | None = None
+
+    for candidate_id in reversed(
+        book.part_order[:index]
+    ):
+        candidate = book.parts[
+            candidate_id
+        ]
+
+        key = _proposal_key(
+            candidate
+        )
+
+        if key is not None:
+            before_key = key
+            break
+
+    for candidate_id in book.part_order[index + 1:]:
+        candidate = book.parts[
+            candidate_id
+        ]
+
+        key = _proposal_key(
+            candidate
+        )
+
+        if key is not None:
+            after_key = key
+            break
+
+    return {
+        "before_proposal_key": before_key,
+        "after_proposal_key": after_key,
+    }
+
+
+def _stored_manual_anchor(
+    part: PartV4,
+) -> dict[str, str | None] | None:
+
+    value = part.metadata.get(
+        "manual_anchor"
+    )
+
+    if not isinstance(
+        value,
+        dict,
+    ):
+        return None
+
+    before = value.get(
+        "before_proposal_key"
+    )
+
+    after = value.get(
+        "after_proposal_key"
+    )
+
+    return {
+        "before_proposal_key": (
+            str(before)
+            if before is not None
+            else None
+        ),
+        "after_proposal_key": (
+            str(after)
+            if after is not None
+            else None
+        ),
+    }
+
+
+def _manual_anchor_is_current(
+    book: BookV4,
+    part: PartV4,
+) -> bool:
+
+    stored = _stored_manual_anchor(
+        part
+    )
+
+    if stored is None:
+        return False
+
+    current = _current_manual_anchor(
+        book,
+        part.id,
+    )
+
+    return stored == current
+
+
+# ==============================================================
+# Construction du plan
+# ==============================================================
+
 def build_part_reanalysis_plan(
     book: BookV4,
     proposal: BookProposal,
@@ -194,6 +323,10 @@ def build_part_reanalysis_plan(
         proposal_id=proposal.id
     )
 
+    plan.full_order_current = list(
+        book.part_order
+    )
+
     existing_by_key = (
         _parts_by_proposal_key(
             book
@@ -201,8 +334,18 @@ def build_part_reanalysis_plan(
     )
 
     for part in book.parts.values():
-        if _proposal_key(part) is None:
-            plan.manual_part_ids.append(
+        if _proposal_key(part) is not None:
+            continue
+
+        plan.manual_part_ids.append(
+            part.id
+        )
+
+        if not _manual_anchor_is_current(
+            book,
+            part,
+        ):
+            plan.manual_anchor_issues.append(
                 part.id
             )
 
@@ -213,7 +356,7 @@ def build_part_reanalysis_plan(
 
     # ==========================================================
     # Nouvelles parties
-    # ==========================================================
+    # ==============================================================
 
     for key, proposed in proposed_by_key.items():
         if key not in existing_by_key:
@@ -222,8 +365,8 @@ def build_part_reanalysis_plan(
             )
 
     # ==========================================================
-    # Parties disparues de la nouvelle analyse
-    # ==========================================================
+    # Parties disparues
+    # ==============================================================
 
     for key, part in existing_by_key.items():
         if key not in proposed_by_key:
@@ -233,7 +376,7 @@ def build_part_reanalysis_plan(
 
     # ==========================================================
     # Modifications des parties existantes
-    # ==========================================================
+    # ==============================================================
 
     for key, proposed in proposed_by_key.items():
         part = existing_by_key.get(
@@ -247,7 +390,10 @@ def build_part_reanalysis_plan(
             "analysis_baseline"
         )
 
-        if not isinstance(baseline, dict):
+        if not isinstance(
+            baseline,
+            dict,
+        ):
             continue
 
         current = current_part_values(
@@ -276,8 +422,7 @@ def build_part_reanalysis_plan(
                 continue
 
             human_changed = (
-                current_value
-                != baseline_value
+                current_value != baseline_value
             )
 
             change = PartReanalysisChange(
@@ -298,8 +443,6 @@ def build_part_reanalysis_plan(
                 )
                 continue
 
-            # Un changement de parent vers une partie nouvelle
-            # doit attendre sa création structurelle.
             if (
                 field_name == "parent_key"
                 and proposed_value is not None
@@ -316,8 +459,8 @@ def build_part_reanalysis_plan(
             )
 
     # ==========================================================
-    # Ordre des parties
-    # ==========================================================
+    # Ordre
+    # ==============================================================
 
     baseline_order = book.metadata.get(
         "analysis_part_order_baseline",
@@ -335,6 +478,7 @@ def build_part_reanalysis_plan(
         for value in baseline_order
     ]
 
+    # Cette fonction ignore volontairement les parties manuelles.
     plan.order_current = (
         book_part_order_keys(
             book
@@ -352,19 +496,22 @@ def build_part_reanalysis_plan(
         != plan.order_baseline
     )
 
-    human_reordered = (
+    human_reordered_analysis_parts = (
         plan.order_current
         != plan.order_baseline
     )
 
-    # Pour l'instant une partie manuelle protège l'ordre.
-    # Nous lui donnerons des ancres comme aux pages dans
-    # une étape ultérieure.
+    manual_structure_changed = bool(
+        plan.manual_anchor_issues
+    )
+
+    # La simple présence d'une partie manuelle ne protège plus
+    # tout l'ordre. Seul un déplacement hors de son ancre le fait.
     plan.order_protected = (
         plan.order_change_detected
         and (
-            human_reordered
-            or bool(plan.manual_part_ids)
+            human_reordered_analysis_parts
+            or manual_structure_changed
         )
     )
 
@@ -397,9 +544,6 @@ def _resolve_parent_id(
 def _validate_parent_graph(
     parent_by_id: dict[str, str | None],
 ) -> None:
-    """
-    Vérifie l'absence de cycles avant toute modification réelle.
-    """
 
     for start_id in parent_by_id:
         seen: set[str] = set()
@@ -426,11 +570,6 @@ def apply_safe_part_reanalysis_changes(
     proposal: BookProposal,
     plan: PartReanalysisPlan,
 ) -> int:
-    """
-    Applique uniquement les propriétés automatiques sûres.
-
-    Ne crée, ne supprime et ne réordonne aucune partie.
-    """
 
     if plan.proposal_id != proposal.id:
         raise ValueError(
@@ -440,10 +579,6 @@ def apply_safe_part_reanalysis_changes(
 
     proposal.validate()
     book.validate()
-
-    # ==========================================================
-    # Projection préalable des parents
-    # ==========================================================
 
     projected_parents = {
         part.id: part.parent_id
@@ -465,10 +600,6 @@ def apply_safe_part_reanalysis_changes(
         projected_parents
     )
 
-    # ==========================================================
-    # Application
-    # ==========================================================
-
     applied = 0
 
     for change in plan.automatic_changes:
@@ -488,8 +619,6 @@ def apply_safe_part_reanalysis_changes(
             change.field_name
         )
 
-        # Protection contre une modification entre la
-        # préparation du plan et son application.
         if current != change.current_value:
             raise RuntimeError(
                 "La partie a changé depuis "
@@ -566,6 +695,9 @@ def apply_safe_part_reanalysis_changes(
             ),
             "order_change_protected": (
                 plan.order_protected
+            ),
+            "manual_anchor_issues": len(
+                plan.manual_anchor_issues
             ),
         }
     )
