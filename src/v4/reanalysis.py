@@ -176,3 +176,167 @@ def build_reanalysis_plan(
                 plan.automatic_changes.append(change)
 
     return plan
+
+def _apply_page_field(
+    page: PageV4,
+    field_name: str,
+    value: Any,
+) -> None:
+    """
+    Applique une valeur issue de l'analyse sur un champ PageV4.
+
+    Cette fonction n'est appelée que pour un changement préalablement
+    classé comme automatique et sûr.
+    """
+
+    from src.v4.domain import PageOrigin, SourceLink
+
+    if field_name == "origin":
+        page.origin = PageOrigin(value)
+        return
+
+    if field_name == "source":
+        if value is None:
+            page.source = None
+        else:
+            page.source = SourceLink(
+                source_id=value["source_id"],
+                source_version_id=value["source_version_id"],
+                source_page=value.get("source_page"),
+            )
+        return
+
+    allowed_fields = {
+        "page_type",
+        "title",
+        "part_id",
+        "model_id",
+        "recto_verso",
+        "spread_id",
+        "spread_side",
+        "is_compensation",
+    }
+
+    if field_name not in allowed_fields:
+        raise ValueError(
+            f"Champ de réanalyse non applicable automatiquement : "
+            f"{field_name}"
+        )
+
+    setattr(page, field_name, value)
+
+
+def apply_safe_reanalysis_changes(
+    book: BookV4,
+    proposal: BookProposal,
+    plan: ReanalysisPlan,
+) -> int:
+    """
+    Applique uniquement les changements automatiques sûrs.
+
+    Ne touche jamais :
+    - aux changements protégés par une modification humaine ;
+    - aux nouvelles pages ;
+    - aux pages absentes de la nouvelle analyse.
+
+    Retourne le nombre de champs réellement mis à jour.
+    """
+
+    if plan.proposal_id != proposal.id:
+        raise ValueError(
+            "Le plan de réanalyse ne correspond pas à la proposition."
+        )
+
+    proposal.validate()
+    book.validate()
+
+    proposed_by_key = {
+        proposed.proposal_key: proposed
+        for proposed in proposal.pages
+    }
+
+    applied = 0
+
+    for change in plan.automatic_changes:
+        page = book.pages.get(change.page_id)
+
+        if page is None:
+            raise KeyError(
+                f"Page du plan introuvable : {change.page_id}"
+            )
+
+        if change.protected_by_human_change:
+            raise ValueError(
+                "Un changement protégé ne peut pas être appliqué "
+                "automatiquement."
+            )
+
+        current = current_page_values(page).get(
+            change.field_name
+        )
+
+        # Sécurité supplémentaire :
+        # la page ne doit pas avoir changé depuis la création du plan.
+        if current != change.current_value:
+            raise RuntimeError(
+                f"La page {change.page_id} a changé depuis "
+                f"la préparation de la réanalyse."
+            )
+
+        _apply_page_field(
+            page,
+            change.field_name,
+            change.proposed_value,
+        )
+
+        baseline = page.metadata.get("analysis_baseline")
+
+        if not isinstance(baseline, dict):
+            raise ValueError(
+                f"Baseline absente pour la page {page.id}"
+            )
+
+        # Seul le champ réellement appliqué change de référence.
+        # Une valeur protégée conserve donc son ancienne baseline.
+        baseline[change.field_name] = change.proposed_value
+
+        applied += 1
+
+    # Les références d'analyse de la nouvelle proposition peuvent être
+    # mémorisées sans prétendre que les changements protégés sont acceptés.
+    for proposed_key, proposed in proposed_by_key.items():
+        page = next(
+            (
+                existing
+                for existing in book.pages.values()
+                if existing.metadata.get("proposal_key")
+                == proposed_key
+            ),
+            None,
+        )
+
+        if page is not None:
+            page.metadata["last_reanalysis_refs"] = list(
+                proposed.analysis_refs
+            )
+
+    book.metadata["last_reanalysis_proposal_id"] = proposal.id
+
+    book.history.append(
+        {
+            "action": "reanalyse_appliquee_partiellement",
+            "proposal_id": proposal.id,
+            "automatic_changes_applied": applied,
+            "protected_changes_pending": len(
+                plan.protected_changes
+            ),
+            "new_pages_pending": len(plan.new_pages),
+            "missing_pages_pending": len(
+                plan.missing_page_ids
+            ),
+        }
+    )
+
+    book.validate()
+
+    return applied
