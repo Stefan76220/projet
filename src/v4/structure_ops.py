@@ -23,6 +23,9 @@ from src.v4.domain import (
 from src.v4.structure_blocks import (
     structure_insertion_boundary_allowed,
 )
+from src.v4.structure_parts import (
+    boundary_part_id,
+)
 
 
 def utc_now() -> str:
@@ -93,6 +96,7 @@ def insert_manual_page(
     page_type: str = "Page",
     title: str = "",
     is_compensation: bool = False,
+    target_part_id: str | None = None,
 ) -> PageV4:
 
     book.validate()
@@ -119,6 +123,14 @@ def insert_manual_page(
             "à l'intérieur d'un bloc structurel."
         )
 
+    resolved_part_id = (
+        boundary_part_id(
+            book,
+            index,
+            requested_part_id=target_part_id,
+        )
+    )
+
     before_key = (
         _nearest_proposal_before(
             book,
@@ -138,6 +150,7 @@ def insert_manual_page(
         title=title,
         origin=PageOrigin.TOMELINEA,
         source=None,
+        part_id=resolved_part_id,
         is_compensation=(
             is_compensation
         ),
@@ -174,6 +187,7 @@ def insert_manual_page(
             ),
             "page_id": page.id,
             "index": index,
+            "part_id": resolved_part_id,
             "before_proposal_key": (
                 before_key
             ),

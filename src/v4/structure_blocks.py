@@ -31,6 +31,9 @@ from src.v4.structure_spreads import (
     spread_members,
     structure_spread_issues,
 )
+from src.v4.structure_parts import (
+    boundary_part_id,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,6 +317,8 @@ def move_atomic_block(
     book: BookV4,
     page_id: str,
     target_index: int,
+    *,
+    target_part_id: str | None = None,
 ) -> bool:
     """
     Déplace le bloc contenant page_id.
@@ -400,6 +405,15 @@ def move_atomic_block(
         - removed_before_target
     )
 
+    resolved_part_id = (
+        boundary_part_id(
+            book,
+            adjusted_target,
+            page_order=remaining,
+            requested_part_id=target_part_id,
+        )
+    )
+
     new_order = list(
         remaining
     )
@@ -412,9 +426,25 @@ def move_atomic_block(
     if new_order == old_order:
         return False
 
+    old_part_ids = {
+        current_id: (
+            book.pages[
+                current_id
+            ].part_id
+        )
+        for current_id in block_ids
+    }
+
     book.page_order = (
         new_order
     )
+
+    for current_id in block_ids:
+        book.pages[
+            current_id
+        ].part_id = (
+            resolved_part_id
+        )
 
     try:
         book.validate()
@@ -441,6 +471,16 @@ def move_atomic_block(
         book.page_order = (
             old_order
         )
+
+        for current_id, old_part_id in (
+            old_part_ids.items()
+        ):
+            book.pages[
+                current_id
+            ].part_id = (
+                old_part_id
+            )
+
         raise
 
     book.history.append(
@@ -457,6 +497,12 @@ def move_atomic_block(
             ),
             "final_index": (
                 adjusted_target
+            ),
+            "target_part_id": (
+                resolved_part_id
+            ),
+            "previous_part_ids": (
+                old_part_ids
             ),
         }
     )
