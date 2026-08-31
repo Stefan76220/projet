@@ -442,36 +442,36 @@ def _book_payload(
 
         "format": {
             "width_mm": (
-                book.format.width_mm
+                float(book.format.width_mm)
             ),
             "height_mm": (
-                book.format.height_mm
+                float(book.format.height_mm)
             ),
 
             "margin_top_mm": (
-                book.format.margin_top_mm
+                float(book.format.margin_top_mm)
             ),
             "margin_bottom_mm": (
-                book.format.margin_bottom_mm
+                float(book.format.margin_bottom_mm)
             ),
             "margin_inside_mm": (
-                book.format.margin_inside_mm
+                float(book.format.margin_inside_mm)
             ),
             "margin_outside_mm": (
-                book.format.margin_outside_mm
+                float(book.format.margin_outside_mm)
             ),
 
             "bleed_top_mm": (
-                book.format.bleed_top_mm
+                float(book.format.bleed_top_mm)
             ),
             "bleed_right_mm": (
-                book.format.bleed_right_mm
+                float(book.format.bleed_right_mm)
             ),
             "bleed_bottom_mm": (
-                book.format.bleed_bottom_mm
+                float(book.format.bleed_bottom_mm)
             ),
             "bleed_left_mm": (
-                book.format.bleed_left_mm
+                float(book.format.bleed_left_mm)
             ),
         },
 
