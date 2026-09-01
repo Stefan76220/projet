@@ -20,6 +20,9 @@ from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 
 from src.v4.domain import BookV4
+from src.v4.composition_models import (
+    apply_type_model_if_any,
+)
 from src.v4.structure_auto import (
     is_structural_auto_page,
     structure_auto_issues,
@@ -146,6 +149,14 @@ def change_page_type(
             sync_structure_rules(
                 book
             )
+        )
+
+        # Si le nouveau type poss?de un mod?le g?n?ral,
+        # il devient imm?diatement actif.
+        apply_type_model_if_any(
+            book,
+            page_id,
+            force=True,
         )
 
         book.validate()

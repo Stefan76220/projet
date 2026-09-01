@@ -23,6 +23,9 @@ from src.v4.domain import (
     PageOrigin,
     PageV4,
 )
+from src.v4.composition_models import (
+    apply_type_model_if_any,
+)
 from src.v4.structure_blocks import (
     structure_insertion_boundary_allowed,
 )
@@ -222,6 +225,13 @@ def insert_manual_page(
         # - compensations.
         sync_structure_rules(
             book
+        )
+
+        # Une nouvelle page r?elle h?rite imm?diatement
+        # du mod?le ?ventuellement li? ? son type.
+        apply_type_model_if_any(
+            book,
+            page.id,
         )
 
         book.validate()
