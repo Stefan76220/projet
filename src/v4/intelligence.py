@@ -7,12 +7,12 @@ Ce module ne contient aucune IA.
 
 Il sépare :
 - l'extraction factuelle déterministe ;
+- les signaux dérivés produits par les moteurs TomeLinea ;
 - la future intelligence éditoriale ;
 - la mémoire d'analyse V4.
 
-L'intelligence reçoit uniquement une photographie détachée des faits.
-Elle ne reçoit jamais SourceV4 ou BookV4 sous forme mutable et ne peut
-produire que des propositions.
+L'intelligence reçoit uniquement une photographie détachée.
+Elle ne reçoit jamais SourceV4, BookV4 ou AnalysisV4 sous forme mutable.
 """
 
 from copy import deepcopy
@@ -27,6 +27,7 @@ from src.v4.analysis import (
 
 
 FACT_KEY_PREFIX = "fact."
+EDITORIAL_KEY_PREFIX = "editorial."
 RATIONALE_EVIDENCE_PREFIX = "justification:"
 
 
@@ -34,21 +35,34 @@ def _fact_key(key: str) -> str:
     clean = str(key).strip()
 
     if not clean:
-        raise ValueError("Clé d'observation factuelle absente.")
+        raise ValueError(
+            "Clé d'observation factuelle absente."
+        )
 
-    if clean.startswith(FACT_KEY_PREFIX):
+    if clean.startswith(
+        FACT_KEY_PREFIX
+    ):
         return clean
 
-    return f"{FACT_KEY_PREFIX}{clean}"
+    return (
+        FACT_KEY_PREFIX
+        + clean
+    )
 
 
-def _editorial_key(key: str) -> str:
+def _editorial_key(
+    key: str,
+) -> str:
     clean = str(key).strip()
 
     if not clean:
-        raise ValueError("Clé de proposition éditoriale absente.")
+        raise ValueError(
+            "Clé de proposition éditoriale absente."
+        )
 
-    if clean.startswith(FACT_KEY_PREFIX):
+    if clean.startswith(
+        FACT_KEY_PREFIX
+    ):
         raise ValueError(
             "Une proposition éditoriale ne peut pas utiliser "
             "l'espace réservé aux faits."
@@ -57,9 +71,14 @@ def _editorial_key(key: str) -> str:
     return clean
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class FactualObservation:
-    """Photographie détachée d'un fait enregistré dans AnalysisV4."""
+    """
+    Photographie détachée d'un fait enregistré dans AnalysisV4.
+    """
 
     finding_id: str
     target_type: str
@@ -67,53 +86,151 @@ class FactualObservation:
     key: str
     value: Any
 
-    source_version_ids: tuple[str, ...] = ()
-    evidence: tuple[str, ...] = ()
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = ()
+
+    evidence: tuple[
+        str,
+        ...
+    ] = ()
+
     created_at: str = ""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class AnalysisSignal:
+    """
+    Résultat dérivé d'un moteur TomeLinea.
+
+    Exemple :
+    - ressemblance de pages ;
+    - appartenance à une famille ;
+    - rôle noyau / variante.
+
+    Ce n'est pas un fait brut de la Source.
+    Ce n'est pas non plus une décision éditoriale finale.
+    """
+
+    finding_id: str
+
+    target_type: str
+    target_id: str
+
+    key: str
+    value: Any
+
+    confidence: ConfidenceLevel
+
+    engine: str
+    engine_version: str
+
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = ()
+
+    evidence: tuple[
+        str,
+        ...
+    ] = ()
+
+    created_at: str = ""
+
+
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class IntelligenceContext:
     """
     Contexte remis à l'intelligence éditoriale.
 
-    Il ne contient ni SourceV4, ni BookV4, ni AnalysisV4.
+    observations :
+        faits directement extraits de la Source.
+
+    signals :
+        résultats déterministes déjà calculés par TomeLinea.
+
+    Aucun objet persistant mutable n'est transmis.
     """
 
-    source_version_ids: tuple[str, ...]
-    observations: tuple[FactualObservation, ...]
+    source_version_ids: tuple[
+        str,
+        ...
+    ]
+
+    observations: tuple[
+        FactualObservation,
+        ...
+    ]
+
+    signals: tuple[
+        AnalysisSignal,
+        ...
+    ] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class EditorialProposal:
-    """Proposition produite par une intelligence éditoriale."""
+    """
+    Proposition produite par une intelligence éditoriale.
+    """
 
     target_type: str
     target_id: str
+
     key: str
     value: Any
+
     confidence: ConfidenceLevel
 
     rationale: str = ""
-    source_version_ids: tuple[str, ...] = ()
-    evidence: tuple[str, ...] = ()
 
-    def validate(self) -> None:
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = ()
+
+    evidence: tuple[
+        str,
+        ...
+    ] = ()
+
+    def validate(
+        self,
+    ) -> None:
+
         if not self.target_type.strip():
-            raise ValueError("Type de cible absent.")
+            raise ValueError(
+                "Type de cible absent."
+            )
 
         if not self.target_id.strip():
-            raise ValueError("Identité de cible absente.")
+            raise ValueError(
+                "Identité de cible absente."
+            )
 
-        _editorial_key(self.key)
+        _editorial_key(
+            self.key
+        )
 
 
 @runtime_checkable
-class EditorialIntelligenceEngine(Protocol):
+class EditorialIntelligenceEngine(
+    Protocol
+):
     """
-    Contrat stable de la future intelligence TomeLinea.
+    Contrat stable de l'intelligence TomeLinea.
 
-    L'implémentation pourra ultérieurement être :
+    Une implémentation pourra être :
     - un moteur de règles ;
     - une IA locale ;
     - plusieurs outils spécialisés.
@@ -125,26 +242,35 @@ class EditorialIntelligenceEngine(Protocol):
     def propose(
         self,
         context: IntelligenceContext,
-    ) -> tuple[EditorialProposal, ...]:
+    ) -> tuple[
+        EditorialProposal,
+        ...
+    ]:
         ...
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(
+    frozen=True,
+    slots=True,
+)
 class NullEditorialIntelligence:
     """
-    Moteur neutre.
-
-    Il garantit dès maintenant le contrat architectural sans intégrer
-    de modèle d'IA.
+    Moteur neutre sans IA.
     """
 
-    engine_name: str = "tomelinea.intelligence.none"
+    engine_name: str = (
+        "tomelinea.intelligence.none"
+    )
+
     engine_version: str = "1"
 
     def propose(
         self,
         context: IntelligenceContext,
-    ) -> tuple[EditorialProposal, ...]:
+    ) -> tuple[
+        EditorialProposal,
+        ...
+    ]:
         del context
         return ()
 
@@ -158,83 +284,193 @@ def record_fact(
     value: Any,
     engine: str,
     engine_version: str,
-    source_version_ids: tuple[str, ...] = (),
-    evidence: tuple[str, ...] = (),
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = (),
+    evidence: tuple[
+        str,
+        ...
+    ] = (),
 ) -> AnalysisFinding:
     """
     Enregistre un fait objectif extrait d'une Source.
-
-    Les clés factuelles sont automatiquement placées sous ``fact.*``.
     """
 
     return analysis.add_finding(
         target_type=target_type,
         target_id=target_id,
         key=_fact_key(key),
-        value=deepcopy(value),
-        confidence=ConfidenceLevel.SURE,
-        engine=str(engine),
-        engine_version=str(engine_version),
+        value=deepcopy(
+            value
+        ),
+        confidence=(
+            ConfidenceLevel.SURE
+        ),
+        engine=str(
+            engine
+        ),
+        engine_version=str(
+            engine_version
+        ),
         source_version_ids=tuple(
-            str(item) for item in source_version_ids
+            str(item)
+            for item
+            in source_version_ids
         ),
         evidence=tuple(
-            str(item) for item in evidence
+            str(item)
+            for item
+            in evidence
         ),
+    )
+
+
+def _source_matches(
+    finding: AnalysisFinding,
+    requested: set[str],
+) -> bool:
+    if not requested:
+        return True
+
+    linked = set(
+        finding.source_version_ids
+    )
+
+    if not linked:
+        return True
+
+    return not linked.isdisjoint(
+        requested
     )
 
 
 def build_intelligence_context(
     analysis: AnalysisV4,
     *,
-    source_version_ids: tuple[str, ...] = (),
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = (),
 ) -> IntelligenceContext:
     """
-    Produit une photographie détachée des faits connus.
+    Produit une photographie détachée des informations utiles.
 
-    Une future IA ne reçoit donc jamais directement l'état du projet.
+    Les conclusions éditoriales déjà produites sont volontairement
+    exclues des signaux afin d'éviter qu'un moteur se nourrisse de
+    ses propres anciennes réponses.
+
+    En revanche, les résultats techniques intermédiaires tels que
+    similarity.* sont transmis.
     """
 
     requested = {
         str(item)
-        for item in source_version_ids
+        for item
+        in source_version_ids
     }
 
-    observations: list[FactualObservation] = []
+    observations: list[
+        FactualObservation
+    ] = []
 
-    for finding in sorted(
+    signals: list[
+        AnalysisSignal
+    ] = []
+
+    ordered_findings = sorted(
         analysis.findings.values(),
         key=lambda item: (
             item.created_at,
             item.id,
         ),
-    ):
-        if not finding.key.startswith(
+    )
+
+    for finding in ordered_findings:
+
+        if not _source_matches(
+            finding,
+            requested,
+        ):
+            continue
+
+        # ------------------------------------------------------
+        # Faits bruts
+        # ------------------------------------------------------
+
+        if finding.key.startswith(
             FACT_KEY_PREFIX
         ):
+            observations.append(
+                FactualObservation(
+                    finding_id=(
+                        finding.id
+                    ),
+                    target_type=(
+                        finding.target_type
+                    ),
+                    target_id=(
+                        finding.target_id
+                    ),
+                    key=finding.key[
+                        len(
+                            FACT_KEY_PREFIX
+                        ):
+                    ],
+                    value=deepcopy(
+                        finding.value
+                    ),
+                    source_version_ids=tuple(
+                        finding.source_version_ids
+                    ),
+                    evidence=tuple(
+                        finding.evidence
+                    ),
+                    created_at=(
+                        finding.created_at
+                    ),
+                )
+            )
+
             continue
 
-        linked = set(
-            finding.source_version_ids
-        )
+        # ------------------------------------------------------
+        # Les anciennes conclusions éditoriales ne sont pas
+        # réinjectées comme preuves d'une nouvelle analyse.
+        # ------------------------------------------------------
 
-        if (
-            requested
-            and linked
-            and linked.isdisjoint(requested)
+        if finding.key.startswith(
+            EDITORIAL_KEY_PREFIX
         ):
             continue
 
-        observations.append(
-            FactualObservation(
-                finding_id=finding.id,
-                target_type=finding.target_type,
-                target_id=finding.target_id,
-                key=finding.key[
-                    len(FACT_KEY_PREFIX):
-                ],
+        # ------------------------------------------------------
+        # Signaux dérivés
+        # ------------------------------------------------------
+
+        signals.append(
+            AnalysisSignal(
+                finding_id=(
+                    finding.id
+                ),
+                target_type=(
+                    finding.target_type
+                ),
+                target_id=(
+                    finding.target_id
+                ),
+                key=finding.key,
                 value=deepcopy(
                     finding.value
+                ),
+                confidence=(
+                    finding.confidence
+                ),
+                engine=(
+                    finding.engine
+                ),
+                engine_version=(
+                    finding.engine_version
                 ),
                 source_version_ids=tuple(
                     finding.source_version_ids
@@ -242,17 +478,23 @@ def build_intelligence_context(
                 evidence=tuple(
                     finding.evidence
                 ),
-                created_at=finding.created_at,
+                created_at=(
+                    finding.created_at
+                ),
             )
         )
 
     return IntelligenceContext(
         source_version_ids=tuple(
             str(item)
-            for item in source_version_ids
+            for item
+            in source_version_ids
         ),
         observations=tuple(
             observations
+        ),
+        signals=tuple(
+            signals
         ),
     )
 
@@ -263,7 +505,10 @@ def record_editorial_proposal(
     proposal: EditorialProposal,
     engine: str,
     engine_version: str,
-    default_source_version_ids: tuple[str, ...] = (),
+    default_source_version_ids: tuple[
+        str,
+        ...
+    ] = (),
 ) -> AnalysisFinding:
     """
     Enregistre une proposition comme conclusion AnalysisV4 traçable.
@@ -273,7 +518,8 @@ def record_editorial_proposal(
 
     evidence = [
         str(item)
-        for item in proposal.evidence
+        for item
+        in proposal.evidence
     ]
 
     if proposal.rationale.strip():
@@ -292,22 +538,31 @@ def record_editorial_proposal(
     )
 
     return analysis.add_finding(
-        target_type=proposal.target_type,
-        target_id=proposal.target_id,
+        target_type=(
+            proposal.target_type
+        ),
+        target_id=(
+            proposal.target_id
+        ),
         key=_editorial_key(
             proposal.key
         ),
         value=deepcopy(
             proposal.value
         ),
-        confidence=proposal.confidence,
-        engine=str(engine),
+        confidence=(
+            proposal.confidence
+        ),
+        engine=str(
+            engine
+        ),
         engine_version=str(
             engine_version
         ),
         source_version_ids=tuple(
             str(item)
-            for item in source_ids
+            for item
+            in source_ids
         ),
         evidence=tuple(
             evidence
@@ -319,23 +574,33 @@ def run_editorial_intelligence(
     analysis: AnalysisV4,
     engine: EditorialIntelligenceEngine,
     *,
-    source_version_ids: tuple[str, ...] = (),
-) -> tuple[AnalysisFinding, ...]:
+    source_version_ids: tuple[
+        str,
+        ...
+    ] = (),
+) -> tuple[
+    AnalysisFinding,
+    ...
+]:
     """
     Exécute l'intelligence contre un contexte détaché.
 
     Le moteur ne reçoit jamais AnalysisV4 lui-même.
     """
 
-    context = build_intelligence_context(
-        analysis,
-        source_version_ids=(
-            source_version_ids
-        ),
+    context = (
+        build_intelligence_context(
+            analysis,
+            source_version_ids=(
+                source_version_ids
+            ),
+        )
     )
 
     proposals = tuple(
-        engine.propose(context)
+        engine.propose(
+            context
+        )
     )
 
     recorded: list[
@@ -347,7 +612,9 @@ def run_editorial_intelligence(
             record_editorial_proposal(
                 analysis,
                 proposal=proposal,
-                engine=engine.engine_name,
+                engine=(
+                    engine.engine_name
+                ),
                 engine_version=(
                     engine.engine_version
                 ),
@@ -357,13 +624,17 @@ def run_editorial_intelligence(
             )
         )
 
-    return tuple(recorded)
+    return tuple(
+        recorded
+    )
 
 
 def proposal_rationale(
     finding: AnalysisFinding,
 ) -> str:
-    """Retourne la justification d'une proposition enregistrée."""
+    """
+    Retourne la justification d'une proposition enregistrée.
+    """
 
     for item in finding.evidence:
         if item.startswith(
