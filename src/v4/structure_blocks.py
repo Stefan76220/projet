@@ -1,0 +1,588 @@
+﻿from __future__ import annotations
+
+from copy import deepcopy
+
+"""
+TomeLinea V4 — blocs atomiques de Structure.
+
+Un bloc peut être :
+    page simple
+
+ou :
+    AV + page + AP
+
+ou :
+    AV + gauche 2P + droite 2P + AP
+
+Aucune opération de Structure ne doit pouvoir déposer un élément
+à l'intérieur d'un tel bloc.
+"""
+
+from dataclasses import dataclass, fields
+
+from src.v4.domain import (
+    BookV4,
+    PageV4,
+)
+from src.v4.structure_auto import (
+    is_structural_auto_page,
+    structural_auto_source_ids,
+    structure_auto_issues,
+)
+from src.v4.structure_spreads import (
+    spread_members,
+    structure_spread_issues,
+)
+from src.v4.structure_parts import (
+    boundary_part_id,
+)
+from src.v4.structure_sync import (
+    sync_structure_rules,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicPageBlock:
+    page_ids: tuple[str, ...]
+
+    @property
+    def size(self) -> int:
+        return len(
+            self.page_ids
+        )
+
+
+def _source_for_auto(
+    book: BookV4,
+    page: PageV4,
+) -> PageV4:
+
+    source_ids = (
+        structural_auto_source_ids(
+            page
+        )
+    )
+
+    if len(source_ids) != 1:
+        raise ValueError(
+            "Cette page automatique n'a pas "
+            "exactement une source structurelle."
+        )
+
+    source = book.pages.get(
+        source_ids[0]
+    )
+
+    if source is None:
+        raise ValueError(
+            "Source de page automatique inconnue : "
+            f"{source_ids[0]}"
+        )
+
+    return source
+
+
+def _base_pages(
+    book: BookV4,
+    source: PageV4,
+) -> tuple[PageV4, ...]:
+
+    if not source.spread_id:
+        return (
+            source,
+        )
+
+    members = spread_members(
+        book,
+        source.spread_id,
+    )
+
+    if members is None:
+        raise ValueError(
+            "Double page invalide."
+        )
+
+    left, right = members
+
+    return (
+        left,
+        right,
+    )
+
+
+def atomic_block_for_page(
+    book: BookV4,
+    page_id: str,
+) -> AtomicPageBlock:
+
+    book.validate()
+
+    page = book.pages.get(
+        page_id
+    )
+
+    if page is None:
+        raise KeyError(
+            page_id
+        )
+
+    source = (
+        _source_for_auto(
+            book,
+            page,
+        )
+        if is_structural_auto_page(
+            page
+        )
+        else page
+    )
+
+    base = _base_pages(
+        book,
+        source,
+    )
+
+    left = base[0]
+    right = base[-1]
+
+    # Sur une 2P les associations internes sont interdites.
+    if len(base) == 2:
+        if (
+            left.auto_after
+            or right.auto_before
+        ):
+            raise ValueError(
+                "Une page AV/AP est placée "
+                "à l'intérieur d'une double page."
+            )
+
+    ids = (
+        tuple(
+            left.auto_before
+        )
+        + tuple(
+            current.id
+            for current in base
+        )
+        + tuple(
+            right.auto_after
+        )
+    )
+
+    if len(ids) != len(
+        set(ids)
+    ):
+        raise ValueError(
+            "Un bloc structurel contient "
+            "plusieurs fois la même page."
+        )
+
+    for current_id in ids:
+        if current_id not in book.pages:
+            raise ValueError(
+                "Page inconnue dans le bloc : "
+                f"{current_id}"
+            )
+
+    positions = [
+        book.page_order.index(
+            current_id
+        )
+        for current_id in ids
+    ]
+
+    start = min(
+        positions
+    )
+
+    expected = book.page_order[
+        start:
+        start + len(ids)
+    ]
+
+    if expected != list(
+        ids
+    ):
+        raise ValueError(
+            "Le bloc structurel n'est plus contigu."
+        )
+
+    return AtomicPageBlock(
+        page_ids=ids
+    )
+
+
+def atomic_blocks(
+    book: BookV4,
+) -> tuple[AtomicPageBlock, ...]:
+
+    book.validate()
+
+    result: list[
+        AtomicPageBlock
+    ] = []
+
+    consumed: set[str] = set()
+
+    for page_id in book.page_order:
+        if page_id in consumed:
+            continue
+
+        block = atomic_block_for_page(
+            book,
+            page_id,
+        )
+
+        result.append(
+            block
+        )
+
+        consumed.update(
+            block.page_ids
+        )
+
+    if consumed != set(
+        book.page_order
+    ):
+        raise ValueError(
+            "Certaines pages ne sont dans "
+            "aucun bloc structurel."
+        )
+
+    return tuple(
+        result
+    )
+
+
+def protected_structure_boundaries(
+    book: BookV4,
+) -> set[int]:
+    """
+    Frontières d'index interdites.
+
+    Une frontière située entre deux éléments d'un bloc
+    atomique ne peut recevoir aucune insertion.
+    """
+
+    protected: set[int] = set()
+
+    # Les couvertures bornent physiquement le livre : aucune insertion avant
+    # la 1re, après la 4e, ni entre les deux faces d'une même couverture.
+    from src.v4.structure_covers import protected_cover_boundaries
+    protected.update(protected_cover_boundaries(book))
+
+    for block in atomic_blocks(
+        book
+    ):
+        positions = [
+            book.page_order.index(
+                page_id
+            )
+            for page_id in block.page_ids
+        ]
+
+        start = min(
+            positions
+        )
+
+        for offset in range(
+            1,
+            len(
+                block.page_ids
+            ),
+        ):
+            protected.add(
+                start + offset
+            )
+
+    return protected
+
+
+def structure_insertion_boundary_allowed(
+    book: BookV4,
+    index: int,
+) -> bool:
+
+    book.validate()
+
+    if (
+        index < 0
+        or index > len(
+            book.page_order
+        )
+    ):
+        raise IndexError(
+            f"Position d'insertion invalide : {index}"
+        )
+
+    return (
+        index
+        not in protected_structure_boundaries(
+            book
+        )
+    )
+
+
+def move_atomic_block(
+    book: BookV4,
+    page_id: str,
+    target_index: int,
+    *,
+    target_part_id: str | None = None,
+) -> bool:
+    """
+    D?place atomiquement le bloc contenant page_id.
+
+    Les AV/AP et les deux moiti?s d'une 2P suivent ensemble.
+
+    Apr?s le d?placement, toutes les r?gles Structure sont
+    resynchronis?es imm?diatement :
+    - AV/AP ;
+    - doubles pages ?tendues ;
+    - Recto/Verso ;
+    - compensations.
+
+    En cas d'?chec, l'?tat complet du Livre est restaur?.
+    """
+
+    book.validate()
+
+    if (
+        target_index < 0
+        or target_index > len(
+            book.page_order
+        )
+    ):
+        raise IndexError(
+            "Position de d?placement invalide : "
+            f"{target_index}"
+        )
+
+    from src.v4.structure_covers import (
+        interior_insertion_bounds,
+        is_cover_face,
+    )
+
+    source_page = book.pages.get(str(page_id))
+    if source_page is not None and is_cover_face(source_page):
+        raise ValueError(
+            "Les faces de couverture sont fixes et ne peuvent pas être déplacées."
+        )
+
+    block = atomic_block_for_page(
+        book,
+        page_id,
+    )
+
+    lower_bound, upper_bound = interior_insertion_bounds(book)
+    if target_index < lower_bound or target_index > upper_bound:
+        raise ValueError(
+            "Les pages intérieures doivent rester entre la 2e et la 3e de couverture."
+        )
+
+    positions = [
+        book.page_order.index(
+            current_id
+        )
+        for current_id in block.page_ids
+    ]
+
+    start = min(
+        positions
+    )
+
+    end_exclusive = (
+        max(
+            positions
+        )
+        + 1
+    )
+
+    # Une cible située sur la frontière actuelle du bloc peut représenter
+    # deux choses : aucun changement, ou un reclassement dans une autre
+    # partie sans modifier l'ordre physique. Le second cas est nécessaire
+    # pour corriger une analyse qui a placé la bonne page au bon endroit mais
+    # dans le mauvais chapitre.
+    target_within_current_span = (
+        start
+        <= target_index
+        <= end_exclusive
+    )
+
+    if (
+        target_within_current_span
+        and target_part_id is None
+    ):
+        return False
+
+    if (
+        not target_within_current_span
+        and not structure_insertion_boundary_allowed(
+            book,
+            target_index,
+        )
+    ):
+        raise ValueError(
+            "Impossible de d?poser un bloc "
+            "? l'int?rieur d'un autre bloc atomique."
+        )
+
+    old_order = list(
+        book.page_order
+    )
+
+    block_ids = list(
+        block.page_ids
+    )
+
+    remaining = [
+        current_id
+        for current_id in old_order
+        if current_id not in block_ids
+    ]
+
+    removed_before_target = sum(
+        1
+        for position in positions
+        if position < target_index
+    )
+
+    adjusted_target = (
+        target_index
+        - removed_before_target
+    )
+
+    resolved_part_id = (
+        boundary_part_id(
+            book,
+            adjusted_target,
+            page_order=remaining,
+            requested_part_id=target_part_id,
+        )
+    )
+
+    new_order = list(
+        remaining
+    )
+
+    new_order[
+        adjusted_target:
+        adjusted_target
+    ] = block_ids
+
+    same_order = (
+        new_order == old_order
+    )
+
+    same_part = all(
+        book.pages[current_id].part_id
+        == resolved_part_id
+        for current_id in block_ids
+    )
+
+    if same_order and same_part:
+        return False
+
+    snapshot = deepcopy(
+        book
+    )
+
+    old_part_ids = {
+        current_id: (
+            book.pages[
+                current_id
+            ].part_id
+        )
+        for current_id in block_ids
+    }
+
+    try:
+        book.page_order = (
+            new_order
+        )
+
+        for current_id in block_ids:
+            book.pages[
+                current_id
+            ].part_id = (
+                resolved_part_id
+            )
+
+        book.validate()
+
+        # Le d?placement physique peut modifier :
+        # - les paires de types voisines ;
+        # - la parit? Recto/Verso ;
+        # - les AV/AP ;
+        # - les compensations.
+        #
+        # La synchronisation appartient donc ? la m?me transaction.
+        sync_structure_rules(
+            book
+        )
+
+        book.validate()
+
+        issues = (
+            structure_spread_issues(
+                book
+            )
+            + structure_auto_issues(
+                book
+            )
+        )
+
+        if issues:
+            raise ValueError(
+                "Le d?placement casserait "
+                "la Structure : "
+                + " ; ".join(
+                    issues
+                )
+            )
+
+        book.history.append(
+            {
+                "action": (
+                    "bloc_structure_reclasse"
+                    if same_order
+                    else "bloc_structure_deplace"
+                ),
+                "page_ids": list(
+                    block.page_ids
+                ),
+                "from_index": start,
+                "target_index": (
+                    target_index
+                ),
+                "final_index": (
+                    adjusted_target
+                ),
+                "target_part_id": (
+                    resolved_part_id
+                ),
+                "previous_part_ids": (
+                    old_part_ids
+                ),
+            }
+        )
+
+        return True
+
+    except Exception:
+        for field_info in fields(
+            BookV4
+        ):
+            setattr(
+                book,
+                field_info.name,
+                deepcopy(
+                    getattr(
+                        snapshot,
+                        field_info.name,
+                    )
+                ),
+            )
+
+        raise
+
