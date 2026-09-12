@@ -1936,7 +1936,73 @@ class TomeLineaV4Editorial(
                 pass
             self._rich_poll_after = None
 
+    def _phase2_save_active_before_clear(self) -> None:
+        """Sauvegarde le chapitre Canvas actif avant de quitter l'écran.
+
+        ``show_home`` et les changements d'espace appellent ``_clear`` de façon
+        synchrone. La 2.37B sauvegardait déjà à la fermeture de l'application,
+        mais ``_clear`` détruisait encore le WebView avant son export. On attend
+        donc uniquement l'export léger du chapitre actif, puis on poursuit la
+        navigation. La Source DOCX reste intacte.
+        """
+        host = getattr(self, "_phase2_canvas_host", None)
+        chapter_index = getattr(self, "_phase2_active_chapter_index", None)
+        if (
+            host is None
+            or not getattr(host, "ready", False)
+            or chapter_index is None
+        ):
+            return
+
+        try:
+            chapter_index = int(chapter_index)
+        except (TypeError, ValueError):
+            return
+
+        finished = {"done": False}
+        waiter = tk.BooleanVar(master=self, value=False)
+        timeout_id = None
+
+        def finish(exported=None):
+            if finished["done"]:
+                return
+            finished["done"] = True
+
+            if isinstance(exported, dict) and exported.get("ok") is True:
+                try:
+                    self._phase2_apply_exported_chapter(
+                        chapter_index,
+                        exported,
+                    )
+                except Exception:
+                    pass
+
+            try:
+                waiter.set(True)
+            except Exception:
+                pass
+
+        try:
+            host.export_document_state(finish)
+            timeout_id = self.after(2000, finish)
+            try:
+                self.wait_variable(waiter)
+            except tk.TclError:
+                pass
+        except Exception:
+            finish()
+        finally:
+            if timeout_id is not None:
+                try:
+                    self.after_cancel(timeout_id)
+                except Exception:
+                    pass
+
     def _clear(self) -> None:
+        # 2.37D : ne jamais détruire le Canvas actif avant d'avoir conservé
+        # sa copie de travail. Cela couvre Accueil et tous les changements
+        # d'espace qui passent par le mécanisme normal de reconstruction V4.
+        self._phase2_save_active_before_clear()
         self._phase2_destroy_host()
         self._phase2_cancel_poll()
         self._rich_destroy_host(save=True)
@@ -2605,7 +2671,7 @@ class TomeLineaV4Editorial(
 
 
     # ==========================================================
-    # PHASE 2.37C — CANVAS PAR CHAPITRE + PERSISTANCE + PAGINATION GLOBALE IMMÉDIATE
+    # PHASE 2.37D — CANVAS PAR CHAPITRE + PERSISTANCE SUR TOUTE SORTIE DE COMPOSITION
     # ==========================================================
 
     def _phase2_source_path(self) -> Path | None:
