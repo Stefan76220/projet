@@ -61,6 +61,11 @@ from src.v4.canvas_chapter_runtime import (
     detect_chapters,
     slice_payload,
 )
+from src.v4.chapter_working_copy import (
+    load_chapter_working_copy,
+    record_chapter_export,
+    restore_chapter_export,
+)
 from src.v4.source_phase2 import Phase2BlockedError
 from src.v4.editorial_persistence import (
     load_editorial_state,
@@ -1773,6 +1778,7 @@ class TomeLineaV4Editorial(
         self._phase2_preflight_index = 0
         self._phase2_pending_global_index = 0
         self._phase2_switch_in_progress = False
+        self._phase2_destroy_requested = False
 
         # Toute la fenêtre est construite hors écran. Le Tk racine n'est
         # affiché qu'une fois l'habillage, la géométrie et l'Accueil prêts :
@@ -1800,6 +1806,62 @@ class TomeLineaV4Editorial(
             self.update_idletasks()
         except tk.TclError:
             pass
+
+    def destroy(self) -> None:
+        """Ferme TomeLinea après sauvegarde du chapitre Canvas actif.
+
+        Canvas reste l'unique moteur de pagination. La Source DOCX n'est jamais
+        réécrite : l'export est enregistré comme copie de travail TomeLinea.
+        """
+        if bool(getattr(self, "_phase2_destroy_requested", False)):
+            return
+
+        host = getattr(self, "_phase2_canvas_host", None)
+        chapter_index = getattr(self, "_phase2_active_chapter_index", None)
+
+        if (
+            host is None
+            or not getattr(host, "ready", False)
+            or chapter_index is None
+        ):
+            return super().destroy()
+
+        self._phase2_destroy_requested = True
+        finished = {"done": False}
+
+        def finish(exported=None):
+            if finished["done"]:
+                return
+            finished["done"] = True
+
+            if isinstance(exported, dict) and exported.get("ok") is True:
+                try:
+                    self._phase2_apply_exported_chapter(
+                        int(chapter_index),
+                        exported,
+                    )
+                except Exception:
+                    pass
+
+            try:
+                self._phase2_destroy_current_host()
+            except Exception:
+                pass
+
+            try:
+                super(TomeLineaV4Editorial, self).destroy()
+            except Exception:
+                try:
+                    tk.Tk.destroy(self)
+                except Exception:
+                    pass
+
+        try:
+            host.export_document_state(finish)
+            # La fermeture ne doit jamais rester bloquée si WebView2 ne répond pas.
+            self.after(2000, finish)
+        except Exception:
+            finish()
 
 
     # ==========================================================
@@ -2543,7 +2605,7 @@ class TomeLineaV4Editorial(
 
 
     # ==========================================================
-    # PHASE 2.37A — CANVAS PAR CHAPITRE DANS COMPOSITION
+    # PHASE 2.37B — CANVAS PAR CHAPITRE + COPIE DE TRAVAIL PERSISTANTE
     # ==========================================================
 
     def _phase2_source_path(self) -> Path | None:
@@ -2604,6 +2666,17 @@ class TomeLineaV4Editorial(
     def _phase2_state_file(self, source: Path) -> Path:
         marker = hashlib.sha256(str(source.resolve()).casefold().encode("utf-8")).hexdigest()[:20]
         return PROJECT_ROOT / ".tomelinea_runtime" / "editorial_state" / f"{marker}.json"
+
+    def _phase2_working_copy_file(self, source: Path) -> Path:
+        marker = hashlib.sha256(
+            str(source.resolve()).casefold().encode("utf-8")
+        ).hexdigest()[:20]
+        return (
+            PROJECT_ROOT
+            / ".tomelinea_runtime"
+            / "chapter_working_copy"
+            / f"{marker}.json"
+        )
 
     def _phase2_cancel_poll(self) -> None:
         after_id = getattr(self, "_phase2_canvas_poll_after", None)
@@ -2761,6 +2834,11 @@ class TomeLineaV4Editorial(
                 "blocking_anomalies": list(prepared.text_quality.blocking_anomalies),
             }
 
+            working_copy = load_chapter_working_copy(
+                self._phase2_working_copy_file(source),
+                source,
+            )
+
             plans = []
             for chapter in detection.chapters:
                 chapter_payload = slice_payload(translated.payload, chapter)
@@ -2778,6 +2856,14 @@ class TomeLineaV4Editorial(
                     "title": chapter.title,
                     "detected_by": chapter.detected_by,
                 }
+
+                # Restaurer la copie de travail avant la pré-pagination : les
+                # numéros de pages globaux sont alors recalculés sur l'état édité.
+                restore_chapter_export(
+                    document.plan,
+                    working_copy,
+                    chapter,
+                )
                 plans.append(document.plan)
 
             self._phase2_canvas_queue.put((
@@ -2985,18 +3071,43 @@ class TomeLineaV4Editorial(
     def _phase2_apply_exported_chapter(self, chapter_index: int, exported: dict) -> None:
         if not (0 <= int(chapter_index) < len(self._phase2_chapter_plans)):
             return
+
+        index = int(chapter_index)
+
         try:
-            apply_exported_state(self._phase2_chapter_plans[int(chapter_index)], exported)
+            apply_exported_state(
+                self._phase2_chapter_plans[index],
+                exported,
+            )
         except Exception:
             pass
+
+        # Persistance TomeLinea séparée de la Source originale.
+        try:
+            source = self._phase2_source_path()
+            detection = self._phase2_chapter_detection
+            if (
+                source is not None
+                and detection is not None
+                and 0 <= index < len(detection.chapters)
+            ):
+                record_chapter_export(
+                    self._phase2_working_copy_file(source),
+                    source,
+                    detection.chapters[index],
+                    exported,
+                )
+        except Exception:
+            pass
+
         layout = self._phase2_chapter_layout
         if layout is not None:
             try:
                 count = int((exported or {}).get("pageCount") or 0)
             except (TypeError, ValueError):
                 count = 0
-            if count > 0 and count != layout.page_counts[int(chapter_index)]:
-                layout.set_page_count(int(chapter_index), count)
+            if count > 0 and count != layout.page_counts[index]:
+                layout.set_page_count(index, count)
                 self._phase2_sync_page_count(layout.total_pages)
         try:
             self.session.project.touch()
