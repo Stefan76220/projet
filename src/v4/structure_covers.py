@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """Règles physiques des quatre faces de couverture TomeLinea V4.
 
@@ -398,12 +398,20 @@ def _new_cover_placeholder(
     page.metadata["physical_parity_exempt"] = True
     page.metadata["physical_cover_label"] = label
     page.metadata["generated_cover_placeholder"] = True
+
+    # 2.38A : une 2e/3e absente de la Source est une vraie page physique
+    # créée par TomeLinea. Elle appartient donc explicitement aux pages auto.
+    # ``automatic_structure`` reste réservé aux pages AV/AP.
+    page.metadata["automatic_origin"] = True
+    page.metadata["automatic_kind"] = "physical_cover"
+    page.metadata["creation_kind"] = "automatic_physical_cover"
+    page.metadata["automatic_page"] = True
+
     # L'emplacement physique existe immédiatement, mais TomeLinea ne décide
     # jamais seul si la face est blanche ou si la page voisine doit l'occuper.
     page.metadata["cover_content_status"] = "pending"
     page.metadata["cover_confirmation"] = "pending"
     return page
-
 
 def ensure_inside_cover_faces(book: Any) -> bool:
     """Garantit l'existence physique des 2e et 3e de couverture.
@@ -454,6 +462,63 @@ def ensure_inside_cover_faces(book: Any) -> bool:
 
     return changed
 
+
+def _new_outer_cover_placeholder(face: str) -> Any:
+    """Crée l'emplacement physique obligatoire d'une 1re ou 4e absente."""
+
+    if face not in {FRONT_COVER, BACK_COVER}:
+        raise ValueError("Seules les 1re et 4e de couverture sont créées ici.")
+
+    from src.v4.domain import PageOrigin, PageV4
+
+    label = _FACE_LABELS[face]
+    page = PageV4(
+        page_type=label,
+        title=label,
+        origin=PageOrigin.TOMELINEA,
+        source=None,
+        part_id=None,
+    )
+    page.metadata["physical_cover_face"] = face
+    page.metadata["physical_cover_protected"] = True
+    page.metadata["physical_parity_exempt"] = True
+    page.metadata["physical_cover_label"] = label
+    page.metadata["required_outer_cover_placeholder"] = True
+    page.metadata["cover_content_status"] = "missing_source"
+    page.metadata["cover_confirmation"] = "missing_source"
+    return page
+
+
+def ensure_physical_cover_faces(book: Any) -> bool:
+    """Garantit la structure physique minimale 1re + 2e | Livre | 3e + 4e.
+
+    Si 1re/4e sont absentes, TomeLinea réserve leur emplacement physique à
+    compléter. Si 2e/3e sont absentes, elles sont créées comme pages automatiques.
+    """
+
+    changed = False
+    ids = cover_ids(book)
+
+    if ids.get(FRONT_COVER) is None:
+        page = _new_outer_cover_placeholder(FRONT_COVER)
+        book.pages[page.id] = page
+        book.page_order.insert(0, page.id)
+        changed = True
+
+    ids = cover_ids(book)
+    if ids.get(BACK_COVER) is None:
+        page = _new_outer_cover_placeholder(BACK_COVER)
+        book.pages[page.id] = page
+        book.page_order.append(page.id)
+        changed = True
+
+    if ensure_inside_cover_faces(book):
+        changed = True
+
+    if normalize_cover_structure(book):
+        changed = True
+
+    return changed
 
 def _clear_cover_role(page: Any, *, fallback_page_type: str = "Page") -> None:
     metadata = getattr(page, "metadata", None)
@@ -717,7 +782,7 @@ def prepare_inside_cover_confirmation(book: Any) -> bool:
         page.metadata["cover_analysis_suggestion"] = True
         changed = True
 
-    if ensure_inside_cover_faces(book):
+    if ensure_physical_cover_faces(book):
         changed = True
 
     ids = cover_ids(book)

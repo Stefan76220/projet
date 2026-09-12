@@ -11,9 +11,12 @@ from src.gui_v4 import theme
 from src.gui_v4.controls import TLScrollbar
 from src.v4.structure_auto import is_auto_origin_page
 from src.v4.structure_covers import (
+    BACK_COVER,
+    FRONT_COVER,
     INSIDE_BACK_COVER,
     INSIDE_FRONT_COVER,
     cover_face,
+    cover_label,
 )
 from src.v4.structure_parity import RECTO, VERSO, physical_side
 from src.v4.structure_spreads import page_spread
@@ -100,171 +103,200 @@ def _root_for_group(
 
 
 def navigation_model(book: Any) -> dict[str, Any]:
-    """Construit une arborescence de navigation sans modifier le Livre."""
+    """Structure 2.39A : couvertures séparées de l'intérieur du livre.
+
+    Racines visibles :
+    - Couverture avant ;
+    - Pages liminaires ;
+    - Corps ;
+    - Fin d'ouvrage ;
+    - Couverture arrière.
+
+    Les Parties / Chapitres / Sections n'existent que dans Corps.
+    """
 
     page_order = list(getattr(book, "page_order", ()) or ())
     pages = getattr(book, "pages", {}) or {}
     parts = getattr(book, "parts", {}) or {}
-
-    groups: list[dict[str, Any]] = []
-
-    for number, page_id in enumerate(page_order, start=1):
-        page = pages[page_id]
-        part_id = getattr(page, "part_id", None)
-
-        if (
-            not groups
-            or groups[-1]["part_id"] != part_id
-        ):
-            part = (
-                parts.get(part_id)
-                if part_id is not None
-                else None
-            )
-            title = (
-                getattr(part, "title", None)
-                or "Sans partie"
-            )
-            groups.append(
-                {
-                    "part_id": part_id,
-                    "title": title,
-                    "pages": [],
-                }
-            )
-
-        groups[-1]["pages"].append(
-            (number, str(page_id), page)
-        )
+    part_order = list(getattr(book, "part_order", ()) or ())
 
     roots = {
-        "debut": {
-            "id": "root:debut",
-            "label": "Début",
+        "cover_front": {
+            "id": "root:cover_front",
+            "label": "Couverture avant",
             "count": 0,
+            "kind": "root",
+            "pages": [],
             "children": [],
         },
-        "corps": {
+        "frontmatter": {
+            "id": "root:frontmatter",
+            "label": "Pages liminaires",
+            "count": 0,
+            "kind": "root",
+            "pages": [],
+            "children": [],
+        },
+        "body": {
             "id": "root:corps",
             "label": "Corps",
             "count": 0,
+            "kind": "root",
+            "pages": [],
             "children": [],
         },
-        "fin": {
-            "id": "root:fin",
-            "label": "Fin",
+        "backmatter": {
+            "id": "root:backmatter",
+            "label": "Fin d’ouvrage",
             "count": 0,
+            "kind": "root",
+            "pages": [],
+            "children": [],
+        },
+        "cover_back": {
+            "id": "root:cover_back",
+            "label": "Couverture arrière",
+            "count": 0,
+            "kind": "root",
+            "pages": [],
             "children": [],
         },
     }
 
-    current_part_node: dict[str, Any] | None = None
-    start_pages: list[tuple[int, str, Any]] = []
-    end_pages: list[tuple[int, str, Any]] = []
+    direct_pages: dict[str | None, list[tuple[int, str, Any]]] = {}
 
-    for group_index, group in enumerate(groups):
-        title = str(group["title"] or "Sans partie")
-        group_pages = list(group["pages"])
-        root_key = _root_for_group(
-            title,
-            group_pages,
-            len(page_order),
+    for number, page_id in enumerate(page_order, start=1):
+        page = pages.get(page_id)
+        if page is None:
+            continue
+
+        try:
+            face = cover_face(page)
+        except Exception:
+            face = None
+
+        data = (number, str(page_id), page)
+        if face in {FRONT_COVER, INSIDE_FRONT_COVER}:
+            roots["cover_front"]["pages"].append(data)
+            roots["cover_front"]["count"] += 1
+            continue
+        if face in {INSIDE_BACK_COVER, BACK_COVER}:
+            roots["cover_back"]["pages"].append(data)
+            roots["cover_back"]["count"] += 1
+            continue
+
+        part_id = getattr(page, "part_id", None)
+        part = parts.get(part_id) if part_id is not None else None
+        part_type = _norm(getattr(part, "part_type", "")) if part is not None else ""
+        metadata = getattr(page, "metadata", None)
+        editorial_zone = (
+            _norm(metadata.get("editorial_zone"))
+            if isinstance(metadata, dict)
+            else ""
         )
 
-        roots[root_key]["count"] += len(group_pages)
-
-        if root_key == "debut":
-            start_pages.extend(group_pages)
-            current_part_node = None
+        if part_type in {"preliminaires", "liminaires", "debut"} or editorial_zone == "frontmatter":
+            roots["frontmatter"]["pages"].append(data)
+            roots["frontmatter"]["count"] += 1
             continue
 
-        if root_key == "fin":
-            end_pages.extend(group_pages)
-            current_part_node = None
+        if part_type in {"fin ouvrage", "fin_ouvrage", "fin", "annexe", "annexes"} or editorial_zone == "backmatter":
+            roots["backmatter"]["pages"].append(data)
+            roots["backmatter"]["count"] += 1
             continue
 
-        norm = _norm(title)
-        first_no = group_pages[0][0] if group_pages else 0
-        last_no = group_pages[-1][0] if group_pages else 0
+        direct_pages.setdefault(part_id, []).append(data)
+        roots["body"]["count"] += 1
 
-        if _is_part_title(title):
-            node = {
-                "id": f"part:{group['part_id']}:{group_index}",
-                "label": title,
-                "kind": "branch",
-                "pages": [],
-                "children": [],
-            }
-            roots["corps"]["children"].append(node)
-            current_part_node = node
+    ordered_part_ids: list[str] = []
+    for part_id in part_order:
+        if part_id in parts and part_id not in ordered_part_ids:
+            ordered_part_ids.append(part_id)
 
-            if group_pages:
-                node["children"].append(
-                    {
-                        "id": f"opening:{group['part_id']}:{group_index}",
-                        "label": "Ouverture",
-                        "kind": "terminal",
-                        "pages": group_pages,
-                        "children": [],
-                    }
-                )
+    first_position = {
+        part_id: values[0][0]
+        for part_id, values in direct_pages.items()
+        if part_id is not None and values
+    }
+    for part_id in sorted(
+        (pid for pid in direct_pages if pid is not None and pid not in ordered_part_ids),
+        key=lambda pid: first_position.get(pid, 10**9),
+    ):
+        ordered_part_ids.append(part_id)
+
+    nodes: dict[str, dict[str, Any]] = {}
+    fixed_types = {
+        "couverture avant", "couverture_avant",
+        "couverture arriere", "couverture_arriere",
+        "preliminaires", "liminaires", "debut",
+        "corps", "body",
+        "fin ouvrage", "fin_ouvrage", "fin",
+    }
+
+    for part_id in ordered_part_ids:
+        part = parts.get(part_id)
+        if part is None:
+            continue
+        part_type = _norm(getattr(part, "part_type", ""))
+        if part_type in fixed_types:
+            if part_type in {"corps", "body"}:
+                roots["body"]["pages"].extend(direct_pages.get(part_id, ()))
             continue
 
-        parent_children = (
-            current_part_node["children"]
-            if current_part_node is not None
-            else roots["corps"]["children"]
-        )
+        part_pages = list(direct_pages.get(part_id, ()))
+        title = str(getattr(part, "title", "") or "").strip()
 
-        if norm in {"corps", "sans partie", ""}:
-            label = (
-                f"À classer · p. {first_no}–{last_no}"
-                if first_no and last_no and first_no != last_no
-                else f"À classer · p. {first_no}"
-            )
+        if part_type in {"partie", "part"}:
+            role = "part"
+            kind = "branch"
+            label = title or "Partie"
+        elif part_type in {"chapitre", "chapter"}:
+            role = "chapter"
+            kind = "terminal"
+            label = title or "Chapitre"
+        elif part_type in {"section", "custom section", "custom_section", "interlude"}:
+            role = "section"
+            kind = "terminal"
+            label = title or "Section"
         else:
-            label = title
+            role = "group"
+            kind = "terminal"
+            label = title or "Pages du corps"
 
-        parent_children.append(
-            {
-                "id": f"group:{group['part_id']}:{group_index}:{first_no}",
-                "label": label,
-                "kind": "terminal",
-                "pages": group_pages,
-                "children": [],
-            }
-        )
+        nodes[part_id] = {
+            "id": f"structure:{part_id}",
+            "part_id": part_id,
+            "label": label,
+            "kind": kind,
+            "role": role,
+            "pages": part_pages,
+            "children": [],
+            "parent_id": getattr(part, "parent_id", None),
+        }
 
-    if start_pages:
-        roots["debut"]["children"].append(
-            {
-                "id": "terminal:debut",
-                "label": "Pages du début",
-                "kind": "terminal",
-                "pages": start_pages,
-                "children": [],
-            }
-        )
+    for part_id in ordered_part_ids:
+        node = nodes.get(part_id)
+        if node is None:
+            continue
+        parent_id = node.get("parent_id")
+        parent = nodes.get(str(parent_id)) if parent_id is not None else None
+        if parent is not None and parent.get("role") == "part":
+            parent["children"].append(node)
+        else:
+            roots["body"]["children"].append(node)
 
-    if end_pages:
-        roots["fin"]["children"].append(
-            {
-                "id": "terminal:fin",
-                "label": "Pages de fin",
-                "kind": "terminal",
-                "pages": end_pages,
-                "children": [],
-            }
-        )
+    roots["body"]["pages"].extend(direct_pages.get(None, ()))
 
-    # Les pages qui n'ont pas encore été identifiées comme fin restent
-    # volontairement sous Corps / À classer. L'interface ne prétend pas
-    # mieux comprendre le Livre que le moteur.
+    for root in roots.values():
+        root["pages"] = sorted(root.get("pages", ()), key=lambda item: item[0])
+
     return {
         "roots": [
-            roots["debut"],
-            roots["corps"],
-            roots["fin"],
+            roots["cover_front"],
+            roots["frontmatter"],
+            roots["body"],
+            roots["backmatter"],
+            roots["cover_back"],
         ],
         "page_count": len(page_order),
     }
@@ -299,6 +331,7 @@ class CompositionExplorer(tk.Frame):
         self.folder_pages: dict[str, list[tuple[int, str, Any]]] = {}
         self.loaded_folders: set[str] = set()
         self.auto_page_ids: set[str] = set()
+        self.chapter_folder_ids: set[str] = set()
         self._built_once = False
 
         # Glisser-déposer Structure : le Treeview ne modifie jamais lui-même
@@ -453,6 +486,12 @@ class CompositionExplorer(tk.Frame):
             font=(theme.FONT_UI, 9, "bold"),
         )
         self.tree.tag_configure(
+            "active_chapter",
+            background=theme.PANEL_SOFT,
+            foreground=self.FOLDER_COLOR,
+            font=(theme.FONT_UI, 9, "bold"),
+        )
+        self.tree.tag_configure(
             "page",
             foreground=self.PAGE_COLOR,
             font=(theme.FONT_UI, 8),
@@ -573,61 +612,59 @@ class CompositionExplorer(tk.Frame):
             return
 
     def _is_automatic_blank_page(self, page: Any) -> bool:
-        """Repere uniquement les pages blanches nees automatiquement."""
+        """Repère toute page née automatiquement, couvertures comprises."""
 
         try:
-            automatic = bool(
-                is_auto_origin_page(page)
-            )
+            automatic = bool(is_auto_origin_page(page))
         except Exception:
             automatic = False
 
-        page_type = _norm(
-            getattr(
-                page,
-                "page_type",
-                "",
+        metadata = getattr(page, "metadata", None)
+        if isinstance(metadata, dict):
+            automatic = automatic or bool(
+                metadata.get("generated_cover_placeholder")
+                or metadata.get("automatic_page")
+                or metadata.get("automatic_origin")
             )
-        )
 
-        return automatic and (
-            not page_type
-            or "blanche" in page_type
-            or page_type == "page"
-        )
+        return automatic
 
     def _page_caption(
         self,
         number: int,
         page: Any,
     ) -> str:
-        """Libelle compact sur une ou deux lignes, sans couper au bord droit."""
+        """Libellé compact ; les couvertures gardent leur rôle physique."""
+
+        try:
+            face = cover_face(page)
+        except Exception:
+            face = None
+
+        if face is not None:
+            return cover_label(page)
 
         page_type = str(
-            getattr(
-                page,
-                "page_type",
-                "",
-            )
+            getattr(page, "page_type", "")
             or ""
         ).strip()
 
         page_title = str(
-            getattr(
-                page,
-                "title",
-                "",
-            )
+            getattr(page, "title", "")
             or ""
         ).strip()
 
-        page_name = (
-            page_title
-            or page_type
-            or "Page"
-        )
+        page_name = page_title or page_type or "Page"
 
-        raw = f"p. {number} · {page_name}"
+        metadata = getattr(page, "metadata", None)
+        display_number = int(number)
+        if isinstance(metadata, dict) and metadata.get("internal_rich_page"):
+            try:
+                display_number = int(metadata.get("internal_rich_page_index", 0)) + 1
+            except (TypeError, ValueError):
+                pass
+
+        raw = f"p. {display_number} · {page_name}"
         lines = textwrap.wrap(
             raw,
             width=24,
@@ -637,14 +674,12 @@ class CompositionExplorer(tk.Frame):
 
         if not lines:
             return raw
-
         if len(lines) <= 2:
             return "\n".join(lines)
 
         second = " ".join(lines[1:]).strip()
         if len(second) > 24:
             second = second[:23].rstrip() + "…"
-
         return f"{lines[0]}\n{second}"
 
     def _close_descendants(self, item: str) -> None:
@@ -758,43 +793,40 @@ class CompositionExplorer(tk.Frame):
     ) -> None:
         item_id = str(node["id"])
         base_label = str(node["label"])
-        page_count = self._node_page_count(
-            node
-        )
+        page_count = self._node_page_count(node)
         label = (
             f"{base_label}   {page_count} p."
             if page_count > 0
             else base_label
         )
+        pages = list(node.get("pages", ()) or ())
+        role = str(node.get("role") or "")
 
         item = self._insert_folder(
             parent,
             item_id=item_id,
             label=label,
-            pages=(
-                list(node.get("pages", ()) or ())
-                if node.get("kind") == "terminal"
-                else None
-            ),
+            pages=(pages if pages else None),
             open_state=False,
         )
 
+        if role in {"chapter", "section"}:
+            self.chapter_folder_ids.add(item_id)
+
+        # Une vraie Partie peut porter sa page d'ouverture et ses chapitres.
+        # On crée ses lignes de pages avant les sous-chapitres afin de garder
+        # l'ordre naturel, sans ajouter un faux dossier « Ouverture ».
+        if role == "part" and pages:
+            self._load_pages(item_id)
+
         for child in node.get("children", ()) or ():
-            self._insert_node(
-                item,
-                child,
-                opened,
-            )
+            self._insert_node(item, child, opened)
 
         if item_id in opened:
             if item_id in self.folder_pages:
                 self._load_pages(item_id)
-
             try:
-                self.tree.item(
-                    item_id,
-                    open=True,
-                )
+                self.tree.item(item_id, open=True)
             except tk.TclError:
                 pass
 
@@ -814,52 +846,43 @@ class CompositionExplorer(tk.Frame):
         self.folder_pages.clear()
         self.loaded_folders.clear()
         self.auto_page_ids.clear()
+        self.chapter_folder_ids.clear()
 
         for item in self.tree.get_children(""):
             self.tree.delete(item)
 
-        model = navigation_model(
-            self.book
-        )
+        model = navigation_model(self.book)
 
         for root in model["roots"]:
             root_id = str(root["id"])
-            label = (
-                f"{root['label']}   "
-                f"{int(root['count'])} p."
-            )
+            label = f"{root['label']}   {int(root['count'])} p."
+            root_pages = list(root.get("pages", ()) or ())
 
             root_item = self._insert_folder(
                 "",
                 item_id=root_id,
                 label=label,
-                pages=None,
+                pages=(root_pages if root_pages else None),
                 open_state=False,
             )
 
+            # Les pages directement rattachées à Début / Corps / Fin sont
+            # déjà construites : un seul clic sur la racine suffit à les voir.
+            # Elles sont créées avant les sous-niveaux pour respecter l'ordre.
+            if root_pages:
+                self._load_pages(root_id)
+
             for child in root.get("children", ()) or ():
-                self._insert_node(
-                    root_item,
-                    child,
-                    opened,
-                )
+                self._insert_node(root_item, child, opened)
 
             if root_id in opened:
-                self.tree.item(
-                    root_item,
-                    open=True,
-                )
+                self.tree.item(root_item, open=True)
 
         self.update_selection()
         self._built_once = True
 
-        # Une navigation au centre ne deplie jamais l'arbre a la place
-        # de l'utilisateur. Si la page est deja visible, elle est cadree.
         if focus_page_id is not None:
-            self.scroll_to_page(
-                str(focus_page_id),
-                expand=False,
-            )
+            self.scroll_to_page(str(focus_page_id), expand=False)
 
     def _register_single_page_row(
         self,
@@ -1214,7 +1237,24 @@ class CompositionExplorer(tk.Frame):
 
         terminal_pages = self.folder_pages.get(item)
         if terminal_pages:
-            if before:
+            # 2.38B — un chapitre ouvert expose ses vraies lignes de pages.
+            # Son en-tête ne doit donc jamais devenir implicitement « fin du
+            # chapitre » simplement parce que le pointeur arrive par le haut.
+            #
+            # - chapitre ouvert : l'en-tête signifie début du chapitre ;
+            # - chapitre replié : moitié haute = début, moitié basse = fin.
+            is_open_chapter = False
+            if item in getattr(self, "chapter_folder_ids", set()):
+                try:
+                    is_open_chapter = bool(self.tree.item(item, "open"))
+                except tk.TclError:
+                    is_open_chapter = False
+
+            if is_open_chapter:
+                anchor_page_id = str(terminal_pages[0][1])
+                position = "before"
+                line_y = int(row_y + row_height)
+            elif before:
                 anchor_page_id = str(terminal_pages[0][1])
                 position = "before"
                 line_y = int(row_y)
@@ -1393,42 +1433,36 @@ class CompositionExplorer(tk.Frame):
             or ""
         )
 
-        for item_id, page_ids in list(
-            self.item_pages.items()
-        ):
-            if not self.tree.exists(
-                item_id
-            ):
+        for item_id, page_ids in list(self.item_pages.items()):
+            if not self.tree.exists(item_id):
                 continue
 
             if active and active in page_ids:
                 tags = ("active",)
-            elif any(
-                page_id in selected
-                for page_id in page_ids
-            ):
+            elif any(page_id in selected for page_id in page_ids):
                 tags = ("selected_page",)
             elif len(page_ids) == 2:
-                has_auto = any(
-                    page_id in self.auto_page_ids
-                    for page_id in page_ids
-                )
-                tags = (
-                    ("double_auto_page",)
-                    if has_auto
-                    else ("double_page",)
-                )
+                has_auto = any(page_id in self.auto_page_ids for page_id in page_ids)
+                tags = (("double_auto_page",) if has_auto else ("double_page",))
             else:
                 page_id = page_ids[0]
-                tags = (
-                    ("auto_page",)
-                    if page_id in self.auto_page_ids
-                    else ("page",)
-                )
+                tags = (("auto_page",) if page_id in self.auto_page_ids else ("page",))
 
+            self.tree.item(item_id, tags=tags)
+
+        # Repère permanent du chapitre courant, même quand ses pages sont
+        # repliées. La page active conserve parallèlement son rouge habituel.
+        for folder_id in list(self.chapter_folder_ids):
+            if not self.tree.exists(folder_id):
+                continue
+            folder_pages = self.folder_pages.get(folder_id, ())
+            in_active_chapter = bool(
+                active
+                and any(str(page_id) == active for _n, page_id, _p in folder_pages)
+            )
             self.tree.item(
-                item_id,
-                tags=tags,
+                folder_id,
+                tags=(("active_chapter",) if in_active_chapter else ("folder",)),
             )
 
     def _folder_for_page(

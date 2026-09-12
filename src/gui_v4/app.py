@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from src.v4.page_content_classifier import classify_book_pages
 from src.v4.page_content_inventory import page_content_inventory

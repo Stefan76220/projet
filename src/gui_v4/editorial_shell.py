@@ -26,7 +26,7 @@ from ctypes import wintypes
 import re
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -66,6 +66,13 @@ from src.v4.chapter_working_copy import (
     record_chapter_export,
     restore_chapter_export,
 )
+from src.v4.internal_docx_structure import (
+    synchronize_internal_docx_structure,
+)
+from src.v4.editorial_structure_classifier import (
+    apply_structure_choice,
+    classify_editorial_structure,
+)
 from src.v4.source_phase2 import Phase2BlockedError
 from src.v4.editorial_persistence import (
     load_editorial_state,
@@ -78,6 +85,7 @@ from src.gui_v4.app import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+STRUCTURE_CATALOG_PATH = PROJECT_ROOT / "resources" / "editorial" / "structure_catalog.json"
 
 BACKGROUND_HOME = (
     PROJECT_ROOT
@@ -2671,7 +2679,7 @@ class TomeLineaV4Editorial(
 
 
     # ==========================================================
-    # PHASE 2.37D — CANVAS PAR CHAPITRE + PERSISTANCE SUR TOUTE SORTIE DE COMPOSITION
+    # PHASE 2.38A — CANVAS PAR CHAPITRE + STRUCTURE ÉDITORIALE PHYSIQUE RÉELLE
     # ==========================================================
 
     def _phase2_source_path(self) -> Path | None:
@@ -2701,6 +2709,35 @@ class TomeLineaV4Editorial(
                 return candidate.resolve()
         return None
 
+    def _phase2_internal_page_ids(self) -> list[str]:
+        """Pages texte du Canvas, dans leur ordre éditorial interne.
+
+        Les quatre faces de couverture existent maintenant dans BookV4, mais
+        elles ne font pas partie de la pagination locale du moteur Canvas.
+        Toute correspondance Canvas -> Livre doit donc passer par cette liste.
+        """
+        session = getattr(self, "session", None)
+        book = getattr(session, "book", None) if session is not None else None
+        if book is None:
+            return []
+
+        result: list[tuple[int, str]] = []
+        fallback = 0
+        for page_id in list(getattr(book, "page_order", ())):
+            page = book.pages.get(page_id)
+            metadata = getattr(page, "metadata", None) if page is not None else None
+            if not isinstance(metadata, dict) or not metadata.get("internal_rich_page"):
+                continue
+            try:
+                index = int(metadata.get("internal_rich_page_index", fallback))
+            except (TypeError, ValueError):
+                index = fallback
+            result.append((index, str(page_id)))
+            fallback += 1
+
+        result.sort(key=lambda item: item[0])
+        return [page_id for _index, page_id in result]
+
     def _phase2_active_page_index(self) -> int | None:
         session = getattr(self, "session", None)
         book = getattr(session, "book", None) if session is not None else None
@@ -2714,6 +2751,12 @@ class TomeLineaV4Editorial(
                 return max(0, int(metadata.get("internal_rich_page_index", 0)))
             except (TypeError, ValueError):
                 pass
+
+        # Dans un DOCX interne, les couvertures et autres pages physiques du
+        # Livre ne correspondent à aucune page locale Canvas. Ne jamais les
+        # convertir par leur position physique dans page_order.
+        if self._rich_document_metadata() is not None:
+            return None
 
         try:
             return list(book.page_order).index(str(page.id))
@@ -2828,6 +2871,11 @@ class TomeLineaV4Editorial(
         self._phase2_preflight_index = 0
         self._phase2_pending_global_index = 0
         self._phase2_switch_in_progress = False
+        self._phase2_editorial_structure_analysis = None
+        self._phase239_review_queue = []
+        self._phase239_review_current = None
+        self._phase239_review_prompt_open = False
+        self._phase239_review_return_global_index = 0
         self._phase2_destroy_overlay()
 
     def _phase2_persist_choice(self, source: Path, event: dict) -> None:
@@ -2848,18 +2896,47 @@ class TomeLineaV4Editorial(
 
         metadata = self._rich_document_metadata()
         if metadata is not None:
-            # La Structure reste le Livre global. Canvas ne possède que la
-            # pagination locale du chapitre actif ; TomeLinea additionne les
-            # paginations locales mesurées.
-            self._rich_sync_pages(list(range(count)))
-            metadata["canvas_page_count"] = count
             layout = getattr(self, "_phase2_chapter_layout", None)
             detection = getattr(self, "_phase2_chapter_detection", None)
-            if layout is not None:
-                metadata["canvas_chapter_page_counts"] = list(layout.page_counts)
-            if detection is not None:
-                metadata["canvas_chapter_mode"] = str(detection.mode)
-                metadata["canvas_chapter_count"] = len(detection.chapters)
+
+            # 2.38A : la pagination Canvas reste limitée au corps du texte,
+            # tandis que BookV4 porte la structure physique complète :
+            # couvertures + liminaires + vrais chapitres + fin. On synchronise
+            # chaque chapitre séparément afin qu'une nouvelle page soit créée
+            # dans le bon chapitre, jamais simplement à la fin du Livre.
+            if layout is not None and detection is not None:
+                try:
+                    result = synchronize_internal_docx_structure(
+                        self.session.book,
+                        detection,
+                        list(layout.page_counts),
+                        getattr(self, "_phase2_editorial_structure_analysis", None),
+                    )
+                    metadata["page_starts"] = list(range(count))
+                    metadata["page_count"] = count
+                    metadata["canvas_page_count"] = count
+                    metadata["canvas_chapter_page_counts"] = list(layout.page_counts)
+                    metadata["canvas_chapter_mode"] = str(detection.mode)
+                    metadata["canvas_chapter_count"] = len(detection.chapters)
+                    metadata["physical_page_count"] = int(result.physical_page_count)
+                    metadata.pop("canvas_structure_sync_error", None)
+                    self.session.refresh_context()
+                    if result.changed:
+                        try:
+                            self.session.project.touch()
+                        except Exception:
+                            pass
+                except Exception as exc:
+                    # Repli de sécurité : ne jamais empêcher Composition de
+                    # fonctionner si un ancien projet possède une Structure
+                    # incohérente. La pagination 2.37 reste alors disponible
+                    # et le diagnostic reste consultable dans les métadonnées.
+                    metadata["canvas_structure_sync_error"] = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    self._rich_sync_pages(list(range(count)))
+            else:
+                self._rich_sync_pages(list(range(count)))
 
         try:
             active_id = str(self.session.active_page_id or "")
@@ -2868,6 +2945,271 @@ class TomeLineaV4Editorial(
             self._composition_refresh_center_navigation()
         except Exception:
             pass
+
+    def _phase239_ambiguous_structure_units(self) -> list[dict]:
+        analysis = getattr(self, "_phase2_editorial_structure_analysis", None)
+        if not isinstance(analysis, dict):
+            return []
+        return [
+            dict(unit)
+            for unit in list(analysis.get("units") or [])
+            if isinstance(unit, dict) and unit.get("ask_user")
+        ]
+
+    def _phase239_unit_page_range(self, unit: dict) -> tuple[int, int]:
+        layout = getattr(self, "_phase2_chapter_layout", None)
+        if layout is None:
+            return 1, 1
+        try:
+            chapter_index = int(unit.get("canvas_index", 0))
+        except (TypeError, ValueError):
+            chapter_index = 0
+        chapter_index = max(0, min(chapter_index, len(layout.page_counts) - 1))
+        start = int(layout.chapter_start_page(chapter_index))
+        count = max(1, int(layout.page_counts[chapter_index]))
+        return start, start + count - 1
+
+    def _phase239_unit_context(self, unit: dict) -> tuple[str, str]:
+        analysis = getattr(self, "_phase2_editorial_structure_analysis", None)
+        units = list(analysis.get("units") or []) if isinstance(analysis, dict) else []
+        try:
+            wanted = int(unit.get("canvas_index", -1))
+        except (TypeError, ValueError):
+            wanted = -1
+
+        previous = ""
+        following = ""
+        for pos, current in enumerate(units):
+            if not isinstance(current, dict):
+                continue
+            try:
+                current_index = int(current.get("canvas_index", -999))
+            except (TypeError, ValueError):
+                continue
+            if current_index != wanted:
+                continue
+
+            if pos > 0 and isinstance(units[pos - 1], dict):
+                previous = str(
+                    units[pos - 1].get("editorial_label")
+                    or units[pos - 1].get("title")
+                    or ""
+                ).strip()
+            if pos + 1 < len(units) and isinstance(units[pos + 1], dict):
+                following = str(
+                    units[pos + 1].get("editorial_label")
+                    or units[pos + 1].get("title")
+                    or ""
+                ).strip()
+            break
+
+        return previous, following
+
+    def _phase239_begin_structure_review(self, canvas) -> None:
+        self._phase239_review_queue = self._phase239_ambiguous_structure_units()
+        self._phase239_review_current = None
+        self._phase239_review_prompt_open = False
+        self._phase239_review_return_global_index = max(
+            0,
+            int(getattr(self, "_phase2_pending_global_index", 0) or 0),
+        )
+        self._phase2_destroy_overlay()
+        self.after(20, lambda: self._phase239_review_next(canvas))
+
+    def _phase239_review_next(self, canvas) -> None:
+        queue_items = list(getattr(self, "_phase239_review_queue", []) or [])
+        if not queue_items:
+            self._phase239_review_current = None
+            self._phase239_review_prompt_open = False
+            layout = getattr(self, "_phase2_chapter_layout", None)
+            if layout is not None:
+                self._phase2_sync_page_count(layout.total_pages)
+            target = max(
+                0,
+                int(getattr(self, "_phase239_review_return_global_index", 0) or 0),
+            )
+            self.after(
+                20,
+                lambda: self._phase2_request_global_page(
+                    canvas,
+                    target,
+                    force=True,
+                ),
+            )
+            return
+
+        unit = dict(queue_items[0])
+        self._phase239_review_current = unit
+
+        layout = getattr(self, "_phase2_chapter_layout", None)
+        if layout is None:
+            return
+        try:
+            chapter_index = int(unit.get("canvas_index", 0))
+        except (TypeError, ValueError):
+            chapter_index = 0
+        chapter_index = max(0, min(chapter_index, len(layout.page_counts) - 1))
+        target = int(layout.global_index(chapter_index, 0))
+
+        # La navigation synchronisée ouvrira aussi la bonne branche Structure.
+        self._phase2_request_global_page(canvas, target, force=True)
+        self.after(
+            100,
+            lambda: self._phase239_wait_for_review_page(canvas, 0),
+        )
+
+    def _phase239_wait_for_review_page(self, canvas, attempt: int) -> None:
+        unit = getattr(self, "_phase239_review_current", None)
+        if not isinstance(unit, dict):
+            return
+        layout = getattr(self, "_phase2_chapter_layout", None)
+        host = getattr(self, "_phase2_canvas_host", None)
+        if layout is None:
+            return
+
+        try:
+            chapter_index = int(unit.get("canvas_index", 0))
+        except (TypeError, ValueError):
+            chapter_index = 0
+
+        ready = bool(
+            host is not None
+            and getattr(host, "ready", False)
+            and getattr(self, "_phase2_active_chapter_index", None) == chapter_index
+            and not getattr(self, "_phase2_switch_in_progress", False)
+        )
+
+        if ready:
+            try:
+                host.go_to_page(1, smooth=False)
+            except Exception:
+                pass
+            self.after(180, lambda: self._phase239_show_structure_question(canvas))
+            return
+
+        if int(attempt) < 80:
+            self.after(
+                75,
+                lambda a=int(attempt) + 1: self._phase239_wait_for_review_page(
+                    canvas,
+                    a,
+                ),
+            )
+            return
+
+        self._phase239_show_structure_question(canvas)
+
+    def _phase239_show_structure_question(self, canvas) -> None:
+        if getattr(self, "_phase239_review_prompt_open", False):
+            return
+
+        unit = getattr(self, "_phase239_review_current", None)
+        if not isinstance(unit, dict):
+            return
+
+        self._phase239_review_prompt_open = True
+        title = str(unit.get("title") or "Section").strip() or "Section"
+        zone = str(unit.get("zone") or "bodymatter")
+        key = str(unit.get("key") or "")
+        start_page, end_page = self._phase239_unit_page_range(unit)
+        previous, following = self._phase239_unit_context(unit)
+
+        if start_page == end_page:
+            page_text = f"Page intérieure {start_page}"
+        else:
+            page_text = f"Pages intérieures {start_page} à {end_page}"
+
+        context_lines = []
+        if previous:
+            context_lines.append(f"Après : « {previous} »")
+        if following:
+            context_lines.append(f"Avant : « {following} »")
+        context = "\n".join(context_lines)
+
+        create = messagebox.askyesno(
+            "Structure du livre",
+            (
+                "TomeLinea a repéré une nouvelle section.\n\n"
+                f"« {title} »\n"
+                f"{page_text}\n"
+                + (f"\n{context}\n" if context else "\n")
+                + "\nLa première page concernée est affichée au centre.\n\n"
+                "Oui = créer une section distincte\n"
+                "Non = rattacher ce contenu à l’unité précédente"
+            ),
+            parent=self,
+        )
+
+        analysis = getattr(self, "_phase2_editorial_structure_analysis", None)
+        project = getattr(getattr(self, "session", None), "project", None)
+        stored = {}
+        if project is not None:
+            raw = project.metadata.get("editorial_structure_choices")
+            if isinstance(raw, dict):
+                stored = {
+                    str(k): dict(v)
+                    for k, v in raw.items()
+                    if isinstance(v, dict)
+                }
+
+        if create:
+            name = simpledialog.askstring(
+                "Nom de la section",
+                "Nom de cette section :",
+                initialvalue=title,
+                parent=self,
+            )
+            name = str(name or title).strip() or title
+            if isinstance(analysis, dict):
+                analysis = apply_structure_choice(
+                    analysis,
+                    key,
+                    create_section=True,
+                    name=name,
+                )
+            stored[key] = {
+                "decision": "create",
+                "name": name,
+                "zone": zone,
+            }
+        else:
+            if isinstance(analysis, dict):
+                analysis = apply_structure_choice(
+                    analysis,
+                    key,
+                    create_section=False,
+                )
+            stored[key] = {
+                "decision": "merge",
+                "zone": zone,
+            }
+
+        if isinstance(analysis, dict):
+            self._phase2_editorial_structure_analysis = analysis
+
+        if project is not None:
+            project.metadata["editorial_structure_choices"] = stored
+            if isinstance(analysis, dict):
+                project.metadata["editorial_structure_last_summary"] = dict(
+                    analysis.get("summary") or {}
+                )
+            try:
+                project.touch()
+            except Exception:
+                pass
+
+        queue_items = list(getattr(self, "_phase239_review_queue", []) or [])
+        if queue_items:
+            queue_items.pop(0)
+        self._phase239_review_queue = queue_items
+        self._phase239_review_current = None
+        self._phase239_review_prompt_open = False
+
+        layout = getattr(self, "_phase2_chapter_layout", None)
+        if layout is not None:
+            self._phase2_sync_page_count(layout.total_pages)
+        self.after(80, lambda: self._phase239_review_next(canvas))
+
 
     def _phase2_worker(self, generation: int, source: Path) -> None:
         """Analyse une fois le Livre complet puis prépare les plans par chapitre."""
@@ -2891,6 +3233,23 @@ class TomeLineaV4Editorial(
             detection = detect_chapters(translated.payload)
             if not detection.chapters:
                 raise RuntimeError("Aucune unité de composition n'a pu être construite.")
+
+            structure_choices = {}
+            if project is not None:
+                raw_structure_choices = project.metadata.get("editorial_structure_choices")
+                if isinstance(raw_structure_choices, dict):
+                    structure_choices = {
+                        str(key): dict(value)
+                        for key, value in raw_structure_choices.items()
+                        if isinstance(value, dict)
+                    }
+
+            structure_analysis = classify_editorial_structure(
+                translated.payload,
+                detection,
+                catalog_path=STRUCTURE_CATALOG_PATH,
+                persisted_choices=structure_choices,
+            )
 
             state = load_editorial_state(self._phase2_state_file(source), source)
             persisted = persisted_choices_for_plan(state)
@@ -2939,6 +3298,7 @@ class TomeLineaV4Editorial(
                 prepared,
                 detection,
                 plans,
+                structure_analysis,
             ))
         except Phase2BlockedError as exc:
             blockers = [
@@ -2977,7 +3337,7 @@ class TomeLineaV4Editorial(
         self._phase2_show_overlay(
             canvas,
             "Préparation de Composition",
-            "Analyse complète du Livre et préparation des chapitres…",
+            "Analyse complète du Livre et préparation des unités éditoriales…",
         )
         threading.Thread(
             target=self._phase2_worker,
@@ -3006,7 +3366,11 @@ class TomeLineaV4Editorial(
                 continue
             handled = True
             if kind == "ready":
-                prepared, detection, plans = payload
+                prepared, detection, plans, structure_analysis = payload
+                # 2.39B : les questions ambiguës sont volontairement différées.
+                # TomeLinea termine d'abord la pagination afin de pouvoir montrer
+                # la vraie page concernée au centre avant de demander un choix.
+                self._phase2_editorial_structure_analysis = structure_analysis
                 self._phase2_begin_preflight(canvas, source, prepared, detection, plans)
             elif kind == "blocked":
                 self._phase2_canvas_state = "blocked"
@@ -3055,6 +3419,14 @@ class TomeLineaV4Editorial(
             self._phase2_destroy_current_host()
             self._phase2_sync_page_count(layout.total_pages)
             self._phase2_canvas_state = "prepared"
+
+            # 2.39B : si une frontière reste ambiguë, ouvrir d'abord sa vraie
+            # page au centre et seulement ensuite demander la décision.
+            ambiguous = self._phase239_ambiguous_structure_units()
+            if ambiguous:
+                self._phase239_begin_structure_review(canvas)
+                return
+
             self._phase2_show_overlay(
                 canvas,
                 "Composition prête",
@@ -3251,7 +3623,7 @@ class TomeLineaV4Editorial(
         chapter = detection.chapters[chapter_index]
         self._phase2_show_overlay(
             canvas,
-            "Ouverture du chapitre",
+            "Ouverture de l’unité",
             str(chapter.title),
         )
 
@@ -3360,7 +3732,9 @@ class TomeLineaV4Editorial(
         book = getattr(self.session, "book", None)
         if book is None:
             return
-        order = list(book.page_order)
+        # BookV4 contient désormais aussi les quatre faces physiques. Canvas
+        # ne doit naviguer que parmi les pages texte internes.
+        order = self._phase2_internal_page_ids()
         if global_index >= len(order):
             return
         page_id = str(order[global_index])
@@ -3813,6 +4187,18 @@ class TomeLineaV4Editorial(
         if self._phase2_can_render():
             self._draw_phase2_canvas_page(canvas)
             return
+
+        # 2.38C — une couverture est une vraie face physique du Livre.
+        # Lorsqu'elle est active, elle n'appartient pas au Canvas du corps :
+        # il faut donc masquer explicitement le WebView2 du chapitre courant.
+        # Sinon le Canvas reste au-dessus du canevas Tk et donne l'impression
+        # que la couverture affiche la page intérieure précédemment visible.
+        phase2_host = getattr(self, "_phase2_canvas_host", None)
+        if phase2_host is not None:
+            try:
+                phase2_host.place_forget()
+            except Exception:
+                pass
 
         if self._canvas_editor_is_active_page():
             self._draw_canvas_editor_page(canvas)
