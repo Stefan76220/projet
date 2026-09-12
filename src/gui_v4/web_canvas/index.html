@@ -1191,7 +1191,53 @@ function tomeLineaPageCanvases() {
 }
 
 let tomeLineaLastReportedPage = 0;
+let tomeLineaLastReportedPageCount = 0;
 let tomeLineaPageScrollTimer = null;
+let tomeLineaPageCountTimer = null;
+
+function tomeLineaNodeTouchesPhysicalPage(node) {
+  if (!(node instanceof Element)) return false;
+  try {
+    if (node.matches('.ce-page-container, canvas[data-index]')) return true;
+    return Boolean(node.querySelector('.ce-page-container canvas[data-index]'));
+  } catch (_) {
+    return false;
+  }
+}
+
+function tomeLineaSchedulePageCountCheck() {
+  if (state.loading || !root.classList.contains('ready')) return;
+  if (tomeLineaPageCountTimer !== null) window.clearTimeout(tomeLineaPageCountTimer);
+  tomeLineaPageCountTimer = window.setTimeout(() => {
+    tomeLineaPageCountTimer = null;
+    if (state.loading || !root.classList.contains('ready')) return;
+    const pageCount = tomeLineaPageCanvases().length;
+    if (pageCount < 1 || pageCount === tomeLineaLastReportedPageCount) return;
+
+    tomeLineaLastReportedPageCount = pageCount;
+    const pageNo = Math.max(1, Math.min(Number(state.activePage) || 1, pageCount));
+    state.activePage = pageNo;
+    tomeLineaLastReportedPage = pageNo;
+
+    // Message léger : aucune exportation du document, aucun recalcul du Livre.
+    // Python actualise seulement la somme des pages des chapitres.
+    post('page_changed', { pageNo, pageCount, reason: 'page_count_changed' });
+  }, 120);
+}
+
+const tomeLineaPageCountObserver = new MutationObserver(mutations => {
+  if (state.loading || !root.classList.contains('ready')) return;
+  for (const mutation of mutations) {
+    if (mutation.type !== 'childList') continue;
+    const touched = [...mutation.addedNodes, ...mutation.removedNodes]
+      .some(tomeLineaNodeTouchesPhysicalPage);
+    if (touched) {
+      tomeLineaSchedulePageCountCheck();
+      break;
+    }
+  }
+});
+tomeLineaPageCountObserver.observe(root, { childList: true, subtree: true });
 
 function tomeLineaDetectActivePage(force = false) {
   const pages = tomeLineaPageCanvases();
@@ -1200,6 +1246,7 @@ function tomeLineaDetectActivePage(force = false) {
     const pageNo = Math.max(1, Math.min(Number(state.activePage) || 1, pages.length));
     if (force || pageNo !== tomeLineaLastReportedPage) {
       tomeLineaLastReportedPage = pageNo;
+      tomeLineaLastReportedPageCount = pages.length;
       post('page_changed', { pageNo, pageCount: pages.length });
     }
     return { pageNo, pageCount: pages.length };
@@ -1219,6 +1266,7 @@ function tomeLineaDetectActivePage(force = false) {
   const pageNo = bestIndex + 1;
   if (force || pageNo !== tomeLineaLastReportedPage) {
     tomeLineaLastReportedPage = pageNo;
+    tomeLineaLastReportedPageCount = pages.length;
     post('page_changed', { pageNo, pageCount: pages.length });
   }
   return { pageNo, pageCount: pages.length };
@@ -1232,6 +1280,7 @@ window.tomeLineaCanvasGoToPage = function tomeLineaCanvasGoToPage(pageNo, behavi
 
   state.activePage = target;
   tomeLineaLastReportedPage = target;
+  tomeLineaLastReportedPageCount = pages.length;
 
   if (tomeLineaEmbeddedMode()) {
     void tomeLineaLayoutEmbeddedPage(target);
@@ -1346,6 +1395,7 @@ window.tomeLineaCanvasLoad = async function tomeLineaCanvasLoad(plan) {
     const pageCount = await waitForStablePagination(nodes, generation);
     if (generation !== state.generation) return;
     state.boot = 'pagination_stable';
+    tomeLineaLastReportedPageCount = pageCount;
     post('pagination_stable', { pageCount });
 
     await nextFrame();
@@ -1394,10 +1444,10 @@ window.tomeLineaCanvasStatus = function tomeLineaCanvasStatus() {
 
 window.tomeLineaCanvasBoot = {
   host: 'loaded',
-  version: '2.37A',
+  version: '2.37C',
   ipc: !!(window.ipc && typeof window.ipc.postMessage === 'function'),
 };
-post('host_loaded', { canvasEditorVersion: '1.0.2', hostVersion: '2.37A' });
+post('host_loaded', { canvasEditorVersion: '1.0.2', hostVersion: '2.37C' });
 
   </script>
 </body>

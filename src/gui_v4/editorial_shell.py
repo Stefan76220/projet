@@ -2605,7 +2605,7 @@ class TomeLineaV4Editorial(
 
 
     # ==========================================================
-    # PHASE 2.37B — CANVAS PAR CHAPITRE + COPIE DE TRAVAIL PERSISTANTE
+    # PHASE 2.37C — CANVAS PAR CHAPITRE + PERSISTANCE + PAGINATION GLOBALE IMMÉDIATE
     # ==========================================================
 
     def _phase2_source_path(self) -> Path | None:
@@ -3265,6 +3265,24 @@ class TomeLineaV4Editorial(
         chapter_index = self._phase2_active_chapter_index
         if layout is None or chapter_index is None:
             return
+
+        # 2.37C : Canvas reste seul propriétaire de la pagination locale. Dès
+        # qu'il ajoute ou retire une page dans le chapitre actif, il transmet
+        # seulement le nouveau compteur. TomeLinea peut donc mettre à jour le
+        # Livre global et la Structure sans exporter le texte ni repaginer les
+        # autres chapitres.
+        try:
+            local_page_count = int(event.get("pageCount") or event.get("page_count") or 0)
+        except (TypeError, ValueError):
+            local_page_count = 0
+        if (
+            local_page_count > 0
+            and 0 <= int(chapter_index) < len(layout.page_counts)
+            and local_page_count != layout.page_counts[int(chapter_index)]
+        ):
+            layout.set_page_count(int(chapter_index), local_page_count)
+            self._phase2_sync_page_count(layout.total_pages)
+
         try:
             local_page_no = int(event.get("pageNo") or event.get("page_no") or 0)
         except (TypeError, ValueError):
