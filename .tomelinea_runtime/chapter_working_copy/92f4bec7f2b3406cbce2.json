@@ -1,0 +1,1983 @@
+{
+  "schema": "tomelinea.chapter_working_copy.v1",
+  "source_fingerprint": "4b58d76099b5bc9210f010db58fb3736b32b14a8b217ada9401c5ed4295d57d5",
+  "updated_at_utc": "2026-09-13T14:37:30.324568+00:00",
+  "chapters": {
+    "1||4|prelude": {
+      "title": "Début du livre",
+      "index": 1,
+      "start_paragraph": null,
+      "end_paragraph": 4,
+      "detected_by": "prelude",
+      "saved_at_utc": "2026-09-13T14:25:07.854894+00:00",
+      "exported": {
+        "ok": true,
+        "pageCount": 2,
+        "activePage": 1,
+        "segments": [
+          {
+            "segment": 1,
+            "data": {
+              "header": [],
+              "main": [
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:1"
+                    }
+                  }
+                },
+                {
+                  "value": "BANC D’ESSAI TOMELINEA",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "bold": true,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {
+                          "fonts": {
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 40,
+                          "size_pt": 20,
+                          "bold": true
+                        },
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 40,
+                          "size_pt": 20,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:1",
+                        "sourceParagraph": 1,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "center",
+                          "spacing_before_pt": 119.05,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 1,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "center",
+                        "spacing_before_pt": 119.05,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:1"
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:2"
+                    }
+                  }
+                },
+                {
+                  "value": "Règles générales du texte",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "bold": true,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {
+                          "fonts": {
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 32,
+                          "size_pt": 16,
+                          "bold": true
+                        },
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 32,
+                          "size_pt": 16,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:2",
+                        "sourceParagraph": 2,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "center",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 2,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "center",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:2"
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:3"
+                    }
+                  }
+                },
+                {
+                  "value": "A5 — test volontairement simple et répétitif",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {
+                          "fonts": {
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 20,
+                          "size_pt": 10
+                        },
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 20,
+                          "size_pt": 10,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:3",
+                        "sourceParagraph": 3,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "center",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 0,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 3,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "center",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 0,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:3"
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "type": "pageBreak",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "width": 430.5331,
+                  "extension": {
+                    "tomelinea": {
+                      "type": "page_break",
+                      "paragraph": {
+                        "id": "p:4",
+                        "sourceParagraph": 4,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 4,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                }
+              ],
+              "footer": [],
+              "graffiti": []
+            }
+          }
+        ]
+      }
+    },
+    "2|5|11|style": {
+      "title": "Chapitre 1 — Le texte courant",
+      "index": 2,
+      "start_paragraph": 5,
+      "end_paragraph": 11,
+      "detected_by": "style",
+      "saved_at_utc": "2026-09-13T14:22:50.183021+00:00",
+      "exported": {
+        "ok": true,
+        "pageCount": 3,
+        "activePage": 1,
+        "segments": [
+          {
+            "segment": 1,
+            "data": {
+              "header": [],
+              "main": [
+                {
+                  "value": "Chapitre 1 — Le texte courant",
+                  "font": "Arial",
+                  "size": 24,
+                  "bold": true,
+                  "color": "#365F91",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "majorHAnsi",
+                            "hansi_theme": "majorHAnsi",
+                            "east_asia_theme": "majorEastAsia",
+                            "complex_script_theme": "majorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 36,
+                          "size_pt": 18,
+                          "size_cs_half_points": 28,
+                          "size_cs_pt": 14,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "bold_cs": true,
+                          "color": {
+                            "value": "365F91",
+                            "theme": "accent1",
+                            "theme_shade": "BF"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:5",
+                        "sourceParagraph": 5,
+                        "format": {
+                          "style_id": "Heading1",
+                          "alignment": "left",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 17,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 0,
+                          "hanging_mm": null,
+                          "keep_next": true,
+                          "keep_lines": true,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal",
+                          "Heading1"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 5,
+                      "format": {
+                        "style_id": "Heading1",
+                        "alignment": "left",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 17,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 0,
+                        "hanging_mm": null,
+                        "keep_next": true,
+                        "keep_lines": true,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "Une première série homogène",
+                  "font": "Arial",
+                  "size": 18.6667,
+                  "bold": true,
+                  "color": "#4F81BD",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "majorHAnsi",
+                            "hansi_theme": "majorHAnsi",
+                            "east_asia_theme": "majorEastAsia",
+                            "complex_script_theme": "majorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 28,
+                          "size_pt": 14,
+                          "size_cs_half_points": 26,
+                          "size_cs_pt": 13,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "bold_cs": true,
+                          "color": {
+                            "value": "4F81BD",
+                            "theme": "accent1"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:6",
+                        "sourceParagraph": 6,
+                        "format": {
+                          "style_id": "Heading2",
+                          "alignment": "left",
+                          "spacing_before_pt": 5.65,
+                          "spacing_after_pt": 8.5,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 0,
+                          "hanging_mm": null,
+                          "keep_next": true,
+                          "keep_lines": true,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal",
+                          "Heading2"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 6,
+                      "format": {
+                        "style_id": "Heading2",
+                        "alignment": "left",
+                        "spacing_before_pt": 5.65,
+                        "spacing_after_pt": 8.5,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 0,
+                        "hanging_mm": null,
+                        "keep_next": true,
+                        "keep_lines": true,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:7"
+                    }
+                  }
+                },
+                {
+                  "value": "Ce livre de test sert uniquement à vérifier les règles générales du texte avant de reprendre le Survol. Le corps de texte de la Source utilise partout la même construction afin que TomeLinea puisse la reconnaître sans ambiguïté. Ce paragraphe appartient au chapitre 1 et constitue l’échantillon 1 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:7",
+                        "sourceParagraph": 7,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 7,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:7"
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:8"
+                    }
+                  }
+                },
+                {
+                  "value": "La règle source est volontairement simple : Arial en onze points, texte justifié, retrait de première ligne de six millimètres, interligne de 1,25 et espace de deux millimètres après chaque paragraphe. Les titres utilisent une autre taille et ne doivent pas être confondus avec le texte courant. Ce paragraphe appartient au chapitre 1 et constitue l’échantillon 2 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:8",
+                        "sourceParagraph": 8,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 8,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:8"
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:9"
+                    }
+                  }
+                },
+                {
+                  "value": "Lorsqu’une règle générale est modifiée dans TomeLinea, elle doit être enregistrée, rester visible après changement de page ou réouverture du panneau et s’appliquer au corps de texte sans transformer les titres de chapitre. Ce banc d’essai permet de vérifier cette étape avant toute autre fonction. Ce paragraphe appartient au chapitre 1 et constitue l’échantillon 3 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:9",
+                        "sourceParagraph": 9,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 9,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:9"
+                    }
+                  }
+                },
+                {
+                  "value": "",
+                  "type": "tab",
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "indent",
+                      "paragraphId": "p:10"
+                    }
+                  }
+                },
+                {
+                  "value": "Ce livre de test sert uniquement à vérifier les règles générales du texte avant de reprendre le Survol. Le corps de texte de la Source utilise partout la même construction afin que TomeLinea puisse la reconnaître sans ambiguïté. Ce paragraphe appartient au chapitre 1 et constitue l’échantillon 4 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:10",
+                        "sourceParagraph": 10,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 10,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:10"
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "type": "pageBreak",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "width": 430.5331,
+                  "extension": {
+                    "tomelinea": {
+                      "type": "page_break",
+                      "paragraph": {
+                        "id": "p:11",
+                        "sourceParagraph": 11,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 11,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                }
+              ],
+              "footer": [],
+              "graffiti": []
+            }
+          }
+        ]
+      }
+    },
+    "6|33|39|style": {
+      "title": "Chapitre 5 — Recomposition",
+      "index": 6,
+      "start_paragraph": 33,
+      "end_paragraph": 39,
+      "detected_by": "style",
+      "saved_at_utc": "2026-09-13T14:37:30.324568+00:00",
+      "exported": {
+        "ok": true,
+        "pageCount": 3,
+        "activePage": 1,
+        "segments": [
+          {
+            "segment": 1,
+            "data": {
+              "header": [],
+              "main": [
+                {
+                  "value": "Chapitre 5 — Recomposition",
+                  "font": "Arial",
+                  "size": 24,
+                  "bold": true,
+                  "color": "#365F91",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "majorHAnsi",
+                            "hansi_theme": "majorHAnsi",
+                            "east_asia_theme": "majorEastAsia",
+                            "complex_script_theme": "majorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 36,
+                          "size_pt": 18,
+                          "size_cs_half_points": 28,
+                          "size_cs_pt": 14,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "bold_cs": true,
+                          "color": {
+                            "value": "365F91",
+                            "theme": "accent1",
+                            "theme_shade": "BF"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:33",
+                        "sourceParagraph": 33,
+                        "format": {
+                          "style_id": "Heading1",
+                          "alignment": "left",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 17,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 0,
+                          "hanging_mm": null,
+                          "keep_next": true,
+                          "keep_lines": true,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal",
+                          "Heading1"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 33,
+                      "format": {
+                        "style_id": "Heading1",
+                        "alignment": "left",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 17,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 0,
+                        "hanging_mm": null,
+                        "keep_next": true,
+                        "keep_lines": true,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "Une règle globale peut changer la pagination",
+                  "font": "Arial",
+                  "size": 18.6667,
+                  "bold": true,
+                  "color": "#4F81BD",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "majorHAnsi",
+                            "hansi_theme": "majorHAnsi",
+                            "east_asia_theme": "majorEastAsia",
+                            "complex_script_theme": "majorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 28,
+                          "size_pt": 14,
+                          "size_cs_half_points": 26,
+                          "size_cs_pt": 13,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "bold": true,
+                          "bold_cs": true,
+                          "color": {
+                            "value": "4F81BD",
+                            "theme": "accent1"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:34",
+                        "sourceParagraph": 34,
+                        "format": {
+                          "style_id": "Heading2",
+                          "alignment": "left",
+                          "spacing_before_pt": 5.65,
+                          "spacing_after_pt": 8.5,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 0,
+                          "hanging_mm": null,
+                          "keep_next": true,
+                          "keep_lines": true,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal",
+                          "Heading2"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "left",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 34,
+                      "format": {
+                        "style_id": "Heading2",
+                        "alignment": "left",
+                        "spacing_before_pt": 5.65,
+                        "spacing_after_pt": 8.5,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 0,
+                        "hanging_mm": null,
+                        "keep_next": true,
+                        "keep_lines": true,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "Ce livre de test sert uniquement à vérifier les règles générales du texte avant de reprendre le Survol. Le corps de texte de la Source utilise partout la même construction afin que TomeLinea puisse la reconnaître sans ambiguïté. Ce paragraphe appartient au chapitre 5 et constitue l’échantillon 1 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:35",
+                        "sourceParagraph": 35,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 35,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:35"
+                    }
+                  }
+                },
+                {
+                  "value": "La règle source est volontairement simple : Arial en onze points, texte justifié, retrait de première ligne de six millimètres, interligne de 1,25 et espace de deux millimètres après chaque paragraphe. Les titres utilisent une autre taille et ne doivent pas être confondus avec le texte courant. Ce paragraphe appartient au chapitre 5 et constitue l’échantillon 2 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:36",
+                        "sourceParagraph": 36,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 36,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:36"
+                    }
+                  }
+                },
+                {
+                  "value": "Lorsqu’une règle générale est modifiée dans TomeLinea, elle doit être enregistrée, rester visible après changement de page ou réouverture du panneau et s’appliquer au corps de texte sans transformer les titres de chapitre. Ce banc d’essai permet de vérifier cette étape avant toute autre fonction. Ce paragraphe appartient au chapitre 5 et constitue l’échantillon 3 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:37",
+                        "sourceParagraph": 37,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 37,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:37"
+                    }
+                  }
+                },
+                {
+                  "value": "Ce livre de test sert uniquement à vérifier les règles générales du texte avant de reprendre le Survol. Le corps de texte de la Source utilise partout la même construction afin que TomeLinea puisse la reconnaître sans ambiguïté. Ce paragraphe appartient au chapitre 5 et constitue l’échantillon 4 de cette page.",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "sourceRun": 1,
+                      "sourceTrace": {
+                        "direct": {},
+                        "effective": {
+                          "fonts": {
+                            "ascii_theme": "minorHAnsi",
+                            "hansi_theme": "minorHAnsi",
+                            "east_asia_theme": "minorEastAsia",
+                            "complex_script_theme": "minorBidi",
+                            "ascii": "Arial",
+                            "hansi": "Arial"
+                          },
+                          "size_half_points": 22,
+                          "size_pt": 11,
+                          "size_cs_half_points": 22,
+                          "size_cs_pt": 11,
+                          "language": {
+                            "latin": "en-US",
+                            "east_asia": "en-US",
+                            "complex_script": "ar-SA"
+                          },
+                          "resolved_font_family": "Arial"
+                        }
+                      },
+                      "paragraph": {
+                        "id": "p:38",
+                        "sourceParagraph": 38,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "font": "Arial",
+                  "size": 14.666666666666666,
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 38,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "size": 7.521259842519686,
+                  "rowMargin": 0.2,
+                  "extension": {
+                    "tomelinea": {
+                      "generalTextRuleGenerated": "paragraph_gap",
+                      "paragraphId": "p:38"
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "type": "pageBreak",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "width": 430.5331,
+                  "extension": {
+                    "tomelinea": {
+                      "type": "page_break",
+                      "paragraph": {
+                        "id": "p:39",
+                        "sourceParagraph": 39,
+                        "format": {
+                          "style_id": null,
+                          "alignment": "justify",
+                          "spacing_before_pt": 0,
+                          "spacing_after_pt": 5.65,
+                          "line_spacing": {
+                            "mode": "multiple",
+                            "value": 1.25
+                          },
+                          "indent_left_mm": null,
+                          "indent_right_mm": null,
+                          "first_line_mm": 5.9972,
+                          "hanging_mm": null,
+                          "keep_next": null,
+                          "keep_lines": null,
+                          "page_break_before": null,
+                          "widow_control": null,
+                          "contextual_spacing": null,
+                          "tabs": [],
+                          "numbering": null
+                        },
+                        "styleChain": [
+                          "Normal"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "value": "\n",
+                  "rowFlex": "alignment",
+                  "rowMargin": 1.25,
+                  "extension": {
+                    "tomelinea": {
+                      "paragraphEnd": 39,
+                      "format": {
+                        "style_id": null,
+                        "alignment": "justify",
+                        "spacing_before_pt": 0,
+                        "spacing_after_pt": 5.65,
+                        "line_spacing": {
+                          "mode": "multiple",
+                          "value": 1.25
+                        },
+                        "indent_left_mm": null,
+                        "indent_right_mm": null,
+                        "first_line_mm": 5.9972,
+                        "hanging_mm": null,
+                        "keep_next": null,
+                        "keep_lines": null,
+                        "page_break_before": null,
+                        "widow_control": null,
+                        "contextual_spacing": null,
+                        "tabs": [],
+                        "numbering": null
+                      }
+                    }
+                  }
+                }
+              ],
+              "footer": [],
+              "graffiti": []
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -89,8 +89,8 @@ function normalizedOptions(options = {}) {
     ...options,
     pageMode: 'paging',
     defaultType: 'TEXT',
-    defaultFont: 'Arial',
-    defaultSize: 16,
+    defaultFont: options.defaultFont || 'Arial',
+    defaultSize: Number(options.defaultSize || 16),
     minSize: 1,
     maxSize: 200,
     pageGap: 12,
@@ -182,6 +182,18 @@ window.tomeLineaCanvasStatus = function tomeLineaCanvasStatus() {
   };
 };
 
+
+window.tomeLineaCanvasSetMode = function tomeLineaCanvasSetMode(mode) {
+  const wanted = String(mode || 'readonly').toLowerCase() === 'edit'
+    ? 'edit'
+    : 'readonly';
+  for (const editor of state.editors) {
+    try {
+      editor.command.executeMode(wanted);
+    } catch (_) {}
+  }
+  return true;
+};
 
 window.tomeLineaCanvasBoot = {
   host: 'loaded',

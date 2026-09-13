@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TomeLinea Canvas</title>
+  <style>
+    html,body{margin:0;width:100%;height:100%;overflow:auto;background:#252a30;color:#e8ebee;font-family:Segoe UI,Arial,sans-serif}
+    #status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#252a30;z-index:20;font-size:13px;letter-spacing:.03em}
+    #document{min-height:100%;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s ease}
+    #document.ready{opacity:1;visibility:visible;pointer-events:auto}
+    body.embedded-composition{overflow:hidden}
+    body.embedded-composition #document{
+      position:fixed;
+      inset:0;
+      min-height:0;
+      transform-origin:0 0;
+      transition:none;
+      pointer-events:none !important;
+      overflow:visible;
+      will-change:transform;
+    }
+    body.embedded-composition #document.ready{pointer-events:none !important}
+    body.embedded-composition #document,
+    body.embedded-composition #document *{
+      cursor:default !important;
+      caret-color:transparent !important;
+      user-select:none !important;
+      -webkit-user-select:none !important;
+    }
+    body.embedded-composition #review-panel,
+    body.embedded-composition #journal-button,
+    body.embedded-composition #journal-panel{display:none !important}
+    .segment{width:100%;min-height:1px;overflow:visible}
+    .segment + .segment{margin-top:0}
+    body.ready #status{display:none}
+    #review-panel{position:fixed;top:14px;right:14px;width:360px;max-height:calc(100vh - 28px);overflow:auto;background:#2d333a;border:1px solid #59616a;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:30;display:none;padding:12px 12px 10px;box-sizing:border-box}
+    body.ready #review-panel.active{display:block}
+    #journal-button{position:fixed;right:14px;bottom:14px;z-index:31;display:none;border:1px solid #68717a;background:#373e46;color:#eef1f3;border-radius:7px;padding:7px 10px;font:12px Segoe UI,Arial,sans-serif;cursor:pointer;box-shadow:0 5px 16px rgba(0,0,0,.22)}
+    body.ready #journal-button.active{display:block}
+    #journal-panel{position:fixed;right:14px;bottom:52px;width:390px;max-height:58vh;overflow:auto;background:#2d333a;border:1px solid #59616a;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.30);z-index:32;display:none;padding:12px;box-sizing:border-box}
+    body.ready #journal-panel.active{display:block}
+    .jr-item{border-top:1px solid #454d55;padding:9px 0}
+    .jr-item:first-child{border-top:0;padding-top:2px}
+    .jr-title{font-size:12px;font-weight:600;margin-bottom:4px}
+    .jr-msg{font-size:12px;line-height:1.35;color:#d9dde1}
+    .jr-ba{font-size:11px;line-height:1.35;color:#b8c0c7;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+    .rv-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+    .rv-title{font-size:13px;font-weight:600;letter-spacing:.02em}
+    .rv-count{font-size:12px;color:#b9c0c7}
+    .rv-tabs{display:flex;gap:6px;margin:7px 0 10px}
+    .rv-tab,.rv-btn{border:1px solid #68717a;background:#373e46;color:#eef1f3;border-radius:6px;padding:6px 9px;font:12px Segoe UI,Arial,sans-serif;cursor:pointer}
+    .rv-tab.active{background:#4a535d}
+    .rv-kind{font-size:12px;color:#c8ced4;margin-bottom:5px}
+    .rv-msg{font-size:13px;line-height:1.35;margin-bottom:9px}
+    .rv-label{font-size:11px;color:#aeb6be;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.04em}
+    .rv-box{background:#252a30;border:1px solid #4b535b;border-radius:6px;padding:7px 8px;font:12px/1.35 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+    .rv-after{border-color:#6b756c}
+    .rv-diff{display:inline-block;border-radius:3px;padding:0 2px;font-weight:700}
+    .rv-diff-before{background:#5a4343;color:#fff0f0}
+    .rv-diff-after{background:#45564a;color:#effff2}
+    .rv-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+    .rv-choice{border:1px solid #68717a;background:#414952;color:#f2f4f5;border-radius:7px;padding:8px 10px;font:12px Segoe UI,Arial,sans-serif;cursor:pointer;line-height:1.25}
+    .rv-choice:hover{background:#4a535d}
+    .rv-choice.primary{border-color:#78847c;background:#455049}
+    .rv-choice.selected{box-shadow:0 0 0 2px rgba(205,215,207,.45) inset;border-color:#9ba79f}
+    .rv-choice:disabled{opacity:.55;cursor:default}
+    .rv-choice-status{min-height:16px;font-size:11px;color:#c5ccd2;margin-top:6px;line-height:1.3}
+    .rv-similar{display:none;margin-top:8px;padding:8px;border:1px solid #4b535b;border-radius:7px;background:#282e34}
+    .rv-similar.active{display:block}
+    .rv-similar-info{font-size:11px;line-height:1.35;color:#bcc4ca;margin-bottom:7px}
+    .rv-similar-btn{width:100%;border:1px solid #727c75;background:#3f4943;color:#f2f4f5;border-radius:7px;padding:8px 10px;font:12px Segoe UI,Arial,sans-serif;cursor:pointer}
+    .rv-similar-btn:disabled{opacity:.5;cursor:default}
+    .rv-nav{display:flex;justify-content:space-between;gap:8px;margin-top:10px}
+    .rv-note{font-size:11px;color:#9fa8b0;margin-top:8px;line-height:1.3}
+  </style>
+</head>
+<body>
+  <div id="status">Préparation du document…</div>
+  <main id="document" aria-hidden="true"></main>
+  <aside id="review-panel" aria-live="polite">
+    <div class="rv-head"><div class="rv-title">Décisions éditoriales</div><div id="rv-count" class="rv-count"></div></div>
+    <div id="rv-kind" class="rv-kind"></div>
+    <div id="rv-msg" class="rv-msg"></div>
+    <div id="rv-before-wrap"><div class="rv-label">Passage concerné</div><div id="rv-before" class="rv-box"></div></div>
+    <div id="rv-after-wrap" style="display:none"><div class="rv-label">Après</div><div id="rv-after" class="rv-box rv-after"></div></div>
+    <div id="rv-solution-wrap"><div class="rv-label">Proposition de TomeLinea</div><div id="rv-solution" class="rv-box rv-after"></div></div>
+    <div id="rv-actions" class="rv-actions"><button id="rv-choice-left" class="rv-choice" type="button">Conserver</button><button id="rv-choice-right" class="rv-choice primary" type="button">Appliquer la proposition</button></div>
+    <div id="rv-choice-status" class="rv-choice-status"></div>
+    <div id="rv-similar" class="rv-similar"><div id="rv-similar-info" class="rv-similar-info"></div><button id="rv-similar-apply" class="rv-similar-btn" type="button">Appliquer ce choix aux cas similaires</button></div>
+    <div class="rv-nav"><button id="rv-prev" class="rv-btn" type="button">Précédent</button><button id="rv-next" class="rv-btn" type="button">Suivant</button></div>
+    <div class="rv-note">TomeLinea ne vous montre ici que les cas qui demandent réellement un choix. Les corrections certaines sont faites automatiquement.</div>
+  </aside>
+  <button id="journal-button" type="button">Journal des corrections</button>
+  <aside id="journal-panel" aria-live="polite">
+    <div class="rv-head"><div class="rv-title">Journal des corrections automatiques</div><button id="journal-close" class="rv-btn" type="button">Fermer</button></div>
+    <div id="journal-summary" class="rv-msg"></div>
+    <div id="journal-list"></div>
+  </aside>
+  <script>
+    window.__TL_INLINE_HOST__ = true;
+const root = document.getElementById('document');
+const statusNode = document.getElementById('status');
+const reviewPanel = document.getElementById('review-panel');
+const journalButton = document.getElementById('journal-button');
+const journalPanel = document.getElementById('journal-panel');
+const journalClose = document.getElementById('journal-close');
+const journalSummary = document.getElementById('journal-summary');
+const journalList = document.getElementById('journal-list');
+const reviewNodes = {
+  count: document.getElementById('rv-count'), kind: document.getElementById('rv-kind'), msg: document.getElementById('rv-msg'),
+  before: document.getElementById('rv-before'), after: document.getElementById('rv-after'), solution: document.getElementById('rv-solution'),
+  beforeWrap: document.getElementById('rv-before-wrap'), afterWrap: document.getElementById('rv-after-wrap'), solutionWrap: document.getElementById('rv-solution-wrap'),
+  actions: document.getElementById('rv-actions'), choiceLeft: document.getElementById('rv-choice-left'), choiceRight: document.getElementById('rv-choice-right'), choiceStatus: document.getElementById('rv-choice-status'),
+  similar: document.getElementById('rv-similar'), similarInfo: document.getElementById('rv-similar-info'), similarApply: document.getElementById('rv-similar-apply'),
+  prev: document.getElementById('rv-prev'), next: document.getElementById('rv-next')
+};
+const reviewState = { index: 0, automatic: [], editorial: [], runtimeEditorial: [], applying: false };
+const state = {
+  editors: [],
+  segmentRuntimes: [],
+  loading: false,
+  generation: 0,
+  boot: 'host_js_loaded',
+  vendor: 'not_loaded',
+  lastError: null,
+  uiMode: 'standalone',
+  activePage: 1,
+  embeddedScale: 1,
+};
+
+function post(type, details = {}) {
+  try {
+    if (window.ipc && typeof window.ipc.postMessage === 'function') {
+      window.ipc.postMessage(JSON.stringify({ type, ...details }));
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function errorText(error) {
+  if (!error) return 'Erreur JavaScript inconnue';
+  const message = String(error?.message || error);
+  const stack = error?.stack ? String(error.stack) : '';
+  return stack && !stack.includes(message) ? `${message}\n${stack}` : (stack || message);
+}
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function nextFrame() { return new Promise(resolve => requestAnimationFrame(() => resolve())); }
+
+async function loadEditorClass() {
+  if (window.__TL_CANVAS_EDITOR_CLASS__) return window.__TL_CANVAS_EDITOR_CLASS__;
+  state.vendor = 'loading';
+  try {
+    const module = await import('./vendor/canvas-editor.js');
+    const Editor = module?.default || module?.Editor;
+    if (typeof Editor !== 'function') {
+      throw new Error('Canvas Editor chargé mais export Editor introuvable');
+    }
+    window.__TL_CANVAS_EDITOR_CLASS__ = Editor;
+    state.vendor = 'ready';
+    post('vendor_loaded', { canvasEditorVersion: '1.0.2' });
+    return Editor;
+  } catch (error) {
+    state.vendor = 'failed';
+    state.lastError = errorText(error);
+    post('error', { stage: 'vendor_import', message: state.lastError });
+    throw error;
+  }
+}
+
+function destroyEditors() {
+  for (const editor of state.editors) {
+    try { editor.destroy(); } catch (_) {}
+  }
+  state.editors = [];
+  state.segmentRuntimes = [];
+  root.replaceChildren();
+  root.classList.remove('ready');
+  root.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('ready');
+  reviewPanel.classList.remove('active');
+}
+
+function segmentPageCount(segmentNode) {
+  const indexed = segmentNode.querySelectorAll('canvas[data-index]').length;
+  if (indexed > 0) return indexed;
+  return segmentNode.querySelectorAll('canvas').length;
+}
+
+async function waitForStablePagination(segmentNodes, generation) {
+  let previous = -1;
+  let stableFrames = 0;
+  for (let pass = 0; pass < 160; pass += 1) {
+    if (generation !== state.generation) throw new Error('Chargement remplacé');
+    await nextFrame();
+    await sleep(25);
+    const count = segmentNodes.reduce((sum, node) => sum + segmentPageCount(node), 0);
+    const measurable = segmentNodes.every(node => node.getBoundingClientRect().width > 0);
+    if (count > 0 && measurable && count === previous) stableFrames += 1;
+    else stableFrames = 0;
+    previous = count;
+    if (stableFrames >= 4) return count;
+  }
+  throw new Error('Pagination Canvas Editor non stabilisée');
+}
+
+function normalizedOptions(options = {}) {
+  return {
+    ...options,
+    pageMode: 'paging',
+    defaultType: 'TEXT',
+    defaultFont: 'Arial',
+    defaultSize: 16,
+    minSize: 1,
+    maxSize: 200,
+    pageGap: 12,
+    scale: 1,
+  };
+}
+
+function floatingRequests(editor) {
+  const data = editor.command.getValue()?.data?.main || [];
+  const result = [];
+  const visit = (list) => {
+    for (const element of list || []) {
+      const request = element?.extension?.tomelinea?.floating_request;
+      if (request?.image_id) result.push(request);
+      if (Array.isArray(element?.valueList)) visit(element.valueList);
+      for (const tr of element?.trList || []) {
+        for (const td of tr?.tdList || []) visit(td?.value || []);
+      }
+    }
+  };
+  visit(data);
+  return result;
+}
+
+function columnOriginX(options, cursor) {
+  const margins = Array.isArray(options?.margins) ? options.margins : [0, 0, 0, 0];
+  const left = Number(margins[3] || 0);
+  const right = Number(margins[1] || 0);
+  const width = Number(options?.width || 0);
+  const count = Math.max(1, Number(options?.column?.count || 1));
+  const gap = Number(options?.column?.gap || 0);
+  const columnIndex = Math.max(0, Number(cursor?.columnIndex || 0));
+  if (!(width > 0) || count <= 1) return left;
+  const innerWidth = Math.max(0, width - left - right);
+  const columnWidth = Math.max(0, (innerWidth - gap * (count - 1)) / count);
+  return left + Math.min(columnIndex, count - 1) * (columnWidth + gap);
+}
+
+function resolveFloatX(request, options, cursor) {
+  const offset = Number(request?.horizontal_offset_px || 0);
+  const relative = String(request?.horizontal_relative_to || '').toLowerCase();
+  const margins = Array.isArray(options?.margins) ? options.margins : [0, 0, 0, 0];
+  const cursorX = Number(cursor?.coordinate?.leftTop?.[0] || 0);
+  if (relative === 'column') return columnOriginX(options, cursor) + offset;
+  if (relative === 'margin') return Number(margins[3] || 0) + offset;
+  if (relative === 'page') return offset;
+  return cursorX + offset;
+}
+
+function resolveFloatY(request, options, cursor) {
+  const offset = Number(request?.vertical_offset_px || 0);
+  const relative = String(request?.vertical_relative_to || '').toLowerCase();
+  const margins = Array.isArray(options?.margins) ? options.margins : [0, 0, 0, 0];
+  const cursorY = Number(cursor?.coordinate?.leftTop?.[1] || 0);
+  if (relative === 'margin') return Number(margins[0] || 0) + offset;
+  if (relative === 'page') return offset;
+  // OOXML relativeTo=paragraph/line : la coordonnée de base vient du moteur
+  // Canvas, jamais d'un calcul de lignes TomeLinea.
+  return cursorY + offset;
+}
+
+function applyFloatingAnchors(editor) {
+  const requests = floatingRequests(editor);
+  if (!requests.length) return { applied: 0, warnings: [] };
+  const options = editor.command.getOptions?.() || {};
+  let applied = 0;
+  const warnings = [];
+
+  for (const request of requests) {
+    const anchorText = String(request?.anchor_text || '').trim();
+    if (!anchorText) {
+      warnings.push(`Ancre flottante sans texte (paragraphe ${request?.paragraph_index ?? '?'})`);
+      continue;
+    }
+    const ranges = editor.command.getKeywordRangeList?.(anchorText) || [];
+    const range = ranges[0];
+    if (!range) {
+      warnings.push(`Paragraphe d'ancrage introuvable (${request?.paragraph_index ?? '?'})`);
+      continue;
+    }
+    editor.command.executeSetRange(range.startIndex, range.startIndex);
+    const cursor = editor.command.getCursorPosition?.();
+    if (!cursor?.coordinate?.leftTop) {
+      warnings.push(`Position d'ancrage indisponible (${request?.paragraph_index ?? '?'})`);
+      continue;
+    }
+    const image = (editor.command.getElementById?.({ id: request.image_id }) || [])[0];
+    if (!image) {
+      warnings.push(`Image flottante introuvable (${request.image_id})`);
+      continue;
+    }
+
+    // Canvas Editor doit lui-même convertir l'image en flottante : cette API
+    // initialise ses structures internes d'habillage (surround). Une mutation
+    // directe de imgDisplay laisse l'image dans son ancienne ligne inline et
+    // empêche le texte suivant de circuler réellement autour d'elle.
+    const targetDisplay = request.target_display || 'surround';
+    try {
+      editor.command.executeChangeImageDisplay(image, targetDisplay);
+    } catch (error) {
+      warnings.push(`Conversion flottante impossible (${request.image_id}) : ${errorText(error)}`);
+      continue;
+    }
+
+    // Une fois l'habillage natif initialisé, on ne fait que traduire les
+    // coordonnées OOXML de l'ancre. Les lignes et la pagination restent
+    // entièrement calculées par Canvas Editor.
+    if (!image.imgFloatPosition) {
+      warnings.push(`Position flottante non initialisée (${request.image_id})`);
+      continue;
+    }
+    image.imgFloatPosition.pageNo = Number(cursor.pageNo || 0);
+    image.imgFloatPosition.x = resolveFloatX(request, options, cursor);
+    image.imgFloatPosition.y = resolveFloatY(request, options, cursor);
+    applied += 1;
+  }
+
+  if (applied) editor.command.executeForceUpdate({ isSubmitHistory: false });
+  try { editor.command.executeBlur(); } catch (_) {}
+  return { applied, warnings };
+}
+
+
+function tablePaginationSpecs(data) {
+  return (data?.main || []).filter(element => {
+    const policy = element?.extension?.tomelinea?.table_pagination_policy;
+    return element?.type === 'table' && element?.id && policy?.enabled === true;
+  });
+}
+
+function cleanProbeText(valueList) {
+  return (valueList || [])
+    .map(element => String(element?.value || ''))
+    .join('')
+    .replace(/[\u200B\u200C\u200D\u2060]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function rowProbe(table, trIndex) {
+  const cells = table?.trList?.[trIndex]?.tdList || [];
+  for (let tdIndex = 0; tdIndex < cells.length; tdIndex += 1) {
+    const text = cleanProbeText(cells[tdIndex]?.value);
+    if (text) return { text, trIndex, tdIndex };
+  }
+  return null;
+}
+
+function cursorForTableProbe(editor, tableId, probe) {
+  const ranges = editor.command.getKeywordRangeList?.(probe.text) || [];
+  const exact = ranges.find(range =>
+    String(range?.tableId || '') === String(tableId) &&
+    Number(range?.startTrIndex) === Number(probe.trIndex) &&
+    Number(range?.startTdIndex) === Number(probe.tdIndex)
+  );
+  const range = exact || ranges.find(range =>
+    String(range?.tableId || '') === String(tableId) &&
+    Number(range?.startTrIndex) === Number(probe.trIndex)
+  );
+  if (!range) return null;
+  try {
+    editor.command.executeSetPositionContext(range);
+    editor.command.executeSetRange(
+      range.startIndex,
+      range.startIndex,
+      range.tableId,
+      range.startTdIndex,
+      range.endTdIndex ?? range.startTdIndex,
+      range.startTrIndex,
+      range.endTrIndex ?? range.startTrIndex
+    );
+    return editor.command.getCursorPosition?.() || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function tableRenderedRows(editor, table) {
+  const rows = [];
+  const rowCount = table?.trList?.length || 0;
+  for (let trIndex = 0; trIndex < rowCount; trIndex += 1) {
+    const probe = rowProbe(table, trIndex);
+    if (!probe) {
+      rows.push({ trIndex, tdIndex: null, text: '', pageNo: null, y: null });
+      continue;
+    }
+    const cursor = cursorForTableProbe(editor, table.id, probe);
+    const pageNo = Number(cursor?.pageNo);
+    const y = Number(cursor?.coordinate?.leftTop?.[1]);
+    rows.push({
+      trIndex,
+      tdIndex: probe.tdIndex,
+      text: probe.text,
+      pageNo: Number.isFinite(pageNo) ? pageNo : null,
+      y: Number.isFinite(y) ? y : null
+    });
+  }
+  try {
+    editor.command.executeSetPositionContext({ startIndex: 0, endIndex: 0 });
+    editor.command.executeBlur();
+  } catch (_) {}
+  return rows;
+}
+
+function classifyTablePagination(rowPages) {
+  const resolved = rowPages.filter(row => Number.isFinite(row.pageNo));
+  const pages = [...new Set(resolved.map(row => row.pageNo))].sort((a, b) => a - b);
+  const split = pages.length > 1;
+  if (!split || !resolved.length) {
+    return { pages, split, firstRowIsolated: false, editorialDecisionRequired: false };
+  }
+  const firstResolvedRow = resolved.find(row => row.trIndex === 0);
+  if (!firstResolvedRow) {
+    return { pages, split, firstRowIsolated: false, editorialDecisionRequired: true };
+  }
+  const firstPage = firstResolvedRow.pageNo;
+  const rowsOnFirstPage = resolved.filter(row => row.pageNo === firstPage).map(row => row.trIndex);
+  const laterRows = resolved.filter(row => row.trIndex > 0);
+  const firstRowIsolated =
+    rowsOnFirstPage.length === 1 &&
+    rowsOnFirstPage[0] === 0 &&
+    laterRows.length > 0 &&
+    laterRows.every(row => row.pageNo > firstPage);
+  return {
+    pages,
+    split,
+    firstRowIsolated,
+    editorialDecisionRequired: split && !firstRowIsolated
+  };
+}
+
+function analyzeTablePagination(editor, sourceData, segmentNo, passLabel) {
+  const analyses = [];
+  for (const spec of tablePaginationSpecs(sourceData)) {
+    const table = (editor.command.getElementById?.({ id: spec.id }) || [])[0];
+    if (!table) {
+      post('table_pagination_probe', {
+        tableId: spec.id,
+        segment: segmentNo,
+        pass: passLabel,
+        found: false
+      });
+      continue;
+    }
+    const rows = tableRenderedRows(editor, table);
+    const classification = classifyTablePagination(rows);
+    const analysis = {
+      id: spec.id,
+      rows,
+      ...classification
+    };
+    analyses.push(analysis);
+    post('table_pagination_probe', {
+      tableId: spec.id,
+      segment: segmentNo,
+      pass: passLabel,
+      found: true,
+      rowPages: rows,
+      pages: classification.pages,
+      split: classification.split,
+      firstRowIsolated: classification.firstRowIsolated,
+      editorialDecisionRequired: classification.editorialDecisionRequired
+    });
+  }
+  return analyses;
+}
+
+function dataWithAutomaticOrphanFixes(baseData, tableIds) {
+  const data = structuredClone(baseData || { main: [] });
+  const main = Array.isArray(data.main) ? data.main : [];
+  for (const tableId of tableIds) {
+    const index = main.findIndex(element => element?.id === tableId);
+    if (index <= 0) continue;
+    const previous = main[index - 1];
+    const already = previous?.extension?.tomelinea?.kind === 'autoTableFirstRowOrphanFix' &&
+      previous?.extension?.tomelinea?.tableId === tableId;
+    if (already) continue;
+    main.splice(index, 0, {
+      type: 'pageBreak',
+      value: '\n',
+      hide: true,
+      extension: {
+        tomelinea: {
+          kind: 'autoTableFirstRowOrphanFix',
+          tableId,
+          generatedBy: 'table_first_row_isolated_rule'
+        }
+      }
+    });
+  }
+  return data;
+}
+
+function configureEditorLocale(editor) {
+  try {
+    editor.register.langMap('fr-TL', { pageBreak: { displayName: 'Saut de page' } });
+    editor.command.executeSetLocale('fr-TL');
+  } catch (_) {}
+}
+
+function registerRuntimeTableDecision(item) {
+  if (!item || !item.tableId) return;
+  const key = `${item.segment || ''}:${item.tableId}`;
+  const exists = reviewState.runtimeEditorial.some(entry => entry._runtimeKey === key);
+  if (exists) return;
+  const firstRow = Array.isArray(item.rowPages) ? item.rowPages.find(row => String(row?.text || '').trim()) : null;
+  reviewState.runtimeEditorial.push({
+    _runtimeKey: key,
+    domain: 'table',
+    kind: 'table_split',
+    severity: 'editorial_decision',
+    table_id: item.tableId,
+    segment: item.segment,
+    message: 'Ce tableau se poursuit sur la page suivante. Plusieurs mises en page sont possibles.',
+    excerpt: String(firstRow?.text || '').trim(),
+    proposed_solution: 'Conserver cette coupure ou déplacer le début du tableau à la page suivante si sa taille le permet.',
+    choices: ['conserver_coupure', 'deplacer_debut_page_suivante'],
+    similarity_safe: item.reason === 'table_split_requires_editorial_choice',
+    similarity_key: item.reason === 'table_split_requires_editorial_choice' ? 'table:table_split:standard' : null
+  });
+}
+
+async function createEditorWithTablePolicy(Editor, node, segment) {
+  const baseData = structuredClone(segment.data || { main: [] });
+  const options = normalizedOptions(segment.options || {});
+  const maxMoves = tablePaginationSpecs(baseData).length;
+  const moved = [];
+  let lastFloatResult = { applied: 0, warnings: [] };
+
+  for (let pass = 0; pass <= maxMoves; pass += 1) {
+    const renderData = dataWithAutomaticOrphanFixes(baseData, moved);
+    const editor = new Editor(node, renderData, options);
+    configureEditorLocale(editor);
+    lastFloatResult = applyFloatingAnchors(editor);
+    await nextFrame();
+
+    const analyses = analyzeTablePagination(editor, renderData, segment.segment, `pass-${pass}`);
+    const orphan = analyses.find(item => item.firstRowIsolated && !moved.includes(item.id));
+    if (!orphan) {
+      for (const item of analyses) {
+        if (item.editorialDecisionRequired) {
+          const decision = {
+            tableId: item.id,
+            pages: item.pages,
+            rowPages: item.rows,
+            segment: segment.segment,
+            reason: 'table_split_requires_editorial_choice',
+            choices: ['conserver_coupure', 'deplacer_debut_page_suivante']
+          };
+          registerRuntimeTableDecision(decision);
+          post('table_editorial_decision_required', decision);
+        }
+      }
+      return { editor, moved, floatResult: lastFloatResult, data: renderData };
+    }
+
+    moved.push(orphan.id);
+    post('table_first_row_orphan_fixed', {
+      tableId: orphan.id,
+      pagesBefore: orphan.pages,
+      rowPagesBefore: orphan.rows,
+      segment: segment.segment,
+      rule: 'first_row_isolated_auto_move'
+    });
+    try { editor.destroy(); } catch (_) {}
+    node.replaceChildren();
+  }
+
+  const finalData = dataWithAutomaticOrphanFixes(baseData, moved);
+  const editor = new Editor(node, finalData, options);
+  configureEditorLocale(editor);
+  lastFloatResult = applyFloatingAnchors(editor);
+  await nextFrame();
+  const analyses = analyzeTablePagination(editor, finalData, segment.segment, 'final');
+  for (const item of analyses) {
+    if (item.editorialDecisionRequired || item.firstRowIsolated) {
+      const decision = {
+        tableId: item.id,
+        pages: item.pages,
+        rowPages: item.rows,
+        segment: segment.segment,
+        reason: item.firstRowIsolated ? 'automatic_fix_did_not_resolve' : 'table_split_requires_editorial_choice',
+        choices: ['conserver_coupure', 'deplacer_debut_page_suivante']
+      };
+      registerRuntimeTableDecision(decision);
+      post('table_editorial_decision_required', decision);
+    }
+  }
+  return { editor, moved, floatResult: lastFloatResult, data: finalData };
+}
+
+
+function tableDecisionDataWithMove(currentData, tableId) {
+  const data = structuredClone(currentData || { main: [] });
+  const main = Array.isArray(data.main) ? data.main : [];
+  const index = main.findIndex(element => String(element?.id || '') === String(tableId || ''));
+  if (index < 0) return { data, changed: false, reason: 'table_introuvable' };
+  if (index > 0) {
+    const previous = main[index - 1];
+    if (previous?.extension?.tomelinea?.kind === 'editorialTableMove' && String(previous?.extension?.tomelinea?.tableId || '') === String(tableId || '')) {
+      return { data, changed: false, reason: 'deja_deplace' };
+    }
+  }
+  main.splice(index, 0, {
+    type: 'pageBreak',
+    value: '\n',
+    hide: true,
+    extension: {
+      tomelinea: {
+        kind: 'editorialTableMove',
+        tableId,
+        generatedBy: 'editorial_user_choice'
+      }
+    }
+  });
+  return { data, changed: true, reason: 'deplace' };
+}
+
+function tableDecisionDataWithoutMove(currentData, tableId) {
+  const data = structuredClone(currentData || { main: [] });
+  const main = Array.isArray(data.main) ? data.main : [];
+  const index = main.findIndex(element => String(element?.id || '') === String(tableId || ''));
+  if (index < 0) return { data, changed: false, reason: 'table_introuvable' };
+  if (index > 0) {
+    const previous = main[index - 1];
+    if (previous?.extension?.tomelinea?.kind === 'editorialTableMove' && String(previous?.extension?.tomelinea?.tableId || '') === String(tableId || '')) {
+      main.splice(index - 1, 1);
+      return { data, changed: true, reason: 'retour_coupure' };
+    }
+  }
+  return { data, changed: false, reason: 'deja_conserve' };
+}
+
+function runtimeForDecision(item) {
+  const segmentNo = Number(item?.segment);
+  if (Number.isFinite(segmentNo)) {
+    const exact = state.segmentRuntimes.find(runtime => Number(runtime?.segment?.segment) === segmentNo);
+    if (exact) return exact;
+  }
+  const tableId = String(item?.table_id || item?.tableId || '');
+  if (tableId) {
+    return state.segmentRuntimes.find(runtime => {
+      const main = Array.isArray(runtime?.data?.main) ? runtime.data.main : [];
+      return main.some(element => String(element?.id || '') === tableId);
+    }) || null;
+  }
+  return null;
+}
+
+async function rebuildRuntimeEditor(runtime, preparedData) {
+  const oldEditor = runtime.editor;
+  const editorIndex = state.editors.indexOf(oldEditor);
+  try { oldEditor.destroy(); } catch (_) {}
+  runtime.node.replaceChildren();
+  const editor = new runtime.Editor(runtime.node, preparedData, runtime.options);
+  configureEditorLocale(editor);
+  applyFloatingAnchors(editor);
+  runtime.editor = editor;
+  runtime.data = structuredClone(preparedData);
+  if (editorIndex >= 0) state.editors[editorIndex] = editor;
+  else state.editors.push(editor);
+  await nextFrame();
+  await sleep(100);
+  return editor;
+}
+
+async function applyTableDecision(item, code) {
+  const runtime = runtimeForDecision(item);
+  const tableId = String(item?.table_id || item?.tableId || '');
+  if (!runtime || !runtime.editor || !tableId) return { ok: false, message: 'Le tableau concerné n’a pas été retrouvé.' };
+  const currentData = structuredClone(runtime.data || runtime.segment?.data || { main: [] });
+  const prepared = code === 'deplacer_debut_page_suivante'
+    ? tableDecisionDataWithMove(currentData, tableId)
+    : tableDecisionDataWithoutMove(currentData, tableId);
+  if (prepared.reason === 'table_introuvable') {
+    return { ok: false, message: 'Le tableau concerné n’a pas été retrouvé.' };
+  }
+  if (prepared.changed) await rebuildRuntimeEditor(runtime, prepared.data);
+  const moved = code === 'deplacer_debut_page_suivante';
+  const message = moved
+    ? (prepared.changed ? 'Le tableau commence maintenant à la page suivante.' : 'Le tableau commence déjà à la page suivante.')
+    : (prepared.changed ? 'La coupure d’origine du tableau a été rétablie.' : 'La mise en page actuelle est conservée.');
+  post('editorial_choice_applied', {
+    domain: 'table',
+    tableId,
+    segment: item?.segment,
+    choice: code,
+    changed: prepared.changed,
+    message
+  });
+  return { ok: true, message };
+}
+
+function choiceLabels(item) {
+  const choices = Array.isArray(item?.choices) ? item.choices : [];
+  if (choices.includes('conserver_coupure') && choices.includes('deplacer_debut_page_suivante')) {
+    return {
+      left: { code: 'conserver_coupure', label: 'Conserver cette coupure' },
+      right: { code: 'deplacer_debut_page_suivante', label: 'Commencer le tableau page suivante' }
+    };
+  }
+  if (choices.includes('conserver') && choices.includes('appliquer_solution')) {
+    return {
+      left: { code: 'conserver', label: 'Conserver tel quel' },
+      right: { code: 'appliquer_solution', label: 'Appliquer la proposition' }
+    };
+  }
+  return {
+    left: { code: choices[0] || 'conserver', label: 'Conserver tel quel' },
+    right: { code: choices[1] || 'appliquer_solution', label: 'Appliquer la proposition' }
+  };
+}
+
+function decisionSimilarityKey(item) {
+  if (!item?.similarity_safe) return '';
+  return String(item?.similarity_key || '').trim();
+}
+
+function similarDecisionItems(item) {
+  const key = decisionSimilarityKey(item);
+  if (!key) return [];
+  return reviewList().filter(candidate => decisionSimilarityKey(candidate) === key);
+}
+
+async function executeEditorialChoice(item, code) {
+  if (item?.domain === 'table' && (code === 'deplacer_debut_page_suivante' || code === 'conserver_coupure')) {
+    return await applyTableDecision(item, code);
+  }
+  post('editorial_choice_applied', {
+    domain: item?.domain || 'editorial',
+    choice: code,
+    changed: false,
+    message: code === 'conserver' ? 'La mise en page actuelle est conservée.' : 'Choix éditorial enregistré.'
+  });
+  return { ok: true, message: code === 'conserver' ? 'La mise en page actuelle est conservée.' : 'Choix éditorial enregistré.' };
+}
+
+function rememberResolvedChoice(item, code, result) {
+  item._resolvedChoice = code;
+  item._resolvedMessage = result?.message || 'Choix enregistré.';
+}
+
+function persistedChoiceMatches(item, persisted) {
+  if (!item || !persisted) return false;
+  const domain = String(persisted.domain || 'editorial');
+  if (String(item.domain || 'editorial') !== domain) return false;
+  if (domain === 'table') {
+    const itemTable = String(item.table_id || item.tableId || '');
+    const savedTable = String(persisted.table_id || persisted.tableId || '');
+    const itemSegment = String(item.segment ?? '');
+    const savedSegment = String(persisted.segment ?? '');
+    return !!itemTable && itemTable === savedTable && itemSegment === savedSegment;
+  }
+  const itemId = String(item.stable_id || item.id || '');
+  const savedId = String(persisted.stable_id || persisted.id || '');
+  return !!itemId && itemId === savedId;
+}
+
+async function applyPersistedEditorialChoices(plan) {
+  const persisted = Array.isArray(plan?.persisted_editorial_choices) ? plan.persisted_editorial_choices : [];
+  if (!persisted.length) return { requested: 0, applied: 0, failed: 0 };
+  let applied = 0;
+  let failed = 0;
+  for (const item of persisted) {
+    const choice = String(item?.choice || '');
+    if (!choice) continue;
+    try {
+      let result = { ok: false };
+      if (item?.domain === 'table') {
+        result = await applyTableDecision({
+          domain: 'table',
+          table_id: item.table_id || item.tableId,
+          segment: item.segment
+        }, choice);
+      }
+      if (result?.ok) applied += 1;
+      else failed += 1;
+    } catch (_) {
+      failed += 1;
+    }
+  }
+  post('editorial_persisted_choices_restored', { requested: persisted.length, applied, failed });
+  return { requested: persisted.length, applied, failed };
+}
+
+async function applyEditorialChoice(code) {
+  if (reviewState.applying) return;
+  const item = reviewList()[reviewState.index];
+  if (!item) return;
+  reviewState.applying = true;
+  reviewNodes.choiceLeft.disabled = true;
+  reviewNodes.choiceRight.disabled = true;
+  reviewNodes.similarApply.disabled = true;
+  reviewNodes.choiceStatus.textContent = 'Application du choix…';
+  try {
+    const result = await executeEditorialChoice(item, code);
+    reviewNodes.choiceStatus.textContent = result.message || '';
+    if (result.ok) {
+      rememberResolvedChoice(item, code, result);
+      await sleep(150);
+      renderReviewItem();
+    }
+  } catch (error) {
+    reviewNodes.choiceStatus.textContent = 'Le choix n’a pas pu être appliqué.';
+    post('error', { stage: 'editorial_choice', message: errorText(error) });
+  } finally {
+    reviewState.applying = false;
+    reviewNodes.choiceLeft.disabled = false;
+    reviewNodes.choiceRight.disabled = false;
+    reviewNodes.similarApply.disabled = false;
+  }
+}
+
+async function applyChoiceToSimilarCases() {
+  if (reviewState.applying) return;
+  const current = reviewList()[reviewState.index];
+  const code = current?._resolvedChoice;
+  const group = similarDecisionItems(current);
+  if (!current || !code || group.length < 2) return;
+
+  const targets = group.filter(item => item !== current && item._resolvedChoice !== code);
+  if (!targets.length) return;
+
+  reviewState.applying = true;
+  reviewNodes.choiceLeft.disabled = true;
+  reviewNodes.choiceRight.disabled = true;
+  reviewNodes.similarApply.disabled = true;
+  reviewNodes.choiceStatus.textContent = `Application aux ${targets.length} autre${targets.length > 1 ? 's' : ''} cas…`;
+
+  let applied = 0;
+  const failed = [];
+  try {
+    for (const item of targets) {
+      try {
+        const result = await executeEditorialChoice(item, code);
+        if (result.ok) {
+          rememberResolvedChoice(item, code, result);
+          applied += 1;
+        } else {
+          failed.push(item);
+        }
+      } catch (_) {
+        failed.push(item);
+      }
+    }
+    post('editorial_similar_choice_applied', {
+      similarityKey: decisionSimilarityKey(current),
+      choice: code,
+      groupCount: group.length,
+      targetCount: targets.length,
+      appliedCount: applied,
+      failedCount: failed.length,
+      exceptionsRemainPossible: true
+    });
+    reviewNodes.choiceStatus.textContent = failed.length
+      ? `${applied} cas similaire${applied > 1 ? 's' : ''} traité${applied > 1 ? 's' : ''}, ${failed.length} non appliqué${failed.length > 1 ? 's' : ''}.`
+      : `Même choix appliqué aux ${group.length} cas similaires. Chaque cas reste modifiable séparément.`;
+    await sleep(150);
+    renderReviewItem();
+  } finally {
+    reviewState.applying = false;
+    reviewNodes.choiceLeft.disabled = false;
+    reviewNodes.choiceRight.disabled = false;
+    reviewNodes.similarApply.disabled = false;
+  }
+}
+
+function reviewList() {
+  return reviewState.editorial;
+}
+
+function reviewNeedle(item) {
+  return String(item?.excerpt || '').replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function reviewSearchPattern(item) {
+  const needle = reviewNeedle(item);
+  if (!needle) return '';
+  return needle.split(/\s+/).filter(Boolean).map(escapeRegExp).join('\\s+');
+}
+
+function clearCanvasSearch() {
+  for (const editor of state.editors) {
+    try { editor.command.executeSearch(null); } catch (_) {}
+  }
+}
+
+function navigateSearchCentered(editor, steps) {
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = function centeredScrollIntoView() {
+    try {
+      return original.call(this, { block: 'center', inline: 'nearest', behavior: 'auto' });
+    } catch (_) {
+      return original.call(this, true);
+    }
+  };
+  try {
+    editor.command.executeSearchNavigateNext();
+    for (let i = 0; i < steps; i += 1) editor.command.executeSearchNavigateNext();
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
+}
+
+function focusReviewItem(item) {
+  clearCanvasSearch();
+  const needle = reviewNeedle(item);
+  const pattern = reviewSearchPattern(item);
+  if (!needle || !pattern) return false;
+  const list = reviewList();
+  const currentIndex = Math.max(0, reviewState.index);
+  let rank = 0;
+  for (let i = 0; i < currentIndex; i += 1) {
+    if (reviewNeedle(list[i]) === needle) rank += 1;
+  }
+  let remaining = rank;
+  for (const editor of state.editors) {
+    try {
+      editor.command.executeSearch(pattern, { isRegEnable: true });
+      const info = editor.command.getSearchNavigateInfo?.();
+      const count = Number(info?.count || 0);
+      if (!count) continue;
+      if (remaining >= count) {
+        remaining -= count;
+        continue;
+      }
+      navigateSearchCentered(editor, remaining);
+      post('visual_review_focus', {
+        mode: 'editorial',
+        index: reviewState.index,
+        found: true,
+        matchCount: count,
+        occurrence: remaining + 1,
+        verticalCenter: true
+      });
+      return true;
+    } catch (_) {}
+  }
+  post('visual_review_focus', { mode: 'editorial', index: reviewState.index, found: false });
+  return false;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function reviewKindLabel(item) {
+  const labels = {
+    lowercase_after_sentence: 'Majuscule en début de phrase',
+    sentence_initial_capital: 'Majuscule en début de phrase',
+    table_split: 'Tableau partagé entre deux pages',
+    title_separated_from_table: 'Titre séparé de son tableau',
+    widow_or_orphan_line: 'Ligne isolée en haut ou en bas de page'
+  };
+  if (labels[item?.kind]) return labels[item.kind];
+  if (item?.domain === 'table') return 'Mise en page du tableau';
+  if (item?.domain === 'text') return 'Texte';
+  return 'Décision éditoriale';
+}
+
+function journalKindLabel(item) {
+  const labels = {
+    double_space: 'Double espace supprimé',
+    french_space_before_colon: 'Espace typographique avant les deux-points',
+    french_space_before_semicolon: 'Espace typographique avant le point-virgule',
+    french_space_before_question: 'Espace typographique avant le point d’interrogation',
+    french_space_before_exclamation: 'Espace typographique avant le point d’exclamation',
+    space_before_comma_or_period: 'Espace inutile avant une ponctuation',
+    missing_space_after_period: 'Espace ajouté après un point',
+    sentence_initial_capital: 'Majuscule obligatoire rétablie',
+    first_row_isolated: 'Première ligne de tableau isolée'
+  };
+  return labels[item?.kind] || 'Correction automatique';
+}
+
+function renderJournal() {
+  const list = reviewState.automatic;
+  journalSummary.textContent = `${list.length} correction${list.length > 1 ? 's' : ''} certaine${list.length > 1 ? 's' : ''} appliquée${list.length > 1 ? 's' : ''} automatiquement. Aucune action n’est demandée.`;
+  journalList.replaceChildren();
+  list.forEach((item, index) => {
+    const node = document.createElement('div');
+    node.className = 'jr-item';
+    const title = document.createElement('div');
+    title.className = 'jr-title';
+    title.textContent = `${index + 1}. ${journalKindLabel(item)}`;
+    const msg = document.createElement('div');
+    msg.className = 'jr-msg';
+    msg.textContent = item.message || 'Correction automatique appliquée.';
+    node.append(title, msg);
+    if (item.before || item.after) {
+      const ba = document.createElement('div');
+      ba.className = 'jr-ba';
+      ba.textContent = `Avant : ${item.before || ''}\nAprès : ${item.after || ''}`;
+      node.append(ba);
+    }
+    journalList.append(node);
+  });
+}
+
+function renderReviewItem() {
+  const list = reviewList();
+  if (!list.length) {
+    reviewNodes.count.textContent = '0';
+    reviewNodes.kind.textContent = '';
+    reviewNodes.msg.textContent = 'Aucune décision éditoriale en attente.';
+    reviewNodes.beforeWrap.style.display = 'none';
+    reviewNodes.afterWrap.style.display = 'none';
+    reviewNodes.solutionWrap.style.display = 'none';
+    reviewNodes.actions.style.display = 'none';
+    reviewNodes.similar.classList.remove('active');
+    reviewNodes.choiceStatus.textContent = '';
+    clearCanvasSearch();
+    return;
+  }
+  reviewState.index = Math.max(0, Math.min(reviewState.index, list.length - 1));
+  const item = list[reviewState.index] || {};
+  reviewNodes.count.textContent = `${reviewState.index + 1} / ${list.length}${item._resolvedChoice ? ' · traité' : ''}`;
+  reviewNodes.kind.textContent = reviewKindLabel(item);
+  reviewNodes.msg.textContent = item.message || 'Ce point demande votre décision.';
+  reviewNodes.beforeWrap.style.display = '';
+  reviewNodes.afterWrap.style.display = 'none';
+  reviewNodes.solutionWrap.style.display = '';
+  reviewNodes.actions.style.display = 'grid';
+  reviewNodes.choiceStatus.textContent = '';
+  reviewNodes.before.textContent = item.excerpt || 'Le passage concerné est surligné dans la page.';
+  reviewNodes.solution.textContent = item.proposed_solution || 'TomeLinea vous propose les choix possibles.';
+  const labels = choiceLabels(item);
+  reviewNodes.choiceLeft.textContent = labels.left.label;
+  reviewNodes.choiceRight.textContent = labels.right.label;
+  reviewNodes.choiceLeft.classList.toggle('selected', item._resolvedChoice === labels.left.code);
+  reviewNodes.choiceRight.classList.toggle('selected', item._resolvedChoice === labels.right.code);
+  reviewNodes.choiceStatus.textContent = item._resolvedMessage || '';
+  reviewNodes.choiceLeft.onclick = () => applyEditorialChoice(labels.left.code);
+  reviewNodes.choiceRight.onclick = () => applyEditorialChoice(labels.right.code);
+
+  const similar = similarDecisionItems(item);
+  if (similar.length > 1) {
+    reviewNodes.similar.classList.add('active');
+    const others = similar.filter(candidate => candidate !== item);
+    const sameChoice = item._resolvedChoice
+      ? others.filter(candidate => candidate._resolvedChoice === item._resolvedChoice).length
+      : 0;
+    if (!item._resolvedChoice) {
+      reviewNodes.similarInfo.textContent = `${similar.length} cas réellement similaires ont été détectés. Décidez d’abord pour celui-ci.`;
+      reviewNodes.similarApply.textContent = `Appliquer ensuite aux ${others.length} autre${others.length > 1 ? 's' : ''} cas similaire${others.length > 1 ? 's' : ''}`;
+      reviewNodes.similarApply.disabled = true;
+    } else if (sameChoice === others.length) {
+      reviewNodes.similarInfo.textContent = `Même choix appliqué aux ${similar.length} cas similaires. Vous pouvez modifier un cas séparément pour créer une exception.`;
+      reviewNodes.similarApply.textContent = 'Même choix déjà appliqué à tous';
+      reviewNodes.similarApply.disabled = true;
+    } else {
+      const remaining = others.length - sameChoice;
+      reviewNodes.similarInfo.textContent = `${similar.length} cas réellement similaires. ${sameChoice + 1} utilisent actuellement ce choix.`;
+      reviewNodes.similarApply.textContent = `Appliquer ce choix aux ${remaining} autre${remaining > 1 ? 's' : ''} cas`;
+      reviewNodes.similarApply.disabled = false;
+    }
+    reviewNodes.similarApply.onclick = applyChoiceToSimilarCases;
+  } else {
+    reviewNodes.similar.classList.remove('active');
+    reviewNodes.similarApply.onclick = null;
+  }
+  focusReviewItem(item);
+}
+
+function installVisualReview(plan) {
+  const review = plan?.visual_review || {};
+  reviewState.automatic = Array.isArray(review.automatic_corrections) ? review.automatic_corrections : [];
+  const plannedEditorial = Array.isArray(review.editorial_decisions) ? review.editorial_decisions : [];
+  reviewState.editorial = [...plannedEditorial, ...reviewState.runtimeEditorial];
+  const persisted = Array.isArray(plan?.persisted_editorial_choices) ? plan.persisted_editorial_choices : [];
+  for (const item of reviewState.editorial) {
+    const saved = persisted.find(candidate => persistedChoiceMatches(item, candidate));
+    if (saved?.choice) rememberResolvedChoice(item, saved.choice, { message: 'Choix précédent restauré.' });
+  }
+  reviewState.index = 0;
+  reviewPanel.classList.toggle('active', reviewState.editorial.length > 0);
+  journalButton.classList.toggle('active', reviewState.automatic.length > 0);
+  journalButton.textContent = `Journal des corrections (${reviewState.automatic.length})`;
+  journalButton.onclick = () => {
+    renderJournal();
+    journalPanel.classList.toggle('active');
+  };
+  journalClose.onclick = () => journalPanel.classList.remove('active');
+  reviewNodes.prev.onclick = () => { const list = reviewList(); if (!list.length) return; reviewState.index = (reviewState.index - 1 + list.length) % list.length; renderReviewItem(); };
+  reviewNodes.next.onclick = () => { const list = reviewList(); if (!list.length) return; reviewState.index = (reviewState.index + 1) % list.length; renderReviewItem(); };
+  renderReviewItem();
+  post('visual_review_ready', {
+    automaticCount: reviewState.automatic.length,
+    editorialCount: reviewState.editorial.length,
+    automaticHiddenFromWorkflow: true,
+    correctionJournalAvailable: reviewState.automatic.length > 0,
+    editorialOnlyWorkflow: true,
+    similarEditorialGroupingAvailable: reviewState.editorial.some(item => similarDecisionItems(item).length > 1),
+    similarEditorialGroupingRequiresSafeKey: true
+  });
+}
+
+
+
+function tomeLineaEmbeddedMode() {
+  return state.uiMode === 'embedded_composition';
+}
+
+function tomeLineaSetUiMode(plan) {
+  state.uiMode = String(plan?.tomelinea_ui?.mode || 'standalone');
+  const embedded = tomeLineaEmbeddedMode();
+  document.body.classList.toggle('embedded-composition', embedded);
+  if (!embedded) {
+    root.style.transform = '';
+    root.style.transformOrigin = '';
+    state.embeddedScale = 1;
+  }
+}
+
+function tomeLineaBlurEditors() {
+  for (const editor of state.editors) {
+    try { editor.command?.executeBlur?.(); } catch (_) {}
+  }
+  try {
+    const active = document.activeElement;
+    if (active && typeof active.blur === 'function') active.blur();
+  } catch (_) {}
+}
+
+async function tomeLineaLayoutEmbeddedPage(pageNo = state.activePage) {
+  if (!tomeLineaEmbeddedMode()) return { ok: false, reason: 'not_embedded' };
+  const pages = tomeLineaPageCanvases();
+  if (!pages.length) return { ok: false, reason: 'no_pages' };
+
+  const targetNo = Math.max(1, Math.min(Number(pageNo) || 1, pages.length));
+  const target = pages[targetNo - 1];
+  state.activePage = targetNo;
+
+  // Mesure la page native. Aucun recalcul TomeLinea des lignes/pagination.
+  root.style.transform = 'none';
+  root.style.transformOrigin = '0 0';
+  await nextFrame();
+
+  const rect = target.getBoundingClientRect();
+  if (!(rect.width > 0 && rect.height > 0)) {
+    return { ok: false, reason: 'page_not_measurable' };
+  }
+
+  // Vue normale TomeLinea : page entière, centrée, avec de l'air autour.
+  const padX = Math.max(26, Math.min(54, window.innerWidth * 0.045));
+  const padY = Math.max(22, Math.min(46, window.innerHeight * 0.045));
+  const fit = Math.min(
+    (window.innerWidth - 2 * padX) / rect.width,
+    (window.innerHeight - 2 * padY) / rect.height,
+    0.92
+  );
+  const scale = Math.max(0.20, fit);
+
+  const targetLeft = (window.innerWidth - rect.width * scale) / 2;
+  const targetTop = (window.innerHeight - rect.height * scale) / 2;
+  const tx = targetLeft - rect.left * scale;
+  const ty = targetTop - rect.top * scale;
+
+  state.embeddedScale = scale;
+  root.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  tomeLineaBlurEditors();
+  return { ok: true, pageNo: targetNo, pageCount: pages.length, scale };
+}
+
+
+function tomeLineaPageCanvases() {
+  return [...document.querySelectorAll('.ce-page-container canvas[data-index]')];
+}
+
+let tomeLineaLastReportedPage = 0;
+let tomeLineaPageScrollTimer = null;
+
+function tomeLineaDetectActivePage(force = false) {
+  const pages = tomeLineaPageCanvases();
+  if (!pages.length) return { pageNo: 0, pageCount: 0 };
+  if (tomeLineaEmbeddedMode()) {
+    const pageNo = Math.max(1, Math.min(Number(state.activePage) || 1, pages.length));
+    if (force || pageNo !== tomeLineaLastReportedPage) {
+      tomeLineaLastReportedPage = pageNo;
+      post('page_changed', { pageNo, pageCount: pages.length });
+    }
+    return { pageNo, pageCount: pages.length };
+  }
+  const centerY = window.innerHeight / 2;
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  pages.forEach((node, index) => {
+    const rect = node.getBoundingClientRect();
+    const pageCenter = rect.top + rect.height / 2;
+    const distance = Math.abs(pageCenter - centerY);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  const pageNo = bestIndex + 1;
+  if (force || pageNo !== tomeLineaLastReportedPage) {
+    tomeLineaLastReportedPage = pageNo;
+    post('page_changed', { pageNo, pageCount: pages.length });
+  }
+  return { pageNo, pageCount: pages.length };
+}
+
+window.tomeLineaCanvasGoToPage = function tomeLineaCanvasGoToPage(pageNo, behavior = 'smooth') {
+  const pages = tomeLineaPageCanvases();
+  const target = Math.max(1, Math.min(Number(pageNo) || 1, pages.length));
+  const node = pages[target - 1];
+  if (!node) return { ok: false, pageNo: target, pageCount: pages.length };
+
+  state.activePage = target;
+  tomeLineaLastReportedPage = target;
+
+  if (tomeLineaEmbeddedMode()) {
+    void tomeLineaLayoutEmbeddedPage(target);
+  } else {
+    node.scrollIntoView({ behavior: behavior === 'auto' ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
+  }
+
+  post('page_changed', { pageNo: target, pageCount: pages.length });
+  return { ok: true, pageNo: target, pageCount: pages.length };
+};
+
+window.tomeLineaCanvasCurrentPage = function tomeLineaCanvasCurrentPage() {
+  return tomeLineaDetectActivePage(true);
+};
+
+window.addEventListener('scroll', () => {
+  if (tomeLineaEmbeddedMode()) return;
+  if (tomeLineaPageScrollTimer !== null) window.clearTimeout(tomeLineaPageScrollTimer);
+  tomeLineaPageScrollTimer = window.setTimeout(() => {
+    tomeLineaPageScrollTimer = null;
+    tomeLineaDetectActivePage(false);
+  }, 90);
+}, { passive: true });
+
+window.addEventListener('wheel', event => {
+  if (!tomeLineaEmbeddedMode()) return;
+  event.preventDefault();
+}, { passive: false, capture: true });
+
+window.addEventListener('resize', () => {
+  if (!tomeLineaEmbeddedMode()) return;
+  window.clearTimeout(window.__tlEmbeddedResizeTimer);
+  window.__tlEmbeddedResizeTimer = window.setTimeout(() => {
+    void tomeLineaLayoutEmbeddedPage(state.activePage);
+  }, 70);
+});
+
+window.tomeLineaCanvasLoad = async function tomeLineaCanvasLoad(plan) {
+  if (state.loading) state.generation += 1;
+  const generation = ++state.generation;
+  state.loading = true;
+  state.boot = 'loading_document';
+  state.lastError = null;
+  destroyEditors();
+  tomeLineaSetUiMode(plan);
+  state.activePage = 1;
+  statusNode.textContent = 'Préparation du document…';
+
+  try {
+    const Editor = await loadEditorClass();
+    if (generation !== state.generation) return;
+
+    const segments = Array.isArray(plan?.render_segments) ? plan.render_segments : [];
+    if (!segments.length) throw new Error('Aucun segment de rendu');
+
+    const nodes = [];
+    for (const segment of segments) {
+      const node = document.createElement('section');
+      node.className = 'segment';
+      node.dataset.segment = String(segment.segment ?? nodes.length + 1);
+      root.appendChild(node);
+      const preparedEditor = await createEditorWithTablePolicy(Editor, node, segment);
+      const editor = preparedEditor.editor;
+      const floatResult = preparedEditor.floatResult;
+      if (floatResult.warnings.length) {
+        post('floating_anchor_warning', { warnings: floatResult.warnings });
+      }
+      if (floatResult.applied) {
+        post('floating_anchors_applied', { count: floatResult.applied, segment: segment.segment });
+      }
+      state.editors.push(editor);
+      state.segmentRuntimes.push({ Editor, node, segment, options: normalizedOptions(segment.options || {}), editor, data: structuredClone(preparedEditor.data || segment.data || { main: [] }) });
+      nodes.push(node);
+    }
+    state.boot = 'canvas_created';
+    post('canvas_created', { segmentCount: nodes.length });
+
+    await applyPersistedEditorialChoices(plan);
+    if (generation !== state.generation) return;
+
+    if (document.fonts?.ready) await document.fonts.ready;
+    if (generation !== state.generation) return;
+    state.boot = 'fonts_loaded';
+    post('fonts_loaded');
+
+    await nextFrame();
+    await nextFrame();
+    if (generation !== state.generation) return;
+    state.boot = 'layout_complete';
+    post('layout_complete');
+
+    const pageCount = await waitForStablePagination(nodes, generation);
+    if (generation !== state.generation) return;
+    state.boot = 'pagination_stable';
+    post('pagination_stable', { pageCount });
+
+    await nextFrame();
+    root.classList.add('ready');
+    root.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('ready');
+    installVisualReview(plan);
+
+    if (tomeLineaEmbeddedMode()) {
+      await nextFrame();
+      await tomeLineaLayoutEmbeddedPage(state.activePage);
+      tomeLineaBlurEditors();
+    }
+
+    state.loading = false;
+    state.boot = 'render_complete';
+    post('render_complete', { pageCount });
+    window.setTimeout(() => tomeLineaDetectActivePage(true), 40);
+  } catch (error) {
+    state.loading = false;
+    state.boot = 'failed';
+    state.lastError = errorText(error);
+    statusNode.textContent = 'Le document n’a pas pu être préparé.';
+    // vendor_import a déjà envoyé une erreur précise. Pour les autres erreurs,
+    // envoyer l'étape render afin que Python arrête immédiatement le test.
+    if (state.vendor !== 'failed') {
+      post('error', { stage: 'render', message: state.lastError });
+    }
+  }
+};
+
+window.tomeLineaCanvasStatus = function tomeLineaCanvasStatus() {
+  return {
+    host: 'loaded',
+    boot: state.boot,
+    vendor: state.vendor,
+    ipc: !!(window.ipc && typeof window.ipc.postMessage === 'function'),
+    editors: state.editors.length,
+    loading: state.loading,
+    ready: root.classList.contains('ready'),
+    pages: [...root.querySelectorAll('.segment')].reduce((sum, node) => sum + segmentPageCount(node), 0),
+    lastError: state.lastError,
+    href: location.href,
+  };
+};
+
+window.tomeLineaCanvasBoot = {
+  host: 'loaded',
+  version: '2.36',
+  ipc: !!(window.ipc && typeof window.ipc.postMessage === 'function'),
+};
+post('host_loaded', { canvasEditorVersion: '1.0.2', hostVersion: '2.36' });
+
+  </script>
+</body>
+</html>

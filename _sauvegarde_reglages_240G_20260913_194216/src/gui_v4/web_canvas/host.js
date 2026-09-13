@@ -182,7 +182,6 @@ window.tomeLineaCanvasStatus = function tomeLineaCanvasStatus() {
   };
 };
 
-
 window.tomeLineaCanvasBoot = {
   host: 'loaded',
   version: '2.8',

@@ -18,11 +18,9 @@ def main() -> None:
     # séparé : sous Windows, ce second processus provoquait des flashes
     # visibles avant TomeLinea. La V4 se construit entièrement cachée,
     # puis est affichée une seule fois lorsqu'elle est prête.
-    #
-    # NAVIGATION PROPRE 02 : import DOCX conservé, un seul onglet Navigation.
-    from src.gui_v4.survol_shell import TomeLineaV4Survol
+    from src.gui_v4.editorial_shell import TomeLineaV4Editorial
 
-    app = TomeLineaV4Survol(defer_show=True)
+    app = TomeLineaV4Editorial(defer_show=True)
 
     try:
         app.show_prepared_window()
