@@ -1,0 +1,31 @@
+TOMELINEA V4 — VERIFICATION BASE PROPRE — 15/09/2026
+=====================================================
+
+CAP ACTIF
+Source intacte -> import fidèle du contenu -> contrôle d'intégrité -> corrections sûres -> réglages généraux -> pagination TomeLinea -> Survol.
+
+MENAGE
+- Ancienne voie OOXML -> RTF / Microsoft RichEdit retirée.
+- Ancien Canvas mono-page retiré.
+- Anciennes interfaces V1/V2/V3, sauvegardes, caches et journaux retirés.
+- Modules V4 isolés/non appelés retirés.
+- Aucun appel Word / LibreOffice / RichEdit n'est requis pour l'import ou la composition.
+- Les modules d'analyse, anomalies, flux et règles texte conservés servent au contrôle éditorial et à la pagination TomeLinea ; ils ne constituent pas un moteur Word externe.
+
+TESTS CIBLES
+- 6 tests content-first : OK.
+- Compilation Python de main_v4.py, src/ et tests/ : OK.
+- Imports principaux : OK.
+
+LIVRE ETALON REEL
+- Paragraphes : 520.
+- Images : 19.
+- Sauts de page explicites : 6.
+- Contrat Canvas : valide.
+- Payload Canvas : valide.
+- Police de travail : Arial.
+- Police Source conservée : Georgia.
+- Images : 19 repères Source en attente d'une décision TomeLinea.
+
+GIT
+Ce dossier est un nouveau dépôt local propre. L'ancien historique n'est pas transporté dans cette base.

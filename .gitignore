@@ -1,0 +1,61 @@
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==========================
+# Environnements virtuels
+# ==========================
+.venv/
+venv/
+env/
+
+# ==========================
+# VS Code
+# ==========================
+.vscode/
+
+# ==========================
+# Fichiers système
+# ==========================
+Thumbs.db
+.DS_Store
+
+# ==========================
+# Journaux
+# ==========================
+*.log
+
+# ==========================
+# Cache
+# ==========================
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# ==========================
+# Distribution Python
+# ==========================
+build/
+dist/
+*.egg-info/
+
+# ==========================
+# Couverture de tests
+# ==========================
+.coverage
+htmlcov/
+
+# ==========================
+# Divers
+# ==========================
+*.tmp
+*.bak
+# TomeLinea - caches/runtime générés
+.tomelinea_runtime/
+src/gui_v4/web_canvas/_runtime_media/
+_sauvegarde_*/
+sauvegardes/
+A_M_ENVOYER.json

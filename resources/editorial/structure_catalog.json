@@ -1,0 +1,653 @@
+{
+  "schema": "tomelinea.editorial_structure_catalog.v1",
+  "version": "1.0",
+  "principle": {
+    "autonomy": "TomeLinea classe automatiquement quand la structure et le type sont suffisamment certains.",
+    "ambiguity": "Si une frontière structurelle paraît réelle mais que son type n'est pas identifiable avec assez de confiance, demander à l'utilisateur s'il faut créer une section et comment l'appeler.",
+    "do_not_overask": "Un simple titre interne à un chapitre ne déclenche pas de question si aucune vraie frontière de section n'est détectée."
+  },
+  "top_level_model": [
+    {
+      "id": "front_cover",
+      "label": "Couverture avant",
+      "physical_faces": [
+        "1re",
+        "2e"
+      ]
+    },
+    {
+      "id": "interior",
+      "label": "Intérieur",
+      "children": [
+        "frontmatter",
+        "bodymatter",
+        "backmatter"
+      ]
+    },
+    {
+      "id": "back_cover",
+      "label": "Couverture arrière",
+      "physical_faces": [
+        "3e",
+        "4e"
+      ]
+    }
+  ],
+  "interior_zones": {
+    "frontmatter": "Pages liminaires",
+    "bodymatter": "Corps",
+    "backmatter": "Fin d’ouvrage"
+  },
+  "scoring": {
+    "semantic_auto_threshold": 80,
+    "semantic_ask_threshold": 55,
+    "boundary_threshold": 70,
+    "weights": {
+      "exact_or_normalized_alias": 60,
+      "position_consistent": 15,
+      "heading_style": 10,
+      "page_or_section_break": 8,
+      "toc_or_bookmark_match": 10,
+      "content_signature": 15,
+      "repeated_structural_pattern": 15,
+      "position_contradiction": -30,
+      "hierarchy_contradiction": -35
+    }
+  },
+  "known_types": [
+    {
+      "id": "halftitle",
+      "label": "Faux-titre",
+      "default_zone": "frontmatter",
+      "frequency": "fréquent",
+      "aliases": [
+        "faux-titre",
+        "faux titre",
+        "half title",
+        "halftitle"
+      ],
+      "recognition": [
+        "page très courte",
+        "titre seul ou presque",
+        "avant la page de titre",
+        "souvent nouvelle page"
+      ]
+    },
+    {
+      "id": "titlepage",
+      "label": "Page de titre",
+      "default_zone": "frontmatter",
+      "frequency": "très fréquent",
+      "aliases": [
+        "page de titre",
+        "title page"
+      ],
+      "recognition": [
+        "titre du livre + auteur",
+        "souvent sous-titre",
+        "éditeur ou logo possible",
+        "avant le corps"
+      ]
+    },
+    {
+      "id": "copyright",
+      "label": "Mentions légales",
+      "default_zone": "frontmatter",
+      "frequency": "très fréquent",
+      "aliases": [
+        "mentions légales",
+        "copyright",
+        "droits d'auteur",
+        "droits réservés"
+      ],
+      "content_regex": [
+        "©",
+        "ISBN",
+        "tous droits réservés",
+        "dépôt légal",
+        "éditeur",
+        "imprimé",
+        "impression à la demande"
+      ]
+    },
+    {
+      "id": "dedication",
+      "label": "Dédicace",
+      "default_zone": "frontmatter",
+      "frequency": "courant",
+      "aliases": [
+        "dédicace",
+        "dedicace",
+        "dedication"
+      ],
+      "recognition": [
+        "page courte",
+        "souvent centrée",
+        "formules comme « À… »"
+      ]
+    },
+    {
+      "id": "epigraph",
+      "label": "Épigraphe",
+      "default_zone": "frontmatter",
+      "frequency": "courant",
+      "aliases": [
+        "épigraphe",
+        "epigraphe",
+        "epigraph"
+      ],
+      "recognition": [
+        "citation courte",
+        "attribution possible",
+        "avant le corps ou une grande division"
+      ]
+    },
+    {
+      "id": "toc",
+      "label": "Table des matières / Sommaire",
+      "default_zone": "frontmatter",
+      "frequency": "très fréquent en non-fiction",
+      "aliases": [
+        "sommaire",
+        "table des matières",
+        "table de matières",
+        "contents",
+        "table of contents"
+      ],
+      "recognition": [
+        "suite de titres + numéros de page",
+        "champ Word TOC",
+        "liens internes ou tabulations répétées"
+      ]
+    },
+    {
+      "id": "foreword",
+      "label": "Avant-propos",
+      "default_zone": "frontmatter",
+      "frequency": "courant",
+      "aliases": [
+        "avant-propos",
+        "avant propos",
+        "foreword"
+      ],
+      "recognition": [
+        "titre explicite",
+        "souvent signé par une autre personne que l’auteur"
+      ]
+    },
+    {
+      "id": "preface",
+      "label": "Préface",
+      "default_zone": "frontmatter",
+      "frequency": "courant",
+      "aliases": [
+        "préface",
+        "preface"
+      ],
+      "recognition": [
+        "titre explicite",
+        "avant le premier chapitre",
+        "souvent texte de l’auteur sur l’ouvrage"
+      ]
+    },
+    {
+      "id": "acknowledgments",
+      "label": "Remerciements",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "backmatter"
+      ],
+      "frequency": "courant",
+      "aliases": [
+        "remerciements",
+        "remerciement",
+        "acknowledgments",
+        "acknowledgements"
+      ],
+      "recognition": [
+        "titre explicite",
+        "noms de personnes/organismes",
+        "formules de gratitude"
+      ]
+    },
+    {
+      "id": "introduction",
+      "label": "Introduction",
+      "default_zone": "frontmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "bodymatter"
+      ],
+      "frequency": "très fréquent en non-fiction",
+      "aliases": [
+        "introduction"
+      ],
+      "recognition": [
+        "avant les chapitres principaux",
+        "présente portée, méthode ou organisation"
+      ]
+    },
+    {
+      "id": "prologue",
+      "label": "Prologue",
+      "default_zone": "frontmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "bodymatter"
+      ],
+      "frequency": "courant en fiction",
+      "aliases": [
+        "prologue"
+      ],
+      "recognition": [
+        "avant chapitre 1",
+        "texte narratif",
+        "titre explicite"
+      ]
+    },
+    {
+      "id": "part",
+      "label": "Partie",
+      "default_zone": "bodymatter",
+      "frequency": "courant",
+      "aliases": [
+        "partie",
+        "part",
+        "livre",
+        "book",
+        "volume"
+      ],
+      "title_regex": [
+        "^(partie|part|livre|book|volume)\\s+([ivxlcdm]+|\\d+|[a-z]+)?\\b"
+      ],
+      "recognition": [
+        "niveau hiérarchique supérieur aux chapitres",
+        "contient plusieurs chapitres",
+        "style répété"
+      ]
+    },
+    {
+      "id": "chapter",
+      "label": "Chapitre",
+      "default_zone": "bodymatter",
+      "frequency": "très fréquent",
+      "aliases": [
+        "chapitre",
+        "chapter",
+        "ch."
+      ],
+      "title_regex": [
+        "^(chapitre|chapter|ch\\.)\\s*([ivxlcdm]+|\\d+|[a-z]+)?\\b"
+      ],
+      "recognition": [
+        "titres répétés au même niveau",
+        "numérotation ou séquence cohérente",
+        "souvent début de page"
+      ]
+    },
+    {
+      "id": "interlude",
+      "label": "Interlude",
+      "default_zone": "bodymatter",
+      "frequency": "occasionnel mais standard",
+      "aliases": [
+        "interlude",
+        "intermède",
+        "intermede"
+      ],
+      "recognition": [
+        "titre explicite",
+        "entre deux chapitres ou parties",
+        "unité narrative distincte"
+      ]
+    },
+    {
+      "id": "conclusion",
+      "label": "Conclusion",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "bodymatter",
+        "backmatter"
+      ],
+      "frequency": "très fréquent en non-fiction",
+      "aliases": [
+        "conclusion",
+        "conclusions"
+      ],
+      "recognition": [
+        "après le dernier chapitre",
+        "résume ou clôt l’argument"
+      ]
+    },
+    {
+      "id": "epilogue",
+      "label": "Épilogue",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "bodymatter",
+        "backmatter"
+      ],
+      "frequency": "courant en fiction",
+      "aliases": [
+        "épilogue",
+        "epilogue"
+      ],
+      "recognition": [
+        "après le dernier chapitre",
+        "texte narratif conclusif"
+      ]
+    },
+    {
+      "id": "afterword",
+      "label": "Postface",
+      "default_zone": "backmatter",
+      "frequency": "courant",
+      "aliases": [
+        "postface",
+        "afterword"
+      ],
+      "recognition": [
+        "après le corps",
+        "commentaire rétrospectif sur l’ouvrage"
+      ]
+    },
+    {
+      "id": "appendix",
+      "label": "Annexe",
+      "default_zone": "backmatter",
+      "frequency": "très fréquent en non-fiction",
+      "aliases": [
+        "annexe",
+        "annexes",
+        "appendice",
+        "appendix",
+        "appendices"
+      ],
+      "title_regex": [
+        "^(annexe|appendice|appendix)\\s*([a-z0-9ivxlcdm]+)?\\b"
+      ],
+      "recognition": [
+        "après le corps",
+        "information complémentaire",
+        "plusieurs annexes possibles"
+      ]
+    },
+    {
+      "id": "notes",
+      "label": "Notes",
+      "default_zone": "backmatter",
+      "frequency": "courant en essais et ouvrages documentaires",
+      "aliases": [
+        "notes",
+        "notes de fin",
+        "endnotes"
+      ],
+      "recognition": [
+        "suite de numéros/appels",
+        "références à des pages/chapitres"
+      ]
+    },
+    {
+      "id": "bibliography",
+      "label": "Bibliographie / Références",
+      "default_zone": "backmatter",
+      "frequency": "très fréquent en non-fiction",
+      "aliases": [
+        "bibliographie",
+        "références",
+        "references",
+        "bibliography",
+        "sources"
+      ],
+      "recognition": [
+        "liste répétitive auteur/date/titre",
+        "ISBN/DOI/URL fréquents"
+      ]
+    },
+    {
+      "id": "glossary",
+      "label": "Glossaire",
+      "default_zone": "backmatter",
+      "frequency": "courant en ouvrages spécialisés",
+      "aliases": [
+        "glossaire",
+        "glossary",
+        "lexique"
+      ],
+      "recognition": [
+        "terme + définition",
+        "ordre alphabétique fréquent"
+      ]
+    },
+    {
+      "id": "index",
+      "label": "Index",
+      "default_zone": "backmatter",
+      "frequency": "courant en non-fiction",
+      "aliases": [
+        "index",
+        "index général",
+        "index des noms",
+        "index thématique"
+      ],
+      "recognition": [
+        "entrées alphabétiques + séries de numéros de page"
+      ]
+    },
+    {
+      "id": "author_bio",
+      "label": "À propos de l’auteur",
+      "default_zone": "backmatter",
+      "frequency": "très fréquent",
+      "aliases": [
+        "à propos de l’auteur",
+        "à propos de l'autrice",
+        "biographie de l’auteur",
+        "biographie de l'autrice",
+        "about the author",
+        "author bio"
+      ],
+      "recognition": [
+        "titre explicite",
+        "courte biographie",
+        "nom de l’auteur récurrent"
+      ]
+    },
+    {
+      "id": "other_books",
+      "label": "Autres ouvrages",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "backmatter"
+      ],
+      "frequency": "courant en autoédition",
+      "aliases": [
+        "autres ouvrages",
+        "du même auteur",
+        "de la même autrice",
+        "also by",
+        "other books"
+      ],
+      "recognition": [
+        "liste de titres",
+        "nom de l’auteur ou série"
+      ]
+    },
+    {
+      "id": "credits",
+      "label": "Crédits",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "backmatter"
+      ],
+      "frequency": "courant pour livres illustrés",
+      "aliases": [
+        "crédits",
+        "credits",
+        "crédits photographiques",
+        "crédits illustrations"
+      ],
+      "recognition": [
+        "noms + rôles",
+        "photographies",
+        "illustrations",
+        "conception graphique"
+      ]
+    },
+    {
+      "id": "colophon",
+      "label": "Colophon / Achevé d’imprimer",
+      "default_zone": "backmatter",
+      "frequency": "courant selon édition",
+      "aliases": [
+        "colophon",
+        "achevé d’imprimer",
+        "acheve d'imprimer",
+        "impression"
+      ],
+      "content_regex": [
+        "imprimeur",
+        "imprimé en",
+        "impression à la demande",
+        "achevé",
+        "dépôt légal"
+      ],
+      "recognition": [
+        "dernières pages",
+        "informations de fabrication ou d’édition"
+      ]
+    },
+    {
+      "id": "frontispiece",
+      "label": "Frontispice",
+      "default_zone": "frontmatter",
+      "frequency": "courant dans certains livres illustrés",
+      "aliases": [
+        "frontispice",
+        "frontispiece"
+      ],
+      "recognition": [
+        "image pleine page ou portrait avant la page de titre",
+        "peu ou pas de texte"
+      ]
+    },
+    {
+      "id": "figures_list",
+      "label": "Liste des figures / illustrations",
+      "default_zone": "frontmatter",
+      "frequency": "courant en ouvrages illustrés ou académiques",
+      "aliases": [
+        "liste des figures",
+        "liste des illustrations",
+        "list of figures",
+        "list of illustrations"
+      ],
+      "recognition": [
+        "suite de légendes + numéros de page",
+        "structure proche d’un sommaire"
+      ]
+    },
+    {
+      "id": "tables_list",
+      "label": "Liste des tableaux",
+      "default_zone": "frontmatter",
+      "frequency": "courant en ouvrages académiques et techniques",
+      "aliases": [
+        "liste des tableaux",
+        "list of tables"
+      ],
+      "recognition": [
+        "suite de titres de tableaux + numéros de page"
+      ]
+    },
+    {
+      "id": "abstract",
+      "label": "Résumé / Abstract",
+      "default_zone": "frontmatter",
+      "frequency": "courant en publications académiques",
+      "aliases": [
+        "résumé",
+        "resume",
+        "abstract"
+      ],
+      "recognition": [
+        "court texte synthétique avant le corps",
+        "mots-clés possibles"
+      ]
+    },
+    {
+      "id": "author_note",
+      "label": "Note de l’auteur",
+      "default_zone": "backmatter",
+      "allowed_zones": [
+        "frontmatter",
+        "backmatter"
+      ],
+      "frequency": "courant selon genre",
+      "aliases": [
+        "note de l’auteur",
+        "note de l'autrice",
+        "author's note",
+        "author note"
+      ],
+      "recognition": [
+        "titre explicite",
+        "commentaire de l’auteur hors narration principale"
+      ]
+    }
+  ],
+  "fallback_rule": {
+    "when": "frontière structurelle probable >= boundary_threshold mais aucun type connu n'atteint semantic_auto_threshold",
+    "ui_question": "TomeLinea a repéré une nouvelle section : « {detected_title} ». Faut-il créer une section distincte ?",
+    "choices": [
+      "Créer la section",
+      "Garder dans la section actuelle"
+    ],
+    "if_create": {
+      "suggested_name": "{detected_title}",
+      "ask_name": true,
+      "internal_type": "custom_section",
+      "zone": "déduite de la position ; si elle reste ambiguë, demander Début / Corps / Fin d’ouvrage"
+    }
+  },
+  "test_fixture": {
+    "file": "TL_TEST_STRUCTURE_REELLE_FREQUENTE.docx",
+    "goal": "Tester des cas courants avec une source Word réaliste : mêmes styles Titre 1 pour de nombreuses unités, chapitres numérotés et non numérotés, une unité inconnue volontaire.",
+    "expected": {
+      "Pages liminaires": [
+        "Mentions légales",
+        "Dédicace",
+        "Épigraphe",
+        "Sommaire",
+        "Avant-propos",
+        "Préface",
+        "Introduction"
+      ],
+      "Corps": [
+        "PARTIE I — SE SOUVENIR",
+        "Chapitre 1 — Les traces",
+        "Chapitre 2 — Les récits",
+        "PARTIE II — TRANSMETTRE",
+        "Les gestes",
+        "Les lieux"
+      ],
+      "Fin d’ouvrage": [
+        "Conclusion",
+        "Annexe A — Grille d’entretien",
+        "Notes",
+        "Bibliographie",
+        "Glossaire",
+        "Index",
+        "Remerciements",
+        "À propos de l’autrice",
+        "Achevé d’imprimer"
+      ],
+      "must_ask": [
+        "Carnet de terrain"
+      ]
+    }
+  }
+}
