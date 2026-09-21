@@ -1374,10 +1374,11 @@ class TomeLineaV4Editorial(
             self._phase2_diag_switch_started = time.perf_counter()
             self._phase2_switch_in_progress = True
             self._phase2_canvas_state = "chapter_switch"
-            # NAV28 : aucune transition technique visible. La page actuelle
-            # reste affichée dans le WebView pendant l'export puis est figée
-            # jusqu'à ce que la page suivante soit rendue et centrée.
-            self._phase2_destroy_overlay()
+            self._phase2_show_overlay(
+                canvas,
+                "Changement d’unité",
+                "Conservation de la copie de travail…",
+            )
 
             _diag_export_started = time.perf_counter()
 
@@ -1409,7 +1410,7 @@ class TomeLineaV4Editorial(
                 # l'export quelques instants plus tôt.
                 self._phase2_schedule_wanted_page(canvas)
 
-            host.export_document_state(_after_export, freeze_visual=True)
+            host.export_document_state(_after_export)
             return
 
         self._phase2_load_chapter(canvas, chapter_index)
@@ -1430,20 +1431,11 @@ class TomeLineaV4Editorial(
         self._phase2_switch_in_progress = True
         self._phase2_canvas_state = "chapter_loading"
         chapter = detection.chapters[chapter_index]
-        existing_host = getattr(self, "_phase2_canvas_host", None)
-        reused = existing_host is not None
-        if reused:
-            # Changement d'unité courant : la page précédente figée dans le
-            # WebView sert d'attente visuelle. Aucun panneau intermédiaire.
-            self._phase2_destroy_overlay()
-        else:
-            # Première ouverture seulement : il n'existe encore aucune page à
-            # conserver à l'écran.
-            self._phase2_show_overlay(
-                canvas,
-                "Ouverture de l’unité",
-                str(chapter.title),
-            )
+        self._phase2_show_overlay(
+            canvas,
+            "Ouverture de l’unité",
+            str(chapter.title),
+        )
 
         # La page voulue au moment du chargement est transmise au Canvas pour
         # qu'il la centre AVANT render_complete. Le host reste caché sous
@@ -1463,7 +1455,8 @@ class TomeLineaV4Editorial(
         ui["initialPage"] = initial_local_page
 
         _diag_host_started = time.perf_counter()
-        host = existing_host
+        host = getattr(self, "_phase2_canvas_host", None)
+        reused = host is not None
         if host is None:
             host = CanvasEditorWebHost(
                 canvas,
@@ -1482,11 +1475,10 @@ class TomeLineaV4Editorial(
 
         self._phase2_canvas_host = host
         host.place(x=0, y=0, relwidth=1, relheight=1)
-        if not reused:
-            try:
-                host.lower()
-            except Exception:
-                pass
+        try:
+            host.lower()
+        except Exception:
+            pass
         try:
             _diag_dispatch_started = time.perf_counter()
             host.load_document(

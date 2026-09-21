@@ -372,7 +372,7 @@ def build_phase2_model(
     unsupported = [item for item in flow if item["kind"] == "unsupported_body_node"]
     # Nouveau contrat d'import : un élément local inconnu n'empêche pas
     # l'ouverture du Livre. Il reste inventorié pour le contrôle d'intégrité et
-    # sera présenté au Survol. Seule une impossibilité globale de lecture doit
+    # restera signalé pour un contrôle ultérieur. Seule une impossibilité globale de lecture doit
     # bloquer l'import.
 
     missing_fonts = [item for item in font_resolution if item["status"] not in {"exact", "substituted"}]

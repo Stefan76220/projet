@@ -2100,27 +2100,87 @@ class TomeLineaV4(tk.Tk):
             page_id
         )
 
+        self._composition_refresh_page_navigation()
+
         if (
             self.current_workspace
             == "composition"
         ):
-            # Tous les chemins de navigation convergent ici : clic dans
-            # l'Explorateur, Aller, Precedente et Suivante. Le Plan, le
-            # centre et l'inspecteur droit suivent donc la meme page active.
-            # Si la page se trouve dans une branche repliee, cette branche
-            # est ouverte juste assez pour rendre la page active visible.
+            # Le clic dans l'Explorateur et Aller convergent ici. Le Plan,
+            # le centre et l'inspecteur droit suivent la même page active.
+            # Si la page se trouve dans une branche repliée, elle est ouverte
+            # juste assez pour rendre la page active visible.
             self._composition_update_plan_selection()
             self._composition_scroll_to_page(
                 page_id,
                 animated=False,
             )
-            self._composition_refresh_center_navigation()
             self._composition_update_editor()
             return
 
         self.show_workspace(
             self.current_workspace
         )
+
+    def _composition_refresh_page_navigation(self) -> None:
+        """Synchronise uniquement l'affichage Précédente / Page X/Y / Suivante."""
+        session = getattr(self, "session", None)
+        book = getattr(session, "book", None) if session is not None else None
+        order = list(getattr(book, "page_order", ()) or ()) if book is not None else []
+        active_id = str(getattr(session, "active_page_id", "") or "") if session is not None else ""
+
+        try:
+            index = order.index(active_id)
+        except ValueError:
+            index = 0 if order else -1
+
+        variable = getattr(self, "_composition_center_page_var", None)
+        if variable is not None:
+            try:
+                variable.set(
+                    f"Page {index + 1} / {len(order)}"
+                    if index >= 0 and order
+                    else "Page — / —"
+                )
+            except Exception:
+                pass
+
+        previous = getattr(self, "_composition_page_previous_button", None)
+        if previous is not None:
+            try:
+                previous.configure(state=("normal" if index > 0 else "disabled"))
+            except Exception:
+                pass
+
+        following = getattr(self, "_composition_page_next_button", None)
+        if following is not None:
+            try:
+                following.configure(
+                    state=("normal" if 0 <= index < len(order) - 1 else "disabled")
+                )
+            except Exception:
+                pass
+
+    def _composition_move_page(self, delta: int) -> None:
+        """Précédente/Suivante utilisent exactement le même chemin que Structure/Aller."""
+        session = getattr(self, "session", None)
+        book = getattr(session, "book", None) if session is not None else None
+        if book is None:
+            return
+
+        order = list(getattr(book, "page_order", ()) or ())
+        active_id = str(getattr(session, "active_page_id", "") or "")
+        try:
+            index = order.index(active_id)
+        except ValueError:
+            return
+
+        target = index + int(delta)
+        if not (0 <= target < len(order)):
+            return
+
+        # Une seule porte d'entrée vers la navigation commune.
+        self._activate_page(order[target])
 
     def _build_composition(
         self,
@@ -2240,9 +2300,7 @@ class TomeLineaV4(tk.Tk):
             pady=(0, 10),
         )
 
-        # Le champ Aller fait partie de la navigation synchronisee : il
-        # affiche toujours le numero physique de la page active, quel que
-        # soit le moyen utilise pour naviguer dans le Livre.
+        # Aller reste une commande simple et directe vers une page du Livre.
         self._composition_jump_page_var = tk.StringVar()
         page_var = self._composition_jump_page_var
 
@@ -10616,153 +10674,6 @@ class TomeLineaV4(tk.Tk):
             )
 
 
-    def _composition_refresh_center_navigation(
-        self,
-    ) -> None:
-        book = self.session.book
-        active_page_id = str(
-            self.session.active_page_id
-            or ""
-        )
-
-        if book is None:
-            return
-
-        order = list(
-            book.page_order
-        )
-
-        try:
-            index = order.index(
-                active_page_id
-            )
-        except ValueError:
-            index = -1
-
-        label_var = getattr(
-            self,
-            "_composition_nav_page_var",
-            None,
-        )
-        jump_var = getattr(
-            self,
-            "_composition_jump_page_var",
-            None,
-        )
-
-        if label_var is not None:
-            if index >= 0:
-                label_var.set(
-                    f"Page {index + 1} / {len(order)}"
-                )
-            else:
-                label_var.set(
-                    f"{len(order)} pages"
-                )
-
-        # Le numero dans Aller suit lui aussi la page active. Cela rend
-        # visible la synchronisation dans les deux sens sans ajouter de
-        # commande ni de repere supplementaire a l'interface.
-        if jump_var is not None:
-            jump_var.set(
-                str(index + 1)
-                if index >= 0
-                else ""
-            )
-
-        previous_button = getattr(
-            self,
-            "_composition_prev_button",
-            None,
-        )
-        next_button = getattr(
-            self,
-            "_composition_next_button",
-            None,
-        )
-
-        try:
-            if previous_button is not None:
-                previous_button.configure(
-                    state=(
-                        tk.NORMAL
-                        if index > 0
-                        else tk.DISABLED
-                    )
-                )
-        except Exception:
-            pass
-
-        try:
-            if next_button is not None:
-                next_button.configure(
-                    state=(
-                        tk.NORMAL
-                        if (
-                            index >= 0
-                            and index < len(order) - 1
-                        )
-                        else tk.DISABLED
-                    )
-                )
-        except Exception:
-            pass
-
-    def _composition_previous_page(
-        self,
-    ) -> None:
-        book = self.session.book
-
-        if book is None:
-            return
-
-        order = list(
-            book.page_order
-        )
-        active = str(
-            self.session.active_page_id
-            or ""
-        )
-
-        try:
-            index = order.index(
-                active
-            )
-        except ValueError:
-            return
-
-        if index > 0:
-            self._activate_page(
-                order[index - 1]
-            )
-
-    def _composition_next_page(
-        self,
-    ) -> None:
-        book = self.session.book
-
-        if book is None:
-            return
-
-        order = list(
-            book.page_order
-        )
-        active = str(
-            self.session.active_page_id
-            or ""
-        )
-
-        try:
-            index = order.index(
-                active
-            )
-        except ValueError:
-            return
-
-        if index < len(order) - 1:
-            self._activate_page(
-                order[index + 1]
-            )
     def _build_composition_editor(
         self,
         parent,
@@ -10958,54 +10869,6 @@ class TomeLineaV4(tk.Tk):
             pady=(0, 7),
         )
 
-        # NAVIGATION PAGE PRECEDENTE / SUIVANTE
-        nav_group = tk.Frame(
-            zoom_bar,
-            bg=theme.WINDOW,
-        )
-        nav_group.pack(
-            side="right",
-        )
-
-        self._composition_prev_button = self._toolbar_button(
-            nav_group,
-            text="‹ Précédente",
-            command=self._composition_previous_page,
-        )
-        self._composition_prev_button.pack(
-            side="left",
-        )
-
-        self._composition_nav_page_var = tk.StringVar(
-            value=""
-        )
-        tk.Label(
-            nav_group,
-            textvariable=self._composition_nav_page_var,
-            bg=theme.WINDOW,
-            fg=theme.MUTED,
-            width=14,
-            font=(
-                theme.FONT_UI,
-                8,
-                "bold",
-            ),
-        ).pack(
-            side="left",
-            padx=6,
-        )
-
-        self._composition_next_button = self._toolbar_button(
-            nav_group,
-            text="Suivante ›",
-            command=self._composition_next_page,
-        )
-        self._composition_next_button.pack(
-            side="left",
-        )
-
-        self._composition_refresh_center_navigation()
-
         self._composition_zoom_out_button = self._toolbar_button(
             zoom_bar,
             text="−",
@@ -11088,6 +10951,49 @@ class TomeLineaV4(tk.Tk):
             side="left",
             padx=(26, 0),
         )
+
+        page_navigation = tk.Frame(
+            zoom_bar,
+            bg=theme.WINDOW,
+        )
+        page_navigation.pack(
+            side="right",
+        )
+
+        self._composition_page_previous_button = self._toolbar_button(
+            page_navigation,
+            text="‹ Précédente",
+            command=lambda: self._composition_move_page(-1),
+        )
+        self._composition_page_previous_button.pack(
+            side="left",
+        )
+
+        self._composition_center_page_var = tk.StringVar(
+            value="Page — / —"
+        )
+        tk.Label(
+            page_navigation,
+            textvariable=self._composition_center_page_var,
+            bg=theme.WINDOW,
+            fg=theme.INK,
+            width=13,
+            font=(theme.FONT_UI, 9, "bold"),
+        ).pack(
+            side="left",
+            padx=10,
+        )
+
+        self._composition_page_next_button = self._toolbar_button(
+            page_navigation,
+            text="Suivante ›",
+            command=lambda: self._composition_move_page(1),
+        )
+        self._composition_page_next_button.pack(
+            side="left",
+        )
+
+        self._composition_refresh_page_navigation()
 
         self._refresh_history_buttons()
 

@@ -1,0 +1,10 @@
+{
+  "old": {
+    "src/gui_v4/canvas_editor_host.py": "17be053ad54bed36a195021fd02699da4e0b85a5b151fb867cff937dd4c44aaf",
+    "src/gui_v4/web_canvas/index.html": "9c11513bc18e535fb596394fc8fcd5852d1f12a23be68e7e2554b490982048ac"
+  },
+  "new": {
+    "src/gui_v4/canvas_editor_host.py": "9dd457f70c12781a2c320434d0d7355a86855118e97a57e37c3ade535b5cc0b4",
+    "src/gui_v4/web_canvas/index.html": "818636376ebe03f188ed99a525923105a96992ac6d09ae0f8570895cf19a2ef6"
+  }
+}

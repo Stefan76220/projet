@@ -208,19 +208,16 @@ function segmentPageCount(segmentNode) {
 async function waitForStablePagination(segmentNodes, generation) {
   let previous = -1;
   let stableFrames = 0;
-  // NAV29 : document.fonts.ready a déjà été attendu. On conserve une vraie
-  // vérification de stabilité, mais on ne rajoute plus 25 ms artificielles à
-  // chaque image. Cinq images consécutives avec le même nombre de pages donnent
-  // au moteur plusieurs cycles de rendu tout en réduisant fortement l'attente.
-  for (let pass = 0; pass < 300; pass += 1) {
+  for (let pass = 0; pass < 160; pass += 1) {
     if (generation !== state.generation) throw new Error('Chargement remplacé');
     await nextFrame();
+    await sleep(25);
     const count = segmentNodes.reduce((sum, node) => sum + segmentPageCount(node), 0);
     const measurable = segmentNodes.every(node => node.getBoundingClientRect().width > 0);
     if (count > 0 && measurable && count === previous) stableFrames += 1;
     else stableFrames = 0;
     previous = count;
-    if (stableFrames >= 5) return count;
+    if (stableFrames >= 4) return count;
   }
   throw new Error('Pagination Canvas Editor non stabilisée');
 }

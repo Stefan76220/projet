@@ -1374,10 +1374,11 @@ class TomeLineaV4Editorial(
             self._phase2_diag_switch_started = time.perf_counter()
             self._phase2_switch_in_progress = True
             self._phase2_canvas_state = "chapter_switch"
-            # NAV28 : aucune transition technique visible. La page actuelle
-            # reste affichée dans le WebView pendant l'export puis est figée
-            # jusqu'à ce que la page suivante soit rendue et centrée.
-            self._phase2_destroy_overlay()
+            self._phase2_show_overlay(
+                canvas,
+                "Changement d’unité",
+                "Conservation de la copie de travail…",
+            )
 
             _diag_export_started = time.perf_counter()
 
@@ -1385,22 +1386,15 @@ class TomeLineaV4Editorial(
                 _diag_export_ms = (time.perf_counter() - diag_export_started) * 1000.0
                 print(f"[NAV-DIAG] EXPORT JS unité {old + 1}: {_diag_export_ms:.0f} ms", flush=True)
 
-                if not isinstance(exported, dict) or exported.get("ok") is not True:
-                    self._phase2_on_failed(canvas, {
-                        "stage": "chapter_export",
-                        "message": "La copie de travail n'a pas pu etre exportee. Le document reste charge.",
-                    })
-                    return
                 _diag_apply_started = time.perf_counter()
                 self._phase2_apply_exported_chapter(old, exported)
                 _diag_apply_ms = (time.perf_counter() - _diag_apply_started) * 1000.0
                 print(f"[NAV-DIAG] SAUVEGARDE copie de travail unité {old + 1}: {_diag_apply_ms:.0f} ms", flush=True)
 
-                # Le document sortant est sauvegarde ; conserver le host natif.
-                # NAV21 relit la derniere destination avant le prochain chargement.
-                self._phase2_loading_chapter_index = None
-                self._phase2_displayed_global_index = None
-                print(f"[NAV-DIAG] DESTRUCTION WebView unité {old + 1}: 0 ms (conserve)", flush=True)
+                _diag_destroy_started = time.perf_counter()
+                self._phase2_destroy_current_host()
+                _diag_destroy_ms = (time.perf_counter() - _diag_destroy_started) * 1000.0
+                print(f"[NAV-DIAG] DESTRUCTION WebView unité {old + 1}: {_diag_destroy_ms:.0f} ms", flush=True)
 
                 self._phase2_active_chapter_index = None
                 self._phase2_switch_in_progress = False
@@ -1409,7 +1403,7 @@ class TomeLineaV4Editorial(
                 # l'export quelques instants plus tôt.
                 self._phase2_schedule_wanted_page(canvas)
 
-            host.export_document_state(_after_export, freeze_visual=True)
+            host.export_document_state(_after_export)
             return
 
         self._phase2_load_chapter(canvas, chapter_index)
@@ -1424,26 +1418,17 @@ class TomeLineaV4Editorial(
         if not (0 <= chapter_index < len(self._phase2_chapter_plans)):
             return
 
-        self._phase2_displayed_global_index = None
+        self._phase2_destroy_current_host()
         self._phase2_diag_load_started = time.perf_counter()
         self._phase2_loading_chapter_index = int(chapter_index)
         self._phase2_switch_in_progress = True
         self._phase2_canvas_state = "chapter_loading"
         chapter = detection.chapters[chapter_index]
-        existing_host = getattr(self, "_phase2_canvas_host", None)
-        reused = existing_host is not None
-        if reused:
-            # Changement d'unité courant : la page précédente figée dans le
-            # WebView sert d'attente visuelle. Aucun panneau intermédiaire.
-            self._phase2_destroy_overlay()
-        else:
-            # Première ouverture seulement : il n'existe encore aucune page à
-            # conserver à l'écran.
-            self._phase2_show_overlay(
-                canvas,
-                "Ouverture de l’unité",
-                str(chapter.title),
-            )
+        self._phase2_show_overlay(
+            canvas,
+            "Ouverture de l’unité",
+            str(chapter.title),
+        )
 
         # La page voulue au moment du chargement est transmise au Canvas pour
         # qu'il la centre AVANT render_complete. Le host reste caché sous
@@ -1463,42 +1448,36 @@ class TomeLineaV4Editorial(
         ui["initialPage"] = initial_local_page
 
         _diag_host_started = time.perf_counter()
-        host = existing_host
-        if host is None:
-            host = CanvasEditorWebHost(
-                canvas,
-                project_root=PROJECT_ROOT,
-                on_ready=lambda snapshot, idx=chapter_index: self._phase2_chapter_ready(canvas, idx, snapshot),
-                on_failed=lambda failure: self._phase2_on_failed(canvas, failure),
-                on_editorial_choice=lambda event, src=self._phase2_source_path(): (
-                    self._phase2_persist_choice(src, event) if src is not None else None
-                ),
-                on_page_changed=None,
-                on_page_count_changed=self._phase2_on_page_count_changed,
-                background=theme.WINDOW_DEEP,
-            )
+        host = CanvasEditorWebHost(
+            canvas,
+            project_root=PROJECT_ROOT,
+            on_ready=lambda snapshot, idx=chapter_index: self._phase2_chapter_ready(canvas, idx, snapshot),
+            on_failed=lambda failure: self._phase2_on_failed(canvas, failure),
+            on_editorial_choice=lambda event, src=self._phase2_source_path(): (
+                self._phase2_persist_choice(src, event) if src is not None else None
+            ),
+            on_page_changed=None,
+            on_page_count_changed=self._phase2_on_page_count_changed,
+            background=theme.WINDOW_DEEP,
+        )
         _diag_host_ms = (time.perf_counter() - _diag_host_started) * 1000.0
         print(f"[NAV-DIAG] CONSTRUCTION hôte Tk unité {chapter_index + 1}: {_diag_host_ms:.0f} ms", flush=True)
 
         self._phase2_canvas_host = host
         host.place(x=0, y=0, relwidth=1, relheight=1)
-        if not reused:
-            try:
-                host.lower()
-            except Exception:
-                pass
+        try:
+            host.lower()
+        except Exception:
+            pass
         try:
             _diag_dispatch_started = time.perf_counter()
             host.load_document(
                 plan,
                 CanvasLoadSession(prepared.canvas.contract),
-                on_ready=lambda snapshot, idx=chapter_index: self._phase2_chapter_ready(canvas, idx, snapshot),
-                on_failed=lambda failure: self._phase2_on_failed(canvas, failure),
             )
             self._phase2_diag_load_dispatched = time.perf_counter()
             _diag_dispatch_ms = (self._phase2_diag_load_dispatched - _diag_dispatch_started) * 1000.0
-            _diag_mode = "RECHARGEMENT" if reused else "CRÉATION/LANCEMENT"
-            print(f"[NAV-DIAG] {_diag_mode} WebView unité {chapter_index + 1}: {_diag_dispatch_ms:.0f} ms ; id={id(host._web)}", flush=True)
+            print(f"[NAV-DIAG] CRÉATION/LANCEMENT WebView unité {chapter_index + 1}: {_diag_dispatch_ms:.0f} ms", flush=True)
         except Exception as exc:
             self._phase2_on_failed(
                 canvas,
@@ -1538,8 +1517,7 @@ class TomeLineaV4Editorial(
         )
         target_chapter, local_index = layout.locate_global_index(target)
         if int(target_chapter) != int(chapter_index):
-            # Unite intermediaire non exposee : recharger le meme host cache.
-            self._phase2_displayed_global_index = None
+            self._phase2_destroy_current_host()
             self._phase2_active_chapter_index = None
             self._phase2_loading_chapter_index = None
             self._phase2_switch_in_progress = False

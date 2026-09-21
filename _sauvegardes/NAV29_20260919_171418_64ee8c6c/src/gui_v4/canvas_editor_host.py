@@ -360,13 +360,7 @@ class CanvasEditorWebHost(tk.Frame):
         self._active_page = None
         self._ensure_webview()
         if self._page_loaded:
-            # NAV29 : lorsqu'on réutilise le même WebView, le bootstrap JS a
-            # déjà été validé au premier chargement. Éviter un aller-retour
-            # eval_js_with_callback inutile à chaque changement d'unité.
-            if self._host_loaded:
-                self.after_idle(self._dispatch_plan)
-            else:
-                self.after_idle(self._push_plan)
+            self.after_idle(self._push_plan)
 
     def _on_web_ready(self, *_args) -> None:
         if self._pending_load:
@@ -428,12 +422,6 @@ class CanvasEditorWebHost(tk.Frame):
             return
 
         self._host_probe_attempts = 0
-        self._dispatch_plan()
-
-    def _dispatch_plan(self) -> None:
-        """Envoie le plan au WebView déjà prêt, sans sonde supplémentaire."""
-        if not self._pending_load or self._web is None or self._plan is None:
-            return
         try:
             web_plan = _plan_for_webview(self._plan, project_root=self.project_root)
         except Exception as exc:

@@ -181,7 +181,7 @@ def prepare_canvas_load(
         raise RuntimeError("Le contrat Canvas contient des erreurs : " + "; ".join(raw_canvas.errors))
 
     # L'import garantit d'abord le contenu. Les règles sûres sont analysées
-    # maintenant pour pouvoir être proposées globalement avant le Survol, mais
+    # maintenant pour pouvoir être proposées globalement lors des réglages, mais
     # elles ne modifient pas silencieusement le contrat importé.
     analyzed_text_quality = apply_text_quality_rules(raw_canvas.contract)
     text_quality = TextQualityResult(

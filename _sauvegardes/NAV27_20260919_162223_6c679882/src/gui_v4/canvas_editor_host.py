@@ -300,7 +300,6 @@ class CanvasEditorWebHost(tk.Frame):
             app=str(self.assets.index_html.parent),
             ipc_handler=self._handle_ipc,
             on_page_load=self._on_page_load,
-            on_title_changed=self._on_document_title,
             on_creation_failed=self._on_creation_failed,
             background_color=(37, 42, 48, 255),
             focused=False,
@@ -317,10 +316,6 @@ class CanvasEditorWebHost(tk.Frame):
         except Exception:
             pass
         self._web = web
-
-    def _on_document_title(self, title: str) -> None:
-        """Consomme les notifications de titre sans changer la fenetre Tk."""
-        self._document_title = str(title)
 
     def load_document(
         self,
@@ -360,13 +355,7 @@ class CanvasEditorWebHost(tk.Frame):
         self._active_page = None
         self._ensure_webview()
         if self._page_loaded:
-            # NAV29 : lorsqu'on réutilise le même WebView, le bootstrap JS a
-            # déjà été validé au premier chargement. Éviter un aller-retour
-            # eval_js_with_callback inutile à chaque changement d'unité.
-            if self._host_loaded:
-                self.after_idle(self._dispatch_plan)
-            else:
-                self.after_idle(self._push_plan)
+            self.after_idle(self._push_plan)
 
     def _on_web_ready(self, *_args) -> None:
         if self._pending_load:
@@ -428,12 +417,6 @@ class CanvasEditorWebHost(tk.Frame):
             return
 
         self._host_probe_attempts = 0
-        self._dispatch_plan()
-
-    def _dispatch_plan(self) -> None:
-        """Envoie le plan au WebView déjà prêt, sans sonde supplémentaire."""
-        if not self._pending_load or self._web is None or self._plan is None:
-            return
         try:
             web_plan = _plan_for_webview(self._plan, project_root=self.project_root)
         except Exception as exc:
@@ -568,8 +551,6 @@ class CanvasEditorWebHost(tk.Frame):
     def export_document_state(
         self,
         callback: Callable[[dict[str, Any]], None],
-        *,
-        freeze_visual: bool = False,
     ) -> None:
         """Retourne l'état édité du Canvas sans toucher à la Source.
 
@@ -581,18 +562,10 @@ class CanvasEditorWebHost(tk.Frame):
             self.after_idle(lambda: callback({"ok": False, "reason": "not_ready"}))
             return
 
-        freeze_script = (
-            "try{window.tomeLineaCanvasFreezeCurrentPage&&"
-            "window.tomeLineaCanvasFreezeCurrentPage();}catch(_){ }"
-            if freeze_visual
-            else ""
-        )
         script = (
-            "JSON.stringify((()=>{"
-            + freeze_script
-            + "return window.tomeLineaCanvasExportState ? "
+            "JSON.stringify(window.tomeLineaCanvasExportState ? "
             "window.tomeLineaCanvasExportState() : "
-            "{ok:false,reason:'export_api_missing'};})());"
+            "{ok:false,reason:'export_api_missing'});"
         )
 
         def _done(raw: Any = None, *_args) -> None:

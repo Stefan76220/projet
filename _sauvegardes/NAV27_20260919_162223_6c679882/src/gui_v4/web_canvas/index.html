@@ -21,8 +21,6 @@
       will-change:transform;
     }
     body.embedded-composition #document.ready{pointer-events:auto}
-    body.embedded-composition #status{display:none !important}
-    #tl-page-freeze{position:fixed;pointer-events:none;z-index:60;margin:0;padding:0;border:0}
     body.embedded-composition #document,
     body.embedded-composition #document *{
       caret-color:auto !important;
@@ -184,21 +182,6 @@ function destroyEditors() {
   reviewPanel.classList.remove('active');
 }
 
-
-function tomeLineaResetDocumentState() {
-  reviewState.index = 0;
-  reviewState.automatic = [];
-  reviewState.editorial = [];
-  reviewState.runtimeEditorial = [];
-  reviewState.applying = false;
-  try { reviewNodes.choiceStatus.textContent = ''; } catch (_) {}
-  try { reviewNodes.choiceLeft.disabled = false; } catch (_) {}
-  try { reviewNodes.choiceRight.disabled = false; } catch (_) {}
-  try { reviewNodes.similarApply.disabled = false; } catch (_) {}
-  state.activePage = 1;
-  try { tomeLineaLastReportedPageCount = 0; } catch (_) {}
-}
-
 function segmentPageCount(segmentNode) {
   const indexed = segmentNode.querySelectorAll('canvas[data-index]').length;
   if (indexed > 0) return indexed;
@@ -208,19 +191,16 @@ function segmentPageCount(segmentNode) {
 async function waitForStablePagination(segmentNodes, generation) {
   let previous = -1;
   let stableFrames = 0;
-  // NAV29 : document.fonts.ready a déjà été attendu. On conserve une vraie
-  // vérification de stabilité, mais on ne rajoute plus 25 ms artificielles à
-  // chaque image. Cinq images consécutives avec le même nombre de pages donnent
-  // au moteur plusieurs cycles de rendu tout en réduisant fortement l'attente.
-  for (let pass = 0; pass < 300; pass += 1) {
+  for (let pass = 0; pass < 160; pass += 1) {
     if (generation !== state.generation) throw new Error('Chargement remplacé');
     await nextFrame();
+    await sleep(25);
     const count = segmentNodes.reduce((sum, node) => sum + segmentPageCount(node), 0);
     const measurable = segmentNodes.every(node => node.getBoundingClientRect().width > 0);
     if (count > 0 && measurable && count === previous) stableFrames += 1;
     else stableFrames = 0;
     previous = count;
-    if (stableFrames >= 5) return count;
+    if (stableFrames >= 4) return count;
   }
   throw new Error('Pagination Canvas Editor non stabilisée');
 }
@@ -1149,57 +1129,10 @@ function tomeLineaSetUiMode(plan) {
   const embedded = tomeLineaEmbeddedMode();
   document.body.classList.toggle('embedded-composition', embedded);
   if (!embedded) {
-    tomeLineaClearPageFreeze();
     root.style.transform = '';
     root.style.transformOrigin = '';
     state.embeddedScale = 1;
   }
-}
-
-function tomeLineaClearPageFreeze() {
-  const frozen = document.getElementById('tl-page-freeze');
-  if (frozen) frozen.remove();
-}
-
-window.tomeLineaCanvasFreezeCurrentPage = function tomeLineaCanvasFreezeCurrentPage() {
-  if (!tomeLineaEmbeddedMode()) return { ok: false, reason: 'not_embedded' };
-  const pages = tomeLineaPageCanvases();
-  if (!pages.length) return { ok: false, reason: 'no_pages' };
-  const targetNo = Math.max(1, Math.min(Number(state.activePage) || 1, pages.length));
-  const source = pages[targetNo - 1];
-  const rect = source.getBoundingClientRect();
-  if (!(rect.width > 0 && rect.height > 0 && source.width > 0 && source.height > 0)) {
-    return { ok: false, reason: 'page_not_measurable' };
-  }
-
-  tomeLineaClearPageFreeze();
-  const frozen = document.createElement('canvas');
-  frozen.id = 'tl-page-freeze';
-  frozen.width = source.width;
-  frozen.height = source.height;
-  frozen.style.left = `${rect.left}px`;
-  frozen.style.top = `${rect.top}px`;
-  frozen.style.width = `${rect.width}px`;
-  frozen.style.height = `${rect.height}px`;
-  try {
-    const ctx = frozen.getContext('2d', { alpha: false });
-    if (!ctx) return { ok: false, reason: 'no_2d_context' };
-    ctx.drawImage(source, 0, 0);
-  } catch (_) {
-    return { ok: false, reason: 'copy_failed' };
-  }
-  document.body.appendChild(frozen);
-  return { ok: true, pageNo: targetNo };
-};
-
-function tomeLineaShowOnlyEmbeddedPage(pageNo = state.activePage) {
-  if (!tomeLineaEmbeddedMode()) return;
-  const pages = tomeLineaPageCanvases();
-  if (!pages.length) return;
-  const targetNo = Math.max(1, Math.min(Number(pageNo) || 1, pages.length));
-  pages.forEach((page, index) => {
-    page.style.visibility = index + 1 === targetNo ? 'visible' : 'hidden';
-  });
 }
 
 function tomeLineaBlurEditors() {
@@ -1255,7 +1188,6 @@ function tomeLineaLayoutEmbeddedPage(pageNo = state.activePage) {
   root.style.transformOrigin = '0 0';
   state.embeddedScale = scale;
   root.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-  tomeLineaShowOnlyEmbeddedPage(targetNo);
   tomeLineaBlurEditors();
   return { ok: true, pageNo: targetNo, pageCount: pages.length, scale };
 }
@@ -1355,9 +1287,6 @@ window.tomeLineaCanvasGoToPage = function tomeLineaCanvasGoToPage(pageNo, behavi
 
   if (tomeLineaEmbeddedMode()) {
     tomeLineaLayoutEmbeddedPage(target);
-    if (!state.loading) {
-      window.requestAnimationFrame(() => tomeLineaClearPageFreeze());
-    }
   } else {
     node.scrollIntoView({ behavior: behavior === 'auto' ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
     post('page_changed', { pageNo: target, pageCount: pages.length });
@@ -1419,7 +1348,6 @@ window.tomeLineaCanvasLoad = async function tomeLineaCanvasLoad(plan) {
   state.boot = 'loading_document';
   state.lastError = null;
   destroyEditors();
-  tomeLineaResetDocumentState();
   tomeLineaSetUiMode(plan);
   state.activePage = Math.max(1, Number(plan?.tomelinea_ui?.initialPage) || 1);
   statusNode.textContent = 'Préparation du document…';
@@ -1474,18 +1402,15 @@ window.tomeLineaCanvasLoad = async function tomeLineaCanvasLoad(plan) {
     post('pagination_stable', { pageCount });
 
     await nextFrame();
-
-    if (tomeLineaEmbeddedMode()) {
-      // Préparer la page cible entièrement hors vue. La page précédente,
-      // figée en image dans le même WebView, reste affichée jusqu'ici.
-      tomeLineaLayoutEmbeddedPage(state.activePage);
-      tomeLineaBlurEditors();
-    }
-
     root.classList.add('ready');
     root.setAttribute('aria-hidden', 'false');
     document.body.classList.add('ready');
     installVisualReview(plan);
+
+    if (tomeLineaEmbeddedMode()) {
+      tomeLineaLayoutEmbeddedPage(state.activePage);
+      tomeLineaBlurEditors();
+    }
 
     state.loading = false;
     state.boot = 'render_complete';

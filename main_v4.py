@@ -19,10 +19,11 @@ def main() -> None:
     # visibles avant TomeLinea. La V4 se construit entièrement cachée,
     # puis est affichée une seule fois lorsqu'elle est prête.
     #
-    # NAVIGATION PROPRE 02 : import DOCX conservé, un seul onglet Navigation.
-    from src.gui_v4.survol_shell import TomeLineaV4Survol
+    # Base content-first + Composition éditoriale. Les Réglages sont ajoutés
+    # directement, sans couche de parcours automatique.
+    from src.gui_v4.settings_shell import TomeLineaV4SettingsStage
 
-    app = TomeLineaV4Survol(defer_show=True)
+    app = TomeLineaV4SettingsStage(defer_show=True)
 
     try:
         app.show_prepared_window()
