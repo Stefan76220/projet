@@ -990,6 +990,33 @@ class TomeLineaV4SettingsStage(TomeLineaV4Editorial):
             raise ValueError(f"{label} : valeur attendue entre {minimum:g} et {maximum:g}.")
         return float(value)
 
+    def _global_settings_available_fonts(self) -> list[str]:
+        """Polices Windows vérifiées pour la V4 stable."""
+        from pathlib import Path
+        import os
+
+        font_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        candidates = {
+            "Arial": "arial.ttf",
+            "Georgia": "georgia.ttf",
+            "Times New Roman": "times.ttf",
+            "Calibri": "calibri.ttf",
+        }
+        names = {
+            family
+            for family, filename in candidates.items()
+            if (font_dir / filename).is_file()
+        }
+        try:
+            current = str(self._settings_prepare_text_vars()["font_family"].get() or "").strip()
+        except Exception:
+            current = ""
+        if current:
+            names.add(current)
+        if not names:
+            names.add("Arial")
+        return sorted(names, key=lambda value: value.casefold())
+
     def _settings_available_text_fonts(self) -> list[str]:
         names = set()
         try:
