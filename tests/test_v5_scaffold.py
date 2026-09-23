@@ -7,7 +7,7 @@ import tomelinea.architecture as architecture
 
 class V5ScaffoldTests(unittest.TestCase):
     def test_architecture_version(self) -> None:
-        self.assertEqual(architecture.V5_ARCHITECTURE_VERSION, 1)
+        self.assertEqual(architecture.V5_ARCHITECTURE_VERSION, 2)
 
     def test_core_principles(self) -> None:
         required = {
@@ -18,6 +18,10 @@ class V5ScaffoldTests(unittest.TestCase):
             "source_separate_from_composition",
             "deterministic_rule_engine",
             "multi_project_types",
+            "logical_document_before_book",
+            "sequential_editorial_pipeline",
+            "stage_scoped_mutations",
+            "targeted_invalidation",
         }
         self.assertTrue(required.issubset(set(architecture.PRINCIPLES)))
 

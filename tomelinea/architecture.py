@@ -1,17 +1,16 @@
-"""Contrat minimal du socle TomeLinea V5.
+"""Contrat d'architecture TomeLinea V5.
 
-Ce fichier ne contient aucune logique metier.
-Il fige uniquement les principes de migration valides :
-- la V4 gelee reste la reference fonctionnelle ;
-- une seule verite pour le Livre ;
-- identifiants stables independants des numeros de page ;
-- Navigation partagee par tous les outils ;
-- Survol client de Navigation, jamais moteur de page ;
-- Source distincte des decisions de composition ;
-- aucune dependance obligatoire a une IA.
+La V4 gelée reste la référence fonctionnelle, mais V5-28 ouvre le nouveau
+parcours séquentiel : Source -> TLDocument -> métiers successifs -> Book.
+
+``TLDocument`` est le manuscrit logique éditable, indépendant des pages et du
+moteur d'affichage. ``Book`` devient l'état composé/paginé produit plus tard.
+
+Chaque métier agit seul, avec une responsabilité limitée. Une décision tardive
+invalide seulement les étapes qui en dépendent.
 """
 
-V5_ARCHITECTURE_VERSION = 1
+V5_ARCHITECTURE_VERSION = 2
 
 PRINCIPLES = (
     "single_book_truth",
@@ -21,4 +20,8 @@ PRINCIPLES = (
     "source_separate_from_composition",
     "deterministic_rule_engine",
     "multi_project_types",
+    "logical_document_before_book",
+    "sequential_editorial_pipeline",
+    "stage_scoped_mutations",
+    "targeted_invalidation",
 )
