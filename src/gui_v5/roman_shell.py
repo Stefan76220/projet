@@ -17,6 +17,7 @@ from src.gui_v4 import theme
 from src.gui_v4.settings_shell import TomeLineaV4SettingsStage
 
 from tomelinea.project_types.roman import RomanSession
+from tomelinea.survol import review_subject_ids
 
 from .survol_presenter import (
     decision_for_current,
@@ -38,6 +39,8 @@ class TomeLineaV5RomanStage(
         self._v5_roman_project: Any = None
         self._v5_roman_book: Any = None
         self._v5_survol_last_error = ""
+        self._v5_final_review_active = False
+        self._v5_final_review_page_id = ""
 
         super().__init__(
             defer_show=defer_show
@@ -272,6 +275,9 @@ class TomeLineaV5RomanStage(
             self._survol_message = "Aucun Livre Roman à survoler."
             self._survol_refresh_panel()
             return
+
+        self._v5_final_review_active = False
+        self._v5_final_review_page_id = ""
 
         try:
             target = roman.start()
@@ -712,6 +718,22 @@ class TomeLineaV5RomanStage(
         self._survol_message = "Décision enregistrée."
         self._survol_refresh_panel()
 
+        if bool(
+            getattr(
+                self,
+                "_v5_final_review_active",
+                False,
+            )
+        ):
+            self._survol_generation += 1
+            generation = int(
+                self._survol_generation
+            )
+            self._v5_schedule_final_dwell(
+                generation
+            )
+            return
+
         if roman.survol.running:
             self._survol_generation += 1
             generation = int(
@@ -720,6 +742,374 @@ class TomeLineaV5RomanStage(
             self._v5_schedule_dwell(
                 generation
             )
+
+
+    # ==========================================================
+    # CONTROLE FINAL V5 — objets A revoir, meme Navigation
+    # ==========================================================
+
+    def _v5_schedule_final_visible(
+        self,
+        generation: int,
+        page_id: str,
+    ) -> None:
+        self._survol_watch_after_id = self.after(
+            50,
+            lambda g=generation, pid=str(page_id): self._v5_wait_final_visible(
+                g,
+                pid,
+            ),
+        )
+
+    def _v5_schedule_final_dwell(
+        self,
+        generation: int,
+    ) -> None:
+        self._survol_dwell_after_id = self.after(
+            int(
+                getattr(
+                    self,
+                    "_survol_dwell_ms",
+                    2000,
+                )
+                or 2000
+            ),
+            lambda g=generation: self._v5_advance_final_review(
+                g
+            ),
+        )
+
+    def _v5_render_final_request(
+        self,
+        request,
+    ) -> None:
+        self._survol_cancel_timers()
+        self._survol_generation += 1
+        generation = int(
+            self._survol_generation
+        )
+
+        self._v5_final_review_active = True
+        self._v5_final_review_page_id = str(
+            request.target.page_id
+        )
+        self._survol_position = int(
+            request.target.global_index
+        )
+        self._survol_expected_global_index = int(
+            request.target.global_index
+        )
+        self._survol_message = (
+            "Contrôle final — ouverture de la page "
+            f"{request.target.global_index + 1}."
+        )
+        self._survol_set_click_hook_active(
+            False
+        )
+        self._survol_refresh_panel()
+
+        # RomanSession.final_review() a DEJA effectue l'unique demande
+        # Navigation. Ici on ne fait que rendre cette cible.
+        self._v5_apply_navigation_target(
+            request.navigation.page_id
+        )
+        self._v5_schedule_final_visible(
+            generation,
+            request.navigation.page_id,
+        )
+
+    def _v5_start_final_review(
+        self,
+    ) -> None:
+        roman = self._v5_ensure_roman_session()
+
+        if roman is None or not roman.survol.completed:
+            return
+
+        pending = review_subject_ids(
+            roman.review
+        )
+
+        if not pending:
+            self._v5_final_review_active = False
+            self._v5_final_review_page_id = ""
+            self._survol_message = "Aucun élément à revoir."
+            self._survol_refresh_panel()
+            return
+
+        try:
+            request = roman.final_review()
+        except Exception as exc:
+            self._v5_survol_last_error = str(
+                exc
+            )
+            self._survol_message = (
+                "Le contrôle final ne peut pas démarrer : "
+                + str(exc)
+            )
+            self._survol_refresh_panel()
+            return
+
+        if request is None:
+            self._v5_final_review_active = False
+            self._v5_final_review_page_id = ""
+            self._survol_message = (
+                f"{len(pending)} élément(s) restent À revoir, "
+                "mais aucune page actuelle ne permet de les ouvrir."
+            )
+            self._survol_refresh_panel()
+            return
+
+        self._v5_render_final_request(
+            request
+        )
+
+    def _v5_wait_final_visible(
+        self,
+        generation: int,
+        page_id: str,
+    ) -> None:
+        self._survol_watch_after_id = None
+
+        if generation != int(
+            getattr(
+                self,
+                "_survol_generation",
+                0,
+            )
+            or 0
+        ):
+            return
+
+        if not bool(
+            getattr(
+                self,
+                "_v5_final_review_active",
+                False,
+            )
+        ):
+            return
+
+        state = str(
+            getattr(
+                self,
+                "_phase2_canvas_state",
+                "",
+            )
+            or ""
+        )
+        active = str(
+            getattr(
+                getattr(
+                    self,
+                    "session",
+                    None,
+                ),
+                "active_page_id",
+                "",
+            )
+            or ""
+        )
+        host = getattr(
+            self,
+            "_phase2_canvas_host",
+            None,
+        )
+
+        ready = bool(
+            active == str(
+                page_id
+            )
+            and host is not None
+            and bool(
+                getattr(
+                    host,
+                    "ready",
+                    False,
+                )
+            )
+            and state == "ready"
+            and not bool(
+                getattr(
+                    self,
+                    "_phase2_switch_in_progress",
+                    False,
+                )
+            )
+        )
+
+        if not ready:
+            self._survol_watch_after_id = self.after(
+                60,
+                lambda g=generation, pid=page_id: self._v5_wait_final_visible(
+                    g,
+                    pid,
+                ),
+            )
+            return
+
+        self._v5_on_final_page_visible(
+            generation,
+            page_id,
+        )
+
+    def _v5_on_final_page_visible(
+        self,
+        generation: int,
+        page_id: str,
+    ) -> None:
+        roman = self._v5_ensure_roman_session()
+
+        if roman is None:
+            return
+
+        try:
+            snapshot = roman.page_visible(
+                page_id
+            )
+        except Exception as exc:
+            self._v5_survol_last_error = str(
+                exc
+            )
+            self._survol_message = (
+                "Impossible de revoir cette page : "
+                + str(exc)
+            )
+            self._v5_finish_final_review(
+                interrupted=True
+            )
+            return
+
+        if snapshot.current_situation is not None:
+            self._survol_message = "Contrôle final — décision requise."
+            self._survol_refresh_panel()
+            return
+
+        self._survol_message = "Contrôle final — aucun point restant sur cette page."
+        self._survol_refresh_panel()
+        self._v5_schedule_final_dwell(
+            generation
+        )
+
+    def _v5_advance_final_review(
+        self,
+        generation: int | None = None,
+    ) -> None:
+        self._survol_dwell_after_id = None
+
+        if (
+            generation is not None
+            and generation != int(
+                getattr(
+                    self,
+                    "_survol_generation",
+                    0,
+                )
+                or 0
+            )
+        ):
+            return
+
+        if not bool(
+            getattr(
+                self,
+                "_v5_final_review_active",
+                False,
+            )
+        ):
+            return
+
+        roman = self._v5_ensure_roman_session()
+
+        if roman is None:
+            return
+
+        current_page_id = str(
+            getattr(
+                self,
+                "_v5_final_review_page_id",
+                "",
+            )
+            or ""
+        )
+
+        try:
+            request = roman.final_review(
+                after_page_id=(
+                    current_page_id
+                    or None
+                )
+            )
+        except Exception as exc:
+            self._v5_survol_last_error = str(
+                exc
+            )
+            self._survol_message = (
+                "Le contrôle final ne peut pas continuer : "
+                + str(exc)
+            )
+            self._v5_finish_final_review(
+                interrupted=True
+            )
+            return
+
+        if request is not None:
+            self._v5_render_final_request(
+                request
+            )
+            return
+
+        remaining = review_subject_ids(
+            roman.review
+        )
+
+        self._v5_final_review_active = False
+        self._v5_final_review_page_id = ""
+        self._survol_set_click_hook_active(
+            False
+        )
+
+        if remaining:
+            self._survol_message = (
+                f"{len(remaining)} élément(s) restent À revoir. "
+                "Aucun retour automatique en arrière n'est effectué."
+            )
+        else:
+            self._survol_message = "Contrôle final terminé."
+
+        self._survol_refresh_panel()
+
+    def _v5_finish_final_review(
+        self,
+        *,
+        interrupted: bool = False,
+    ) -> None:
+        self._survol_cancel_timers()
+        self._survol_generation += 1
+        self._v5_final_review_active = False
+        self._v5_final_review_page_id = ""
+        self._survol_set_click_hook_active(
+            False
+        )
+
+        if interrupted:
+            if not str(
+                getattr(
+                    self,
+                    "_survol_message",
+                    "",
+                )
+                or ""
+            ):
+                self._survol_message = (
+                    "Contrôle final interrompu — les éléments À revoir sont conservés."
+                )
+        else:
+            self._survol_message = (
+                "Contrôle final interrompu — les éléments À revoir sont conservés."
+            )
+
+        self._survol_refresh_panel()
 
     def _survol_render_panel(
         self,
@@ -750,6 +1140,21 @@ class TomeLineaV5RomanStage(
             self._v5_sync_survol_flags(
                 roman
             )
+
+            if bool(
+                getattr(
+                    self,
+                    "_v5_final_review_active",
+                    False,
+                )
+            ):
+                position = int(
+                    getattr(
+                        self,
+                        "_survol_position",
+                        position,
+                    )
+                )
 
         tk.Label(
             host,
@@ -941,6 +1346,28 @@ class TomeLineaV5RomanStage(
                     ),
                 )
 
+            if bool(
+                getattr(
+                    self,
+                    "_v5_final_review_active",
+                    False,
+                )
+            ):
+                self._button(
+                    host,
+                    "Quitter le contrôle final",
+                    self._v5_finish_final_review,
+                    compact=True,
+                ).pack(
+                    fill="x",
+                    padx=18,
+                    pady=(
+                        5,
+                        7,
+                    ),
+                )
+                return
+
             if roman.survol.running:
                 self._button(
                     host,
@@ -984,6 +1411,98 @@ class TomeLineaV5RomanStage(
                 ),
             )
             return
+
+        if (
+            roman is not None
+            and bool(
+                getattr(
+                    self,
+                    "_v5_final_review_active",
+                    False,
+                )
+            )
+        ):
+            tk.Label(
+                host,
+                text="Contrôle final en cours…",
+                bg=theme.PANEL,
+                fg=theme.MUTED,
+                wraplength=215,
+                justify="left",
+                anchor="w",
+                font=(
+                    theme.FONT_UI,
+                    8,
+                    "bold",
+                ),
+            ).pack(
+                fill="x",
+                padx=18,
+                pady=(
+                    0,
+                    8,
+                ),
+            )
+            self._button(
+                host,
+                "Quitter le contrôle final",
+                self._v5_finish_final_review,
+                compact=True,
+            ).pack(
+                fill="x",
+                padx=18,
+                pady=(
+                    0,
+                    7,
+                ),
+            )
+            return
+
+        if roman is not None and roman.survol.completed:
+            pending_review = review_subject_ids(
+                roman.review
+            )
+
+            if pending_review:
+                tk.Label(
+                    host,
+                    text=(
+                        f"{len(pending_review)} élément(s) ont été modifiés "
+                        "pendant le Survol et doivent être revus."
+                    ),
+                    bg=theme.PANEL,
+                    fg=theme.INK,
+                    wraplength=215,
+                    justify="left",
+                    anchor="w",
+                    font=(
+                        theme.FONT_UI,
+                        8,
+                        "bold",
+                    ),
+                ).pack(
+                    fill="x",
+                    padx=18,
+                    pady=(
+                        0,
+                        8,
+                    ),
+                )
+                self._button(
+                    host,
+                    "Faire le contrôle final",
+                    self._v5_start_final_review,
+                    compact=True,
+                    accent=True,
+                ).pack(
+                    fill="x",
+                    padx=18,
+                    pady=(
+                        0,
+                        7,
+                    ),
+                )
+                return
 
         if roman is not None and roman.survol.completed:
             self._button(
