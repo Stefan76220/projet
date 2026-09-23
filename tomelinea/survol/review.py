@@ -18,9 +18,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from tomelinea.rules import Case, Situation, group_cases
+
+
+REVIEW_SCHEMA = "tomelinea.survol_review.v1"
 
 
 class ReviewStatus(str, Enum):
@@ -308,8 +311,93 @@ class SurvolReviewState:
             str(subject_id or "").strip()
         )
 
+    def export_state(self) -> dict[str, object]:
+        """Exporte uniquement l'etat durable, jamais le curseur de navigation."""
+
+        return {
+            "schema": REVIEW_SCHEMA,
+            "known_situations": {
+                subject_id: sorted(situation_ids)
+                for subject_id, situation_ids
+                in sorted(self._known_situations.items())
+                if subject_id and situation_ids
+            },
+            "forced_review": sorted(
+                subject_id
+                for subject_id in self._forced_review
+                if subject_id
+            ),
+        }
+
+    def restore_state(
+        self,
+        payload: Mapping[str, object] | None,
+    ) -> None:
+        """Restaure l'etat durable et remet le curseur transitoire a zero."""
+
+        self._page_id = ""
+        self._cases = ()
+        self._case_index = 0
+        self._situation_index = 0
+        self._known_situations = {}
+        self._forced_review = set()
+
+        if not isinstance(payload, Mapping):
+            return
+
+        if str(payload.get("schema") or "") != REVIEW_SCHEMA:
+            return
+
+        raw_known = payload.get(
+            "known_situations",
+            {},
+        )
+
+        if isinstance(raw_known, Mapping):
+            for raw_subject_id, raw_ids in raw_known.items():
+                subject_id = str(raw_subject_id or "").strip()
+
+                if not subject_id:
+                    continue
+
+                if not isinstance(raw_ids, (list, tuple, set)):
+                    continue
+
+                values = {
+                    str(value or "").strip()
+                    for value in raw_ids
+                    if str(value or "").strip()
+                }
+
+                if values:
+                    self._known_situations[subject_id] = values
+
+        raw_review = payload.get(
+            "forced_review",
+            (),
+        )
+
+        if isinstance(raw_review, (list, tuple, set)):
+            self._forced_review = {
+                str(value or "").strip()
+                for value in raw_review
+                if str(value or "").strip()
+            }
+
+    @classmethod
+    def from_state(
+        cls,
+        payload: Mapping[str, object] | None,
+    ) -> "SurvolReviewState":
+        state = cls()
+        state.restore_state(
+            payload
+        )
+        return state
+
 
 __all__ = [
+    "REVIEW_SCHEMA",
     "ReviewStatus",
     "REVIEW_STATUS_LABELS",
     "ReviewSnapshot",
