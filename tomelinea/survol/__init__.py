@@ -1,1 +1,7 @@
-# TomeLinea V5 - package volontairement vide au jalon initial.
+"""Frontiere Survol publique de TomeLinea V5."""
+
+from .api import SurvolState
+
+__all__ = [
+    "SurvolState",
+]
