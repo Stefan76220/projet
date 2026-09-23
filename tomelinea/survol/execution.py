@@ -3,9 +3,11 @@
 Cette couche ne corrige rien et ne navigue jamais.
 
 Elle prend uniquement la Situation courante de ``SurvolReviewState`` :
-1. delegue son execution au moteur specialise deja valide ;
-2. avance d'une Situation dans la revue uniquement si l'execution reussit ;
-3. persiste immediatement Nouveau / Vu / A revoir dans ``Book.metadata``.
+1. photographie les objets stables deja vus ;
+2. delegue l'execution au moteur specialise deja valide ;
+3. marque A revoir les objets deja vus reellement impactes ;
+4. avance d'une Situation uniquement si l'execution reussit ;
+5. persiste immediatement la revue dans ``Book.metadata``.
 
 Le passage a la page suivante reste exclusivement la responsabilite de
 ``SurvolState`` et de la Navigation commune.
@@ -27,6 +29,10 @@ from tomelinea.text import (
     execute_text_decision,
 )
 
+from .impact import (
+    book_impact_snapshot,
+    impacted_seen_subject_ids,
+)
 from .persistence import (
     save_review_state,
 )
@@ -43,6 +49,7 @@ class SurvolDecisionExecution:
     subject_id: str
     decision_id: str
     domain_result: Any
+    impacted_subject_ids: tuple[str, ...]
     review: ReviewSnapshot
     persisted_state: Mapping[str, object]
 
@@ -149,7 +156,7 @@ def execute_current_decision(
     review: SurvolReviewState,
     decision: Decision,
 ) -> SurvolDecisionExecution:
-    """Execute UNE Decision et ne valide la Situation qu'apres succes."""
+    """Execute UNE Decision sans retour automatique vers les impacts anciens."""
 
     book = _book(
         project
@@ -160,13 +167,36 @@ def execute_current_decision(
         decision,
     )
 
-    # Important : si le moteur specialise leve une erreur,
-    # la revue n'avance pas et rien n'est marque Vu.
+    before = book_impact_snapshot(
+        book
+    )
+
+    # Si le moteur specialise leve une erreur, la revue n'avance pas.
     result = _execute_domain(
         project,
         situation,
         decision,
     )
+
+    after = book_impact_snapshot(
+        book
+    )
+
+    impacted = impacted_seen_subject_ids(
+        review,
+        before,
+        after,
+        exclude=(
+            str(
+                situation.subject_id
+            ),
+        ),
+    )
+
+    if impacted:
+        review.mark_for_review(
+            impacted
+        )
 
     snapshot = review.complete_current_situation()
 
@@ -181,6 +211,7 @@ def execute_current_decision(
         subject_id=str(situation.subject_id),
         decision_id=decision.id,
         domain_result=result,
+        impacted_subject_ids=impacted,
         review=snapshot,
         persisted_state=persisted,
     )
