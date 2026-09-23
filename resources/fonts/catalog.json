@@ -1,0 +1,463 @@
+{
+  "catalog_version": 2,
+  "provider": "google/fonts",
+  "provider_url": "https://github.com/google/fonts",
+  "download_policy": "explicit_only",
+  "resolution_priority": [
+    "system",
+    "core",
+    "user"
+  ],
+  "families": [
+    {
+      "family": "EB Garamond",
+      "slug": "ebgaramond",
+      "category": "Serif",
+      "collection": "Classiques éditoriaux",
+      "use": "Roman, littérature, essais",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ebgaramond"
+    },
+    {
+      "family": "Crimson Pro",
+      "slug": "crimsonpro",
+      "category": "Serif",
+      "collection": "Classiques éditoriaux",
+      "use": "Roman, littérature, essais",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/crimsonpro"
+    },
+    {
+      "family": "Source Serif 4",
+      "slug": "sourceserif4",
+      "category": "Serif",
+      "collection": "Adobe Source",
+      "use": "Corps de texte, édition générale",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/sourceserif4"
+    },
+    {
+      "family": "Literata",
+      "slug": "literata",
+      "category": "Serif",
+      "collection": "Lecture longue",
+      "use": "Lecture longue, roman, numérique et papier",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/literata"
+    },
+    {
+      "family": "Lora",
+      "slug": "lora",
+      "category": "Serif",
+      "collection": "Lecture longue",
+      "use": "Roman, essai, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/lora"
+    },
+    {
+      "family": "Merriweather",
+      "slug": "merriweather",
+      "category": "Serif",
+      "collection": "Lecture longue",
+      "use": "Texte dense, lecture confortable",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/merriweather"
+    },
+    {
+      "family": "Spectral",
+      "slug": "spectral",
+      "category": "Serif",
+      "collection": "Éditorial",
+      "use": "Livres, documents éditoriaux, titres et texte",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/spectral"
+    },
+    {
+      "family": "Alegreya",
+      "slug": "alegreya",
+      "category": "Serif",
+      "collection": "Éditorial",
+      "use": "Littérature et lecture longue",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/alegreya"
+    },
+    {
+      "family": "Vollkorn",
+      "slug": "vollkorn",
+      "category": "Serif",
+      "collection": "Éditorial",
+      "use": "Corps de texte robuste, ouvrages longs",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/vollkorn"
+    },
+    {
+      "family": "Libre Baskerville",
+      "slug": "librebaskerville",
+      "category": "Serif",
+      "collection": "Classiques éditoriaux",
+      "use": "Texte courant, essais",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/librebaskerville"
+    },
+    {
+      "family": "Noto Serif",
+      "slug": "notoserif",
+      "category": "Serif",
+      "collection": "Noto",
+      "use": "Multilingue, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/notoserif"
+    },
+    {
+      "family": "IBM Plex Serif",
+      "slug": "ibmplexserif",
+      "category": "Serif",
+      "collection": "IBM Plex",
+      "use": "Édition moderne, documentation",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ibmplexserif"
+    },
+    {
+      "family": "Charis SIL",
+      "slug": "charissil",
+      "category": "Serif",
+      "collection": "SIL",
+      "use": "Longs documents, langues et signes étendus",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/charissil"
+    },
+    {
+      "family": "Gentium Plus",
+      "slug": "gentiumplus",
+      "category": "Serif",
+      "collection": "SIL",
+      "use": "Édition multilingue et universitaire",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/gentiumplus"
+    },
+    {
+      "family": "Carlito",
+      "slug": "carlito",
+      "category": "Sans-serif",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Calibri pour documents importés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/carlito"
+    },
+    {
+      "family": "Caladea",
+      "slug": "caladea",
+      "category": "Serif",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Cambria pour documents importés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/caladea"
+    },
+    {
+      "family": "Arimo",
+      "slug": "arimo",
+      "category": "Sans-serif",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Arial pour documents importés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/arimo"
+    },
+    {
+      "family": "Tinos",
+      "slug": "tinos",
+      "category": "Serif",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Times New Roman",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/tinos"
+    },
+    {
+      "family": "Cousine",
+      "slug": "cousine",
+      "category": "Monospace",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Courier New",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/cousine"
+    },
+    {
+      "family": "Gelasio",
+      "slug": "gelasio",
+      "category": "Serif",
+      "collection": "Compatibilité métrique",
+      "use": "Alternative métrique à Georgia",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/gelasio"
+    },
+    {
+      "family": "Source Sans 3",
+      "slug": "sourcesans3",
+      "category": "Sans-serif",
+      "collection": "Adobe Source",
+      "use": "Titres, légendes, documentation",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/sourcesans3"
+    },
+    {
+      "family": "Inter",
+      "slug": "inter",
+      "category": "Sans-serif",
+      "collection": "Sans modernes",
+      "use": "Titres, tableaux, documents contemporains",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/inter"
+    },
+    {
+      "family": "Fira Sans",
+      "slug": "firasans",
+      "category": "Sans-serif",
+      "collection": "Sans modernes",
+      "use": "Titres, encadrés, documentation",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/firasans"
+    },
+    {
+      "family": "Noto Sans",
+      "slug": "notosans",
+      "category": "Sans-serif",
+      "collection": "Noto",
+      "use": "Multilingue, documentation, légendes",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/notosans"
+    },
+    {
+      "family": "IBM Plex Sans",
+      "slug": "ibmplexsans",
+      "category": "Sans-serif",
+      "collection": "IBM Plex",
+      "use": "Titres, documentation, édition moderne",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ibmplexsans"
+    },
+    {
+      "family": "Atkinson Hyperlegible",
+      "slug": "atkinsonhyperlegible",
+      "category": "Sans-serif",
+      "collection": "Accessibilité",
+      "use": "Lisibilité renforcée",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/atkinsonhyperlegible"
+    },
+    {
+      "family": "Alegreya Sans",
+      "slug": "alegreyasans",
+      "category": "Sans-serif",
+      "collection": "Éditorial",
+      "use": "Titres et texte humaniste",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/alegreyasans"
+    },
+    {
+      "family": "Libre Franklin",
+      "slug": "librefranklin",
+      "category": "Sans-serif",
+      "collection": "Sans modernes",
+      "use": "Titres, documentation, affichage",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/librefranklin"
+    },
+    {
+      "family": "Open Sans",
+      "slug": "opensans",
+      "category": "Sans-serif",
+      "collection": "Usages très répandus",
+      "use": "Documents importés, documentation, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/opensans"
+    },
+    {
+      "family": "PT Sans",
+      "slug": "ptsans",
+      "category": "Sans-serif",
+      "collection": "Usages éditoriaux",
+      "use": "Documentation, légendes, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ptsans"
+    },
+    {
+      "family": "PT Serif",
+      "slug": "ptserif",
+      "category": "Serif",
+      "collection": "Usages éditoriaux",
+      "use": "Livres, essais, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ptserif"
+    },
+    {
+      "family": "Roboto",
+      "slug": "roboto",
+      "category": "Sans-serif",
+      "collection": "Usages très répandus",
+      "use": "Documents importés, titres, texte courant",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/roboto"
+    },
+    {
+      "family": "Lato",
+      "slug": "lato",
+      "category": "Sans-serif",
+      "collection": "Usages très répandus",
+      "use": "Documents importés, édition générale",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/lato"
+    },
+    {
+      "family": "Montserrat",
+      "slug": "montserrat",
+      "category": "Sans-serif",
+      "collection": "Usages très répandus",
+      "use": "Titres, couvertures, documents illustrés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/montserrat"
+    },
+    {
+      "family": "Poppins",
+      "slug": "poppins",
+      "category": "Sans-serif",
+      "collection": "Usages très répandus",
+      "use": "Titres, documents illustrés, modèles bureautiques",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/poppins"
+    },
+    {
+      "family": "Nunito Sans",
+      "slug": "nunitosans",
+      "category": "Sans-serif",
+      "collection": "Sans modernes",
+      "use": "Documents contemporains, titres et légendes",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/nunitosans"
+    },
+    {
+      "family": "Work Sans",
+      "slug": "worksans",
+      "category": "Sans-serif",
+      "collection": "Sans modernes",
+      "use": "Documentation, titres, texte contemporain",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/worksans"
+    },
+    {
+      "family": "Raleway",
+      "slug": "raleway",
+      "category": "Sans-serif",
+      "collection": "Titres",
+      "use": "Titres, ouvertures, documents illustrés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/raleway"
+    },
+    {
+      "family": "Oswald",
+      "slug": "oswald",
+      "category": "Sans condensée",
+      "collection": "Titres",
+      "use": "Titres étroits, affichage, couvertures",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/oswald"
+    },
+    {
+      "family": "Bitter",
+      "slug": "bitter",
+      "category": "Serif",
+      "collection": "Éditorial",
+      "use": "Texte courant, essais, documents numériques",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/bitter"
+    },
+    {
+      "family": "Cardo",
+      "slug": "cardo",
+      "category": "Serif",
+      "collection": "Édition savante",
+      "use": "Ouvrages universitaires, historiques, caractères étendus",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/cardo"
+    },
+    {
+      "family": "Playfair Display",
+      "slug": "playfairdisplay",
+      "category": "Display serif",
+      "collection": "Titres",
+      "use": "Titres et ouvertures de chapitres",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/playfairdisplay"
+    },
+    {
+      "family": "Cormorant Garamond",
+      "slug": "cormorantgaramond",
+      "category": "Display serif",
+      "collection": "Titres",
+      "use": "Titres élégants, ouvrages illustrés",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/cormorantgaramond"
+    },
+    {
+      "family": "IBM Plex Sans Condensed",
+      "slug": "ibmplexsanscondensed",
+      "category": "Sans condensée",
+      "collection": "IBM Plex",
+      "use": "Titres étroits, tableaux, légendes",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ibmplexsanscondensed"
+    },
+    {
+      "family": "IBM Plex Mono",
+      "slug": "ibmplexmono",
+      "category": "Monospace",
+      "collection": "IBM Plex",
+      "use": "Code, données techniques, tableaux",
+      "license": "OFL-1.1",
+      "license_dir": "ofl",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/ibmplexmono"
+    }
+  ]
+}
