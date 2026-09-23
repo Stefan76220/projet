@@ -1,6 +1,13 @@
-"""Frontiere Composition publique de TomeLinea V5."""
+"""API Composition commune de TomeLinea V5.
 
-from .api import (
+V5-04 ne cree pas un second modele de composition.
+Le Livre reste l'unique autorite : les elements sont stockes dans
+Page.content avec identifiants stables et geometrie en millimetres.
+
+L'implementation V4 gelee reste utilisee par equivalence.
+"""
+
+from src.v4.composition import (
     BLEED,
     COMPOSITION_SCHEMA,
     COMPOSITION_VERSION,
