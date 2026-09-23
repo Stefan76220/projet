@@ -1,4 +1,4 @@
-"""Catalogue Pagination public de TomeLinea V5."""
+"""Catalogue et execution Pagination publics de TomeLinea V5."""
 
 from .api import (
     BLANK_AFTER,
@@ -17,6 +17,13 @@ from .api import (
     pagination_situation_class,
     similar_pagination_page_ids,
 )
+from .execution import (
+    PAGINATION_CHOICE_DISABLED,
+    PAGINATION_CHOICE_ENABLED,
+    PAGINATION_DECISION_CHOICES,
+    PaginationDecisionExecution,
+    execute_pagination_decision,
+)
 
 __all__ = [
     "PAGE_RIGHT",
@@ -34,4 +41,9 @@ __all__ = [
     "pagination_situation",
     "double_page_situation",
     "similar_pagination_page_ids",
+    "PAGINATION_CHOICE_ENABLED",
+    "PAGINATION_CHOICE_DISABLED",
+    "PAGINATION_DECISION_CHOICES",
+    "PaginationDecisionExecution",
+    "execute_pagination_decision",
 ]
