@@ -1,4 +1,4 @@
-"""Catalogue Images public de TomeLinea V5."""
+"""Catalogue et execution Images publics de TomeLinea V5."""
 
 from .api import (
     IMAGE_QUALITY_CRITICAL,
@@ -13,6 +13,13 @@ from .api import (
     image_quality_issue_to_situation,
     image_quality_situations,
 )
+from .execution import (
+    IMAGE_CHOICE_CORRECTED,
+    IMAGE_CHOICE_IGNORED,
+    IMAGE_DECISION_CHOICES,
+    ImageDecisionExecution,
+    execute_image_decision,
+)
 
 __all__ = [
     "TARGET_DPI",
@@ -26,4 +33,9 @@ __all__ = [
     "audit_book_images",
     "image_quality_issue_to_situation",
     "image_quality_situations",
+    "IMAGE_CHOICE_CORRECTED",
+    "IMAGE_CHOICE_IGNORED",
+    "IMAGE_DECISION_CHOICES",
+    "ImageDecisionExecution",
+    "execute_image_decision",
 ]

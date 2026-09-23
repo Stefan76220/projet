@@ -18,6 +18,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from tomelinea.images import (
+    execute_image_decision,
+)
 from tomelinea.pagination import (
     execute_pagination_decision,
 )
@@ -141,6 +144,13 @@ def _execute_domain(
     if domain == "pagination":
         return execute_pagination_decision(
             project,
+            situation,
+            decision,
+        )
+
+    if domain == "image":
+        return execute_image_decision(
+            _book(project),
             situation,
             decision,
         )
