@@ -1,1 +1,5 @@
-# TomeLinea V5 - package volontairement vide au jalon initial.
+"""Couche application de TomeLinea V5."""
+
+from .project import Project
+
+__all__ = ["Project"]
