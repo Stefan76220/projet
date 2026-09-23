@@ -5,6 +5,15 @@ from .execution import (
     SurvolDecisionExecution,
     execute_current_decision,
 )
+from .final_review import (
+    FinalReviewPlan,
+    FinalReviewRequest,
+    FinalReviewTarget,
+    final_review_plan,
+    next_final_review_target,
+    request_final_review_page,
+    review_subject_ids,
+)
 from .impact import (
     BookImpactSnapshot,
     book_impact_snapshot,
@@ -41,6 +50,13 @@ __all__ = [
     "impacted_seen_subject_ids",
     "SurvolDecisionExecution",
     "execute_current_decision",
+    "FinalReviewTarget",
+    "FinalReviewPlan",
+    "FinalReviewRequest",
+    "review_subject_ids",
+    "final_review_plan",
+    "next_final_review_target",
+    "request_final_review_page",
     "save_review_state",
     "load_review_state",
     "clear_review_state",
