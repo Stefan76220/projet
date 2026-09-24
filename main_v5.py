@@ -2,31 +2,17 @@ from __future__ import annotations
 
 
 def main() -> None:
-    """Lance la coque V5 sans modifier ni dupliquer l'interface V4 validee."""
+    """Lance la nouvelle chaîne séquentielle TomeLinea V5."""
 
     try:
         from src.v4.font_library import register_private_fonts
-
         register_private_fonts()
     except Exception:
-        # Comme en V4, l'audit du Livre signalera les polices manquantes.
         pass
 
-    from src.gui_v5.roman_shell import TomeLineaV5RomanStage
+    from src.gui_v5.sequential_shell import TomeLineaV5SequentialShell
 
-    app = TomeLineaV5RomanStage(
-        defer_show=True
-    )
-
-    try:
-        app.show_prepared_window()
-    except Exception:
-        try:
-            app.deiconify()
-            app.lift()
-        except Exception:
-            pass
-
+    app = TomeLineaV5SequentialShell()
     app.mainloop()
 
 

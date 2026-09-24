@@ -1,16 +1,22 @@
 """Contrat d'architecture TomeLinea V5.
 
-La V4 gelée reste la référence fonctionnelle, mais V5-28 ouvre le nouveau
-parcours séquentiel : Source -> TLDocument -> métiers successifs -> Book.
+V5 est maintenant séquentielle :
 
-``TLDocument`` est le manuscrit logique éditable, indépendant des pages et du
-moteur d'affichage. ``Book`` devient l'état composé/paginé produit plus tard.
+Source intacte -> copie de travail -> TLDocument -> métiers successifs ->
+moteur bureautique -> projection rendue.
 
-Chaque métier agit seul, avec une responsabilité limitée. Une décision tardive
-invalide seulement les étapes qui en dépendent.
+TLDocument porte la compréhension logique et les identifiants stables.
+Le document de travail porte les modifications réelles.
+LibreOffice calcule la mise en page et la pagination derrière un adaptateur TL.
+Le rendu PDF est une projection d'affichage, jamais le document de travail.
+
+Structure logique et position physique sont distinctes :
+reclasser une page (ex. Corps -> Liminaires) ne déplace pas son contenu et ne
+déclenche pas de recomposition. Un déplacement physique dans le livre, lui,
+modifie le document de travail et invalide la composition/pagination concernée.
 """
 
-V5_ARCHITECTURE_VERSION = 2
+V5_ARCHITECTURE_VERSION = 3
 
 PRINCIPLES = (
     "single_book_truth",
@@ -24,4 +30,7 @@ PRINCIPLES = (
     "sequential_editorial_pipeline",
     "stage_scoped_mutations",
     "targeted_invalidation",
+    "logical_structure_independent_of_layout",
+    "office_layout_engine_behind_adapter",
+    "render_is_projection_not_truth",
 )
